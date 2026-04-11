@@ -8,6 +8,7 @@ export class InputManager {
   private aimingActive  = false;
   private fireCooldown  = 0;
   private grabPressed   = false;     // one-shot: true only on the frame E is first pressed
+  private hPressed      = false;     // one-shot: for third-person toggle
 
   public mouseSensitivity = 0.002;
 
@@ -15,6 +16,7 @@ export class InputManager {
     window.addEventListener('keydown', (e) => {
       this.keys.add(e.code);
       if (e.code === 'KeyE' && !e.repeat) this.grabPressed = true;
+      if (e.code === 'KeyH' && !e.repeat) this.hPressed = true;
       // Prevent Tab from switching browser focus
       if (e.code === 'Tab') e.preventDefault();
     });
@@ -96,6 +98,16 @@ export class InputManager {
 
   /** @deprecated use consumeGrab() */
   public isGrab(): boolean { return this.keys.has('KeyE'); }
+
+  /** Toggle Third Person — KeyH. Returns true only on the first frame H is pressed. */
+  public consumeThirdPersonToggle(): boolean {
+    const v = this.hPressed;
+    this.hPressed = false;
+    return v;
+  }
+
+  /** Selfie view held — KeyB. */
+  public isSelfieHeld(): boolean { return this.keys.has('KeyB'); }
 
   /**
    * Aim / launch charge — Space held while GRABBING.

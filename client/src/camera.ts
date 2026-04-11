@@ -153,9 +153,32 @@ export class CameraController {
 
   // ── Application ───────────────────────────────────────────────────
 
-  public apply(position: THREE.Vector3): void {
-    this.camera.position.copy(position);
-    this.camera.quaternion.copy(this.getQuaternion());
+  public apply(position: THREE.Vector3, isThirdPerson: boolean = false, isSelfie: boolean = false): void {
+    const quat = this.getQuaternion();
+
+    if (isSelfie) {
+      // Selfie mode: look backwards at character
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quat);
+      const camPos = position.clone().add(forward.multiplyScalar(3.0));
+      this.camera.position.copy(camPos);
+
+      // Rotate camera to look exactly opposite
+      const lookBackQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+      this.camera.quaternion.copy(quat).multiply(lookBackQuat);
+
+    } else if (isThirdPerson) {
+      // Third person: camera is behind and slightly up
+      const backward = new THREE.Vector3(0, 0, 1).applyQuaternion(quat);
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quat);
+      const camPos = position.clone().add(backward.multiplyScalar(3.0)).add(up.multiplyScalar(0.5));
+      this.camera.position.copy(camPos);
+      this.camera.quaternion.copy(quat);
+
+    } else {
+      // First person
+      this.camera.position.copy(position);
+      this.camera.quaternion.copy(quat);
+    }
   }
 
   // ── Explicit setters (used by App to orient camera at round start) ──

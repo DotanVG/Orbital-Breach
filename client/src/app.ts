@@ -6,6 +6,7 @@ import { LocalPlayer } from './player';
 import { Projectile } from './projectile';
 import { HUD, type GamePhase } from './render/hud';
 import { SceneManager } from './render/scene';
+import { GunViewModel } from './render/gun';
 import { MainMenu } from './ui/menu';
 import { generateArenaLayout } from './arena/states';
 import { COUNTDOWN_SECONDS, ROUND_END_DELAY, GRAB_RADIUS } from '../../shared/constants';
@@ -26,6 +27,8 @@ export class App {
   private countdownTimer = COUNTDOWN_SECONDS;
   private lastTime = 0;
   private projectiles: Projectile[] = [];
+  private gun: GunViewModel;
+  private thirdPerson = false;
 
   public constructor() {
     this.sceneMgr = new SceneManager();
@@ -35,6 +38,10 @@ export class App {
     this.player = new LocalPlayer(this.sceneMgr.getScene());
     this.hud = new HUD();
     this.menu = new MainMenu();
+
+    // Camera must be in the scene graph for parented children (gun model) to render
+    this.sceneMgr.getScene().add(this.sceneMgr.getCamera());
+    this.gun = new GunViewModel(this.sceneMgr.getCamera());
 
     // Wire round-win callback
     this.player.onRoundWin = (team) => this.onRoundWin(team);
@@ -143,8 +150,21 @@ export class App {
       for (const p of this.projectiles) p.update(dt);
       this.projectiles = this.projectiles.filter(p => !p.dead);
 
+      // Third person toggle & selfie hold
+      if (this.input.consumeThirdPersonToggle()) {
+        this.thirdPerson = !this.thirdPerson;
+      }
+      const isSelfie = this.input.isSelfieHeld();
+
       // Camera follows player
-      this.cam.apply(this.player.getPosition());
+      this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie);
+
+      // Gun visible only while a round is active, player is alive, and we are in 1st person
+      const gunVisible = this.phase !== 'LOBBY' 
+        && this.player.phase !== 'RESPAWNING' 
+        && !this.thirdPerson 
+        && !isSelfie;
+      this.gun.setVisible(gunVisible);
 
       // HUD update
       let nearBar = this.arena.getNearestBar(this.player.getPosition(), GRAB_RADIUS) !== null;

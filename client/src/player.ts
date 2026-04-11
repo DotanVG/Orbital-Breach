@@ -22,6 +22,7 @@ import {
 } from './physics';
 import { Arena } from './arena/arena';
 import { makePlayerMaterial } from './render/materials';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export type HitZone = 'head' | 'body' | 'rightArm' | 'leftArm' | 'legs';
 
@@ -50,7 +51,7 @@ export class LocalPlayer {
   private respawnTimer = 0;
   private onGround = false;
 
-  private mesh: THREE.Mesh;
+  private mesh: THREE.Group;
   private arrowLine: THREE.Line | null = null;
   private arrowPositions: Float32Array | null = null;
   private readonly scene: THREE.Scene;
@@ -59,10 +60,41 @@ export class LocalPlayer {
 
   public constructor(scene: THREE.Scene) {
     this.scene = scene;
-    this.mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(PLAYER_RADIUS, 12, 8),
-      makePlayerMaterial(0),
+    this.mesh = new THREE.Group();
+
+    const loader = new GLTFLoader();
+
+    // Load Alien Body
+    loader.load(
+      '/models/Alien.glb',
+      (gltf) => {
+        const alien = gltf.scene;
+        alien.scale.setScalar(0.2); // Reduced from 0.7
+        alien.position.y = -PLAYER_RADIUS * 0.8; // Adjusted height for new scale
+        alien.position.z = 0.3; // Push model behind the camera view
+        // Face forward relative to camera
+        alien.rotation.y = Math.PI;
+        this.mesh.add(alien);
+      },
+      undefined,
+      (err) => console.error('[LocalPlayer] failed to load Alien.glb', err)
     );
+
+    // Load Alien Helmet
+    loader.load(
+      '/models/Alien_Helmet.glb',
+      (gltf) => {
+        const helmet = gltf.scene;
+        helmet.scale.setScalar(0.2);
+        helmet.position.y = -PLAYER_RADIUS * 0.8;
+        helmet.position.z = 0.3; // Push behind the camera
+        helmet.rotation.y = Math.PI;
+        this.mesh.add(helmet);
+      },
+      undefined,
+      (err) => console.error('[LocalPlayer] failed to load Alien_Helmet.glb', err)
+    );
+
     scene.add(this.mesh);
   }
 
@@ -107,6 +139,7 @@ export class LocalPlayer {
         break;
     }
     this.mesh.position.copy(this.phys.pos);
+    this.mesh.quaternion.copy(cam.getQuaternion());
   }
 
   private updateFrozen(arena: Arena, dt: number): void {
@@ -442,7 +475,7 @@ export class LocalPlayer {
     return this.phys.pos;
   }
 
-  public getMesh(): THREE.Mesh {
+  public getMesh(): THREE.Group {
     return this.mesh;
   }
 
