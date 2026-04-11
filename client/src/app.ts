@@ -9,6 +9,7 @@ import { SceneManager } from './render/scene';
 import { GunViewModel } from './render/gun';
 import { MainMenu } from './ui/menu';
 import { generateArenaLayout } from './arena/states';
+import { FEATURE_FLAGS } from './featureFlags';
 import { COUNTDOWN_SECONDS, ROUND_END_DELAY, GRAB_RADIUS } from '../../shared/constants';
 import type { FullPlayerInfo, EnemyPlayerInfo } from '../../shared/schema';
 
@@ -158,10 +159,10 @@ export class App {
       this.projectiles = this.projectiles.filter(p => !p.dead);
 
       // Third person toggle & selfie hold
-      if (this.input.consumeThirdPersonToggle()) {
+      if (FEATURE_FLAGS.thirdPersonLookBehind && this.input.consumeThirdPersonToggle()) {
         this.thirdPerson = !this.thirdPerson;
       }
-      const isSelfie = this.input.isSelfieHeld();
+      const isSelfie = FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld();
 
       // Camera follows player
       this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie);
