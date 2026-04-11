@@ -39,6 +39,13 @@ const BREACH_BREATH_SPEED = 1.8;
 const BREACH_BREATH_ABDOMEN_Y = 0.012;
 const BREACH_BREATH_TORSO_Y = 0.008;
 const BREACH_BREATH_NECK_Y = 0.004;
+const THIRD_PERSON_GUN_POSITION_STEP = 0.01;
+const THIRD_PERSON_GUN_FINE_POSITION_STEP = 0.002;
+const THIRD_PERSON_GUN_ROTATION_STEP = 0.05;
+const THIRD_PERSON_GUN_FINE_ROTATION_STEP = 0.01;
+const THIRD_PERSON_GUN_SCALE = 0.28;
+const THIRD_PERSON_GUN_OFFSET = new THREE.Vector3(0.02, 0.03, -0.08);
+const THIRD_PERSON_GUN_ROTATION = new THREE.Euler(-17.72, 0.0, 1.31);
 const GRAB_ROTATION_SMOOTHING = 0.0008;
 const BAR_HOLD_HIPS_OFFSET = new THREE.Euler(-0.42, -0.02, -0.08);
 const BAR_HOLD_ABDOMEN_OFFSET = new THREE.Euler(0.56, 0.0, -0.18);
@@ -112,6 +119,11 @@ export class LocalPlayer {
   private currentAnimation = ANIM_IDLE_HOLD;
   private currentAnimationTime = 0;
   private breachBreathTime = 0;
+  private thirdPersonGun: THREE.Group | null = null;
+  private thirdPersonGunVisible = false;
+  private thirdPersonGunOffset = THIRD_PERSON_GUN_OFFSET.clone();
+  private thirdPersonGunRotation = THIRD_PERSON_GUN_ROTATION.clone();
+  private thirdPersonGunTuningEnabled = false;
   private visualQuaternion = new THREE.Quaternion();
 
   public onRoundWin: ((team: 0 | 1) => void) | null = null;
@@ -134,6 +146,7 @@ export class LocalPlayer {
 
         this.captureLeftHandGripOffset(alien);
         this.registerAnimatedRig(alien, gltf.animations);
+        this.attachThirdPersonGun(alien);
         this.mesh.add(alien);
       },
       undefined,
@@ -436,6 +449,41 @@ export class LocalPlayer {
       action.play();
       action.time = this.currentAnimationTime;
     }
+  }
+
+  private attachThirdPersonGun(alien: THREE.Group): void {
+    const palm = ['PalmR', 'Palm.R', 'HandR', 'Hand.R', 'LowerArmR', 'LowerArm.R']
+      .map((name) => alien.getObjectByName(name))
+      .find((node): node is THREE.Object3D => node !== undefined);
+    if (!palm) {
+      console.warn('[LocalPlayer] could not find a right-hand bone for third-person gun attachment');
+      return;
+    }
+
+    const loader = new GLTFLoader();
+    loader.load(
+      '/models/Ray Gun.glb',
+      (gltf) => {
+        const gun = gltf.scene;
+        gun.scale.setScalar(THIRD_PERSON_GUN_SCALE);
+        gun.position.copy(this.thirdPersonGunOffset);
+        gun.rotation.copy(this.thirdPersonGunRotation);
+        gun.visible = this.thirdPersonGunVisible;
+
+        gun.traverse((obj) => {
+          if (!(obj instanceof THREE.Mesh)) return;
+          obj.castShadow = true;
+          obj.receiveShadow = true;
+          obj.frustumCulled = false;
+        });
+
+        palm.add(gun);
+        this.thirdPersonGun = gun;
+        this.applyThirdPersonGunTransform();
+      },
+      undefined,
+      (err) => console.error('[LocalPlayer] failed to load third-person Ray Gun.glb', err),
+    );
   }
 
   private updateAnimation(input: InputManager, dt: number): void {
@@ -823,6 +871,96 @@ export class LocalPlayer {
 
   public getMesh(): THREE.Group {
     return this.mesh;
+  }
+
+  public setThirdPersonGunVisible(visible: boolean): void {
+    this.thirdPersonGunVisible = visible;
+    if (this.thirdPersonGun) {
+      this.thirdPersonGun.visible = visible;
+    }
+  }
+
+  public toggleThirdPersonGunTuning(): boolean {
+    this.thirdPersonGunTuningEnabled = !this.thirdPersonGunTuningEnabled;
+    console.info(
+      `[LocalPlayer] Third-person gun tuning ${this.thirdPersonGunTuningEnabled ? 'enabled' : 'disabled'}.`,
+    );
+    if (this.thirdPersonGunTuningEnabled) {
+      this.logThirdPersonGunTuning();
+    }
+    return this.thirdPersonGunTuningEnabled;
+  }
+
+  public isThirdPersonGunTuningEnabled(): boolean {
+    return this.thirdPersonGunTuningEnabled;
+  }
+
+  public nudgeThirdPersonGun(
+    positionAxes: { x: number; y: number; z: number },
+    rotationAxes: { x: number; y: number; z: number },
+    fine: boolean,
+  ): boolean {
+    const positionStep = fine
+      ? THIRD_PERSON_GUN_FINE_POSITION_STEP
+      : THIRD_PERSON_GUN_POSITION_STEP;
+    const rotationStep = fine
+      ? THIRD_PERSON_GUN_FINE_ROTATION_STEP
+      : THIRD_PERSON_GUN_ROTATION_STEP;
+
+    const hasPositionInput = positionAxes.x !== 0 || positionAxes.y !== 0 || positionAxes.z !== 0;
+    const hasRotationInput = rotationAxes.x !== 0 || rotationAxes.y !== 0 || rotationAxes.z !== 0;
+    if (!hasPositionInput && !hasRotationInput) {
+      return false;
+    }
+
+    this.thirdPersonGunOffset.x += positionAxes.x * positionStep;
+    this.thirdPersonGunOffset.y += positionAxes.y * positionStep;
+    this.thirdPersonGunOffset.z += positionAxes.z * positionStep;
+
+    this.thirdPersonGunRotation.x += rotationAxes.x * rotationStep;
+    this.thirdPersonGunRotation.y += rotationAxes.y * rotationStep;
+    this.thirdPersonGunRotation.z += rotationAxes.z * rotationStep;
+
+    this.applyThirdPersonGunTransform();
+    return true;
+  }
+
+  public resetThirdPersonGunTuning(): void {
+    this.thirdPersonGunOffset.copy(THIRD_PERSON_GUN_OFFSET);
+    this.thirdPersonGunRotation.copy(THIRD_PERSON_GUN_ROTATION);
+    this.applyThirdPersonGunTransform();
+    console.info('[LocalPlayer] Third-person gun tuning reset to defaults.');
+    this.logThirdPersonGunTuning();
+  }
+
+  public logThirdPersonGunTuning(): void {
+    console.info(
+      `[LocalPlayer] THIRD_PERSON_GUN_OFFSET = new THREE.Vector3(${this.thirdPersonGunOffset.x.toFixed(3)}, ${this.thirdPersonGunOffset.y.toFixed(3)}, ${this.thirdPersonGunOffset.z.toFixed(3)});`,
+    );
+    console.info(
+      `[LocalPlayer] THIRD_PERSON_GUN_ROTATION = new THREE.Euler(${this.thirdPersonGunRotation.x.toFixed(3)}, ${this.thirdPersonGunRotation.y.toFixed(3)}, ${this.thirdPersonGunRotation.z.toFixed(3)});`,
+    );
+  }
+
+  public getThirdPersonGunTuningState(): {
+    enabled: boolean;
+    offset: THREE.Vector3;
+    rotation: THREE.Euler;
+  } {
+    return {
+      enabled: this.thirdPersonGunTuningEnabled,
+      offset: this.thirdPersonGunOffset.clone(),
+      rotation: this.thirdPersonGunRotation.clone(),
+    };
+  }
+
+  private applyThirdPersonGunTransform(): void {
+    if (!this.thirdPersonGun) {
+      return;
+    }
+
+    this.thirdPersonGun.position.copy(this.thirdPersonGunOffset);
+    this.thirdPersonGun.rotation.copy(this.thirdPersonGunRotation);
   }
 
   public getScore(): number {

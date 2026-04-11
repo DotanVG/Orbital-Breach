@@ -30,6 +30,7 @@ export class App {
   private projectiles: Projectile[] = [];
   private gun: GunViewModel;
   private thirdPerson = false;
+  private gunTuneOverlay: HTMLDivElement;
 
   public constructor() {
     this.sceneMgr = new SceneManager();
@@ -43,6 +44,7 @@ export class App {
     // Camera must be in the scene graph for parented children (gun model) to render
     this.sceneMgr.getScene().add(this.sceneMgr.getCamera());
     this.gun = new GunViewModel(this.sceneMgr.getCamera());
+    this.gunTuneOverlay = this.createGunTuneOverlay();
 
     // Wire round-win callback
     this.player.onRoundWin = (team) => this.onRoundWin(team);
@@ -158,6 +160,25 @@ export class App {
       for (const p of this.projectiles) p.update(dt);
       this.projectiles = this.projectiles.filter(p => !p.dead);
 
+      if (this.input.consumeGunTuneToggle()) {
+        this.player.toggleThirdPersonGunTuning();
+      }
+      if (this.input.consumeGunTuneReset()) {
+        this.player.resetThirdPersonGunTuning();
+      }
+      if (this.input.consumeGunTunePrint()) {
+        this.player.logThirdPersonGunTuning();
+      }
+
+      if (this.player.isThirdPersonGunTuningEnabled()) {
+        const tuningAxes = this.input.getGunTuneAxes();
+        this.player.nudgeThirdPersonGun(
+          tuningAxes.position,
+          tuningAxes.rotation,
+          tuningAxes.fine,
+        );
+      }
+
       // Third person toggle & selfie hold
       if (FEATURE_FLAGS.thirdPersonLookBehind && this.input.consumeThirdPersonToggle()) {
         this.thirdPerson = !this.thirdPerson;
@@ -166,6 +187,11 @@ export class App {
 
       // Camera follows player
       this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie);
+
+      const thirdPersonGunVisible = this.phase !== 'LOBBY'
+        && this.player.phase !== 'RESPAWNING'
+        && (this.thirdPerson || isSelfie);
+      this.player.setThirdPersonGunVisible(thirdPersonGunVisible);
 
       // Gun visible only while a round is active, player is alive, and we are in 1st person
       const gunVisible = this.phase !== 'LOBBY' 
@@ -207,9 +233,54 @@ export class App {
         ownTeam,
         enemyTeam,
       });
+
+      this.updateGunTuneOverlay();
     }
 
     this.sceneMgr.render();
     requestAnimationFrame((t) => this.loop(t));
+  }
+
+  private createGunTuneOverlay(): HTMLDivElement {
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.right = '16px';
+    overlay.style.bottom = '16px';
+    overlay.style.zIndex = '30';
+    overlay.style.maxWidth = '320px';
+    overlay.style.padding = '10px 12px';
+    overlay.style.border = '1px solid rgba(0, 255, 255, 0.5)';
+    overlay.style.borderRadius = '8px';
+    overlay.style.background = 'rgba(2, 8, 20, 0.82)';
+    overlay.style.color = '#cfffff';
+    overlay.style.font = '12px/1.45 monospace';
+    overlay.style.whiteSpace = 'pre-line';
+    overlay.style.pointerEvents = 'none';
+    overlay.style.display = 'none';
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  private updateGunTuneOverlay(): void {
+    const tuning = this.player.getThirdPersonGunTuningState();
+    if (!tuning.enabled) {
+      this.gunTuneOverlay.style.display = 'none';
+      return;
+    }
+
+    this.gunTuneOverlay.style.display = 'block';
+    this.gunTuneOverlay.textContent = [
+      'Gun Tune: ON',
+      '',
+      `Offset  x:${tuning.offset.x.toFixed(3)}  y:${tuning.offset.y.toFixed(3)}  z:${tuning.offset.z.toFixed(3)}`,
+      `Rotate  x:${tuning.rotation.x.toFixed(3)}  y:${tuning.rotation.y.toFixed(3)}  z:${tuning.rotation.z.toFixed(3)}`,
+      '',
+      'Arrows/PageUp/PageDown: move',
+      'I/K J/L U/O: rotate',
+      'Shift: fine step',
+      'Enter: print values',
+      'Backspace: reset',
+      'P: close tuner',
+    ].join('\n');
   }
 }
