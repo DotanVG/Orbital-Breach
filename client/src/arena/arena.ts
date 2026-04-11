@@ -137,12 +137,10 @@ export class Arena {
       group.add(mesh);
     };
 
-    // Floor — dark metallic, gravity anchor
-    addWall('floor',   BREACH_ROOM_W, BREACH_ROOM_D, 0, -hh, 0, -Math.PI / 2, 0, 0);
-    // Ceiling — diffuse mid-tone, overhead reference
-    addWall('ceiling', BREACH_ROOM_W, BREACH_ROOM_D, 0,  hh, 0,  Math.PI / 2, 0, 0);
-
     if (openAxis === 'z') {
+      // Floor/ceiling span X (width) × Z (depth)
+      addWall('floor',   BREACH_ROOM_W, BREACH_ROOM_D, 0, -hh, 0, -Math.PI / 2, 0, 0);
+      addWall('ceiling', BREACH_ROOM_W, BREACH_ROOM_D, 0,  hh, 0,  Math.PI / 2, 0, 0);
       // Left / right walls (X faces)
       addWall('side', BREACH_ROOM_D, BREACH_ROOM_H, -hw, 0, 0, 0,  Math.PI / 2, 0);
       addWall('side', BREACH_ROOM_D, BREACH_ROOM_H,  hw, 0, 0, 0, -Math.PI / 2, 0);
@@ -150,16 +148,21 @@ export class Arena {
       const backZ = openSign * -hd;
       addWall('back', BREACH_ROOM_W, BREACH_ROOM_H, 0, 0, backZ, 0, openSign === 1 ? Math.PI : 0, 0);
     } else if (openAxis === 'x') {
+      // Floor/ceiling span X (depth) × Z (width) — dimensions swapped vs z-axis layout
+      addWall('floor',   BREACH_ROOM_D, BREACH_ROOM_W, 0, -hh, 0, -Math.PI / 2, 0, 0);
+      addWall('ceiling', BREACH_ROOM_D, BREACH_ROOM_W, 0,  hh, 0,  Math.PI / 2, 0, 0);
       addWall('side', BREACH_ROOM_D, BREACH_ROOM_H, 0, 0, -hw, 0, 0,  Math.PI / 2);
       addWall('side', BREACH_ROOM_D, BREACH_ROOM_H, 0, 0,  hw, 0, 0, -Math.PI / 2);
       const backX = openSign * -hd;
       addWall('back', BREACH_ROOM_W, BREACH_ROOM_H, backX, 0, 0, 0, openSign === 1 ? Math.PI / 2 : -Math.PI / 2, 0);
     } else {
-      // openAxis === 'y'
+      // openAxis === 'y' — side walls face X, floor/ceiling span X×Z
+      addWall('floor',   BREACH_ROOM_W, BREACH_ROOM_W, 0, -hh, 0, -Math.PI / 2, 0, 0);
+      addWall('ceiling', BREACH_ROOM_W, BREACH_ROOM_W, 0,  hh, 0,  Math.PI / 2, 0, 0);
       addWall('side', BREACH_ROOM_W, BREACH_ROOM_D, -hw, 0, 0, 0,  Math.PI / 2, 0);
       addWall('side', BREACH_ROOM_W, BREACH_ROOM_D,  hw, 0, 0, 0, -Math.PI / 2, 0);
       const backY = openSign * -hd;
-      addWall('back', BREACH_ROOM_W, BREACH_ROOM_D, 0, backY, 0, openSign === 1 ? 0 : Math.PI, 0, 0);
+      addWall('back', BREACH_ROOM_W, BREACH_ROOM_W, 0, backY, 0, openSign === 1 ? 0 : Math.PI, 0, 0);
     }
   }
 
