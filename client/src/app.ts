@@ -125,8 +125,12 @@ export class App {
       this.player.update(this.input, this.cam, this.arena, dt);
       this.arena.update(dt);
 
-      // Weapon: fire projectile on LMB (only while playing and player can fire)
-      if (this.phase === 'PLAYING' && this.player.canFire() && this.input.consumeFire()) {
+      // Weapon: fire projectile on LMB (only while playing, player can fire, and gravity is off —
+      // i.e. player is floating or hanging a bar, never inside a breach/gravity room)
+      const inZeroG = this.player.phase === 'FLOATING'
+        || this.player.phase === 'GRABBING'
+        || this.player.phase === 'AIMING';
+      if (this.phase === 'PLAYING' && inZeroG && this.player.canFire() && this.input.consumeFire()) {
         const origin = this.player.getPosition().clone()
           .addScaledVector(this.cam.getForward(), 1.0);  // spawn ahead of player
         const color  = this.player.team === 0 ? 0x00ffff : 0xff00ff;
