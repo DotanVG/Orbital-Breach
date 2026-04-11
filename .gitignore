@@ -6,3 +6,6 @@ dist
 PlanTracker.md
 CLAUDE.md
 *.log
+# Root-level dev tooling (concurrently) — not part of deployable code
+/package.json
+/package-lock.json
