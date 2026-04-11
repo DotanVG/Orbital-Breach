@@ -143,7 +143,10 @@ export class App {
       this.cam.apply(this.player.getPosition());
 
       // HUD update
-      const nearBar = this.arena.getNearestBar(this.player.getPosition(), GRAB_RADIUS) !== null;
+      let nearBar = this.arena.getNearestBar(this.player.getPosition(), GRAB_RADIUS) !== null;
+      if (this.player.phase === 'BREACH' && !this.arena.isGoalDoorOpen(this.player.currentBreachTeam)) {
+        nearBar = false;
+      }
       const inBreach = this.arena.isInBreachRoom(this.player.getPosition(), this.player.team);
       const maxPower = this.player.maxLaunchPower();
 
