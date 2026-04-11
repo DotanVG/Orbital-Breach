@@ -14,6 +14,7 @@ import {
   makeArenaMaterial,
   makeObstacleMaterial,
   makeBreachRoomMaterial,
+  type BreachSurface,
 } from '../render/materials';
 
 interface BreachRoom {
@@ -115,7 +116,6 @@ export class Arena {
     openAxis: 'x' | 'y' | 'z',
     openSign: 1 | -1,
   ): void {
-    const mat = makeBreachRoomMaterial(team);
     const hw = BREACH_ROOM_W / 2;
     const hh = BREACH_ROOM_H / 2;
     const hd = BREACH_ROOM_D / 2;
@@ -123,39 +123,43 @@ export class Arena {
     // We build walls in LOCAL space (group is already positioned at center).
     // The open face is on the openAxis / openSign side.
     const addWall = (
+      surface: BreachSurface,
       w: number, h: number,
       px: number, py: number, pz: number,
       rx: number, ry: number, rz: number,
     ) => {
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat.clone());
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, h),
+        makeBreachRoomMaterial(team, surface),
+      );
       mesh.position.set(px, py, pz);
       mesh.rotation.set(rx, ry, rz);
       group.add(mesh);
     };
 
-    // Floor
-    addWall(BREACH_ROOM_W, BREACH_ROOM_D, 0, -hh, 0, -Math.PI / 2, 0, 0);
-    // Ceiling
-    addWall(BREACH_ROOM_W, BREACH_ROOM_D, 0, hh, 0, Math.PI / 2, 0, 0);
+    // Floor — dark metallic, gravity anchor
+    addWall('floor',   BREACH_ROOM_W, BREACH_ROOM_D, 0, -hh, 0, -Math.PI / 2, 0, 0);
+    // Ceiling — diffuse mid-tone, overhead reference
+    addWall('ceiling', BREACH_ROOM_W, BREACH_ROOM_D, 0,  hh, 0,  Math.PI / 2, 0, 0);
 
     if (openAxis === 'z') {
       // Left / right walls (X faces)
-      addWall(BREACH_ROOM_D, BREACH_ROOM_H, -hw, 0, 0, 0, Math.PI / 2, 0);
-      addWall(BREACH_ROOM_D, BREACH_ROOM_H, hw, 0, 0, 0, -Math.PI / 2, 0);
-      // Back wall (away from arena)
+      addWall('side', BREACH_ROOM_D, BREACH_ROOM_H, -hw, 0, 0, 0,  Math.PI / 2, 0);
+      addWall('side', BREACH_ROOM_D, BREACH_ROOM_H,  hw, 0, 0, 0, -Math.PI / 2, 0);
+      // Back wall (away from arena) — brightest glow, the end of the room
       const backZ = openSign * -hd;
-      addWall(BREACH_ROOM_W, BREACH_ROOM_H, 0, 0, backZ, 0, openSign === 1 ? Math.PI : 0, 0);
+      addWall('back', BREACH_ROOM_W, BREACH_ROOM_H, 0, 0, backZ, 0, openSign === 1 ? Math.PI : 0, 0);
     } else if (openAxis === 'x') {
-      addWall(BREACH_ROOM_D, BREACH_ROOM_H, 0, 0, -hw, 0, 0, Math.PI / 2);
-      addWall(BREACH_ROOM_D, BREACH_ROOM_H, 0, 0, hw, 0, 0, -Math.PI / 2);
+      addWall('side', BREACH_ROOM_D, BREACH_ROOM_H, 0, 0, -hw, 0, 0,  Math.PI / 2);
+      addWall('side', BREACH_ROOM_D, BREACH_ROOM_H, 0, 0,  hw, 0, 0, -Math.PI / 2);
       const backX = openSign * -hd;
-      addWall(BREACH_ROOM_W, BREACH_ROOM_H, backX, 0, 0, 0, openSign === 1 ? Math.PI / 2 : -Math.PI / 2, 0);
+      addWall('back', BREACH_ROOM_W, BREACH_ROOM_H, backX, 0, 0, 0, openSign === 1 ? Math.PI / 2 : -Math.PI / 2, 0);
     } else {
       // openAxis === 'y'
-      addWall(BREACH_ROOM_W, BREACH_ROOM_D, -hw, 0, 0, 0, Math.PI / 2, 0);
-      addWall(BREACH_ROOM_W, BREACH_ROOM_D, hw, 0, 0, 0, -Math.PI / 2, 0);
+      addWall('side', BREACH_ROOM_W, BREACH_ROOM_D, -hw, 0, 0, 0,  Math.PI / 2, 0);
+      addWall('side', BREACH_ROOM_W, BREACH_ROOM_D,  hw, 0, 0, 0, -Math.PI / 2, 0);
       const backY = openSign * -hd;
-      addWall(BREACH_ROOM_W, BREACH_ROOM_D, 0, backY, 0, openSign === 1 ? 0 : Math.PI, 0, 0);
+      addWall('back', BREACH_ROOM_W, BREACH_ROOM_D, 0, backY, 0, openSign === 1 ? 0 : Math.PI, 0, 0);
     }
   }
 
