@@ -138,11 +138,18 @@ export class App {
         || this.player.phase === 'GRABBING'
         || this.player.phase === 'AIMING';
       if (this.phase === 'PLAYING' && inZeroG && this.player.canFire() && this.input.consumeFire()) {
-        const origin = this.player.getPosition().clone()
-          .addScaledVector(this.cam.getForward(), 1.0);  // spawn ahead of player
+        // Spawn bullet at the tip of the gun (right (+X), down (-Y), forward (-Z) relative to camera)
+        const camQuat = this.cam.getQuaternion();
+        const gunTipOffset = new THREE.Vector3(0.2, -0.22, -0.6).applyQuaternion(camQuat);
+        const origin = this.player.getPosition().clone().add(gunTipOffset);
+        
+        // Determine center of screen in the distance to aim perfectly
+        const target = this.player.getPosition().clone().addScaledVector(this.cam.getForward(), 60.0);
+        const direction = target.sub(origin).normalize();
+
         const color  = this.player.team === 0 ? 0x00ffff : 0xff00ff;
         this.projectiles.push(
-          new Projectile(this.sceneMgr.getScene(), origin, this.cam.getForward(), color),
+          new Projectile(this.sceneMgr.getScene(), origin, direction, color),
         );
       }
 
