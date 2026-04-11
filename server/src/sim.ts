@@ -2,12 +2,12 @@ import ServerPlayer from "./player";
 import type {
   ArenaStateId,
   ClientInputMsg,
+  GamePhase,
   ServerStateMsg,
 } from "../../shared/schema";
 import {
   ACCEL,
   ARENA_SIZE,
-  BOOST,
   DAMPING,
   FREEZE_TIME,
   INVULN_TIME,
@@ -20,6 +20,7 @@ export default class Sim {
   public players: Map<string, ServerPlayer> = new Map();
   public score = { team0: 0, team1: 0 };
   public arenaStateId: ArenaStateId = "A";
+  public gamePhase: GamePhase = "LOBBY";
   public seq = 0;
 
   public addPlayer(p: ServerPlayer): void {
@@ -73,7 +74,7 @@ export default class Sim {
     }
 
     p.seq = inp.seq;
-    p.rot = { ...inp.rot };
+    p.rot = { ...p.rot, ...inp.rot };
   }
 
   private integratePlayer(p: ServerPlayer, dt: number): void {
@@ -89,19 +90,13 @@ export default class Sim {
     const sp = Math.sin(pitch);
     const forward = { x: -sy * cp, y: sp, z: -cy * cp };
     const right = { x: cy, y: 0, z: -sy };
-    const up = { x: sy * sp, y: cp, z: cy * sp };
-    const ax = inp.axes;
+    const ax = inp.walkAxes;
     const scale = ACCEL * dt;
 
-    p.vel.x += (right.x * ax.x + up.x * ax.y + forward.x * ax.z) * scale;
-    p.vel.y += (right.y * ax.x + up.y * ax.y + forward.y * ax.z) * scale;
-    p.vel.z += (right.z * ax.x + up.z * ax.y + forward.z * ax.z) * scale;
-
-    if (inp.boost) {
-      p.vel.x += forward.x * BOOST;
-      p.vel.y += forward.y * BOOST;
-      p.vel.z += forward.z * BOOST;
-    }
+    // walkAxes is {x, z} only — no y thrust in zero-G arena
+    p.vel.x += (right.x * ax.x + forward.x * ax.z) * scale;
+    p.vel.y += (right.y * ax.x + forward.y * ax.z) * scale;
+    p.vel.z += (right.z * ax.x + forward.z * ax.z) * scale;
 
     p.vel.x *= DAMPING;
     p.vel.y *= DAMPING;
@@ -191,11 +186,12 @@ export default class Sim {
 
   public getSnapshot(): ServerStateMsg {
     return {
-      t: "state",
-      seq: ++this.seq,
-      players: [...this.players.values()].map((p) => p.toNetState()),
-      score: { ...this.score },
+      t:          "state",
+      seq:        ++this.seq,
+      players:    [...this.players.values()].map((p) => p.toNetState()),
+      score:      { ...this.score },
       arenaState: this.arenaStateId,
+      phase:      this.gamePhase,
     };
   }
 }

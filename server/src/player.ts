@@ -1,4 +1,4 @@
-import type { ClientInputMsg, PlayerNetState } from "../../shared/schema";
+import type { ClientInputMsg, DamageState, PlayerNetState } from "../../shared/schema";
 import { FREEZE_TIME, INVULN_TIME, RESPAWN_TIME } from "../../shared/constants";
 
 type Vec3 = { x: number; y: number; z: number };
@@ -17,6 +17,10 @@ export default class ServerPlayer {
   public invulnTimer = 0;
   public lastInput: ClientInputMsg | null = null;
   public seq = 0;
+  public kills = 0;
+  public deaths = 0;
+  public ping = 0;
+  public damage: DamageState = { frozen: false, rightArm: false, leftArm: false, legs: false };
 
   public constructor(name: string, team: 0 | 1) {
     this.id = Math.random().toString(36).slice(2, 10);
@@ -32,12 +36,20 @@ export default class ServerPlayer {
 
   public toNetState(): PlayerNetState {
     return {
-      id: this.id,
-      team: this.team,
-      pos: { ...this.pos },
-      vel: { ...this.vel },
-      rot: { ...this.rot },
-      state: this.state,
+      id:        this.id,
+      name:      this.name,
+      team:      this.team,
+      pos:       { ...this.pos },
+      vel:       { ...this.vel },
+      rot:       { yaw: this.rot.yaw, pitch: this.rot.pitch },
+      phase:     this.state === "FROZEN" ? "FROZEN"
+                 : this.state === "RESPAWNING" ? "RESPAWNING"
+                 : "FLOATING",
+      damage:    { ...this.damage },
+      ping:      this.ping,
+      kills:     this.kills,
+      deaths:    this.deaths,
+      connected: true,
     };
   }
 }
