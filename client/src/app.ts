@@ -160,23 +160,25 @@ export class App {
       for (const p of this.projectiles) p.update(dt);
       this.projectiles = this.projectiles.filter(p => !p.dead);
 
-      if (this.input.consumeGunTuneToggle()) {
-        this.player.toggleThirdPersonGunTuning();
-      }
-      if (this.input.consumeGunTuneReset()) {
-        this.player.resetThirdPersonGunTuning();
-      }
-      if (this.input.consumeGunTunePrint()) {
-        this.player.logThirdPersonGunTuning();
-      }
+      if (FEATURE_FLAGS.thirdPersonGunTuning) {
+        if (this.input.consumeGunTuneToggle()) {
+          this.player.toggleThirdPersonGunTuning();
+        }
+        if (this.input.consumeGunTuneReset()) {
+          this.player.resetThirdPersonGunTuning();
+        }
+        if (this.input.consumeGunTunePrint()) {
+          this.player.logThirdPersonGunTuning();
+        }
 
-      if (this.player.isThirdPersonGunTuningEnabled()) {
-        const tuningAxes = this.input.getGunTuneAxes();
-        this.player.nudgeThirdPersonGun(
-          tuningAxes.position,
-          tuningAxes.rotation,
-          tuningAxes.fine,
-        );
+        if (this.player.isThirdPersonGunTuningEnabled()) {
+          const tuningAxes = this.input.getGunTuneAxes();
+          this.player.nudgeThirdPersonGun(
+            tuningAxes.position,
+            tuningAxes.rotation,
+            tuningAxes.fine,
+          );
+        }
       }
 
       // Third person toggle & selfie hold
@@ -263,7 +265,7 @@ export class App {
 
   private updateGunTuneOverlay(): void {
     const tuning = this.player.getThirdPersonGunTuningState();
-    if (!tuning.enabled) {
+    if (!FEATURE_FLAGS.thirdPersonGunTuning || !tuning.enabled) {
       this.gunTuneOverlay.style.display = 'none';
       return;
     }
