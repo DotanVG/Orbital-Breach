@@ -141,10 +141,13 @@ export class LocalPlayer {
 
     clampBreachRoom(this.phys, center, openAxis, openSign, arena.isGoalDoorOpen(this.currentBreachTeam));
 
+    const grabInput = input.consumeGrab();
     const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS);
-    if (nearBar && input.consumeGrab() && this.canGrabBar()) {
-      this.grabBar(nearBar);
-      return;
+    if (nearBar && grabInput && this.canGrabBar()) {
+      if (arena.isGoalDoorOpen(this.currentBreachTeam)) {
+        this.grabBar(nearBar);
+        return;
+      }
     }
 
     if (!arena.isInBreachRoom(this.phys.pos, this.currentBreachTeam)) {
@@ -192,8 +195,9 @@ export class LocalPlayer {
       return;
     }
 
+    const grabInput = input.consumeGrab();
     const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS);
-    if (nearBar && input.consumeGrab() && this.canGrabBar()) {
+    if (nearBar && grabInput && this.canGrabBar()) {
       this.grabBar(nearBar);
     }
   }

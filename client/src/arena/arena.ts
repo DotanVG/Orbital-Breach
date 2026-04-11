@@ -226,12 +226,18 @@ export class Arena {
   public isInBreachRoom(pos: THREE.Vector3, team: 0 | 1): boolean {
     const room = this.breachRooms[team];
     if (!room) return false;
-    const c = room.center;
-    return (
-      Math.abs(pos.x - c.x) < BREACH_ROOM_W / 2 &&
-      Math.abs(pos.y - c.y) < BREACH_ROOM_H / 2 &&
-      Math.abs(pos.z - c.z) < BREACH_ROOM_D / 2
-    );
+    const c   = room.center;
+    const ax  = room.openAxis;
+
+    // Y always carries room height
+    if (Math.abs(pos.y - c.y) >= BREACH_ROOM_H / 2) return false;
+    // openAxis carries room depth
+    if (Math.abs(pos[ax] - c[ax]) >= BREACH_ROOM_D / 2) return false;
+    // the perpendicular horizontal axis carries room width
+    const perpAx = ax === 'x' ? 'z' : 'x';
+    if (Math.abs(pos[perpAx] - c[perpAx]) >= BREACH_ROOM_W / 2) return false;
+
+    return true;
   }
 
   /**
