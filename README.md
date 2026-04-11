@@ -34,7 +34,7 @@ Being hit by a freeze shot affects specific body zones:
 - **Head / Body** → Frozen for the round (drifts helplessly)
 - **Right Arm** → Cannot fire pistol
 - **Left Arm** → Cannot grab bars
-- **Legs** → Launch power capped at 2/3
+- **Legs** → Launch power capped at 75% for one leg and 50% for both legs
 
 ---
 
@@ -64,7 +64,7 @@ cd server && npm run build    # outputs to server/dist/
 
 ### Deployment
 - **Client**: Vercel (configured in `vercel.json`)
-- **Server**: Requires separate Node.js hosting (Railway, Render, Fly.io) — set `PORT` env var (default: 3001)
+- **Server**: Requires separate Node.js hosting like [Colyseus](https://colyseus.io/) — set `PORT` env var (default: 3001)
 
 ---
 
@@ -127,7 +127,7 @@ Solo play is fully functional. Multiplayer, lobby, bots, and sound are in active
 
 ## Credits
 
-- 3D Models: [Quaternius](https://quaternius.com) via vibejam-starter-pack
+- 3D Models: [Quaternius](https://quaternius.com)
 - Rendering: [Three.js](https://threejs.org)
 - Build: [Vite](https://vitejs.dev)
-- Entry: [Vibe Game Jam 2026](https://vibejam.com)
+- Entry: [Vibe Game Jam 2026](https://vibej.am/2026/)

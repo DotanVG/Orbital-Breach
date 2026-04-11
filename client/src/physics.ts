@@ -114,11 +114,16 @@ export function clampBreachRoom(
   openSign: 1 | -1,
   portalOpen = true,
 ): void {
-  const half = {
-    x: BREACH_ROOM_W / 2 - PLAYER_RADIUS,
-    y: BREACH_ROOM_H / 2 - PLAYER_RADIUS,
-    z: BREACH_ROOM_D / 2 - PLAYER_RADIUS,
-  };
+  // Half-extents depend on room orientation: the open axis carries depth (D),
+  // the perpendicular horizontal axis carries width (W), y always carries height (H).
+  const depthHalf  = BREACH_ROOM_D / 2 - PLAYER_RADIUS;
+  const widthHalf  = BREACH_ROOM_W / 2 - PLAYER_RADIUS;
+  const heightHalf = BREACH_ROOM_H / 2 - PLAYER_RADIUS;
+  const half = openAxis === 'x'
+    ? { x: depthHalf, y: heightHalf, z: widthHalf }   // depth along X, width along Z
+    : openAxis === 'z'
+      ? { x: widthHalf, y: heightHalf, z: depthHalf } // depth along Z, width along X
+      : { x: widthHalf, y: depthHalf, z: widthHalf }; // depth along Y
 
   for (const ax of ['x', 'y', 'z'] as const) {
     const lo = center[ax] - half[ax];
