@@ -89,6 +89,24 @@ export class LocalPlayer {
         helmet.position.y = -PLAYER_RADIUS * 0.8;
         helmet.position.z = 0.3; // Push behind the camera
         helmet.rotation.y = Math.PI;
+
+        // The helmet export ships with an opaque "Glass" material.
+        // Make only that material translucent so the dome reads like a visor
+        // instead of a solid black sphere over the player's head.
+        helmet.traverse((obj) => {
+          if (!(obj instanceof THREE.Mesh)) return;
+
+          const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+          for (const material of materials) {
+            if (material.name !== 'Glass') continue;
+            material.transparent = true;
+            material.opacity = 0.22;
+            material.depthWrite = false;
+            material.roughness = 0.12;
+            material.metalness = 0.0;
+          }
+        });
+
         this.mesh.add(helmet);
       },
       undefined,

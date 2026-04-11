@@ -13,7 +13,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
  */
 
 /** Camera-local offset: right (+X), up (+Y), forward (-Z) */
-const GUN_OFFSET = new THREE.Vector3(0.2, -0.18, -0.35);
+const GUN_OFFSET = new THREE.Vector3(0.1, -0.3, -0.15);
 /** Uniform scale — Ray Gun .glb may be exported in cm; tune as needed */
 const GUN_SCALE = 0.15;
 /** Euler rotation in camera space — flip/reorient as the model requires */
@@ -41,6 +41,7 @@ export class GunViewModel {
           for (const m of mats) {
             m.depthTest = false;
             m.depthWrite = true;
+            m.transparent = true;
           }
         });
 
