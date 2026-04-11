@@ -27,6 +27,52 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 export type HitZone = 'head' | 'body' | 'rightArm' | 'leftArm' | 'legs';
 
 const DEFAULT_LEFT_HAND_GRIP_LOCAL = new THREE.Vector3(-0.27, -0.322, 0.287);
+const LEFT_HAND_GRIP_FINGERTIP_BLEND = 0.64;
+const LEFT_HAND_GRIP_THUMB_PULL = 0.16;
+const LEFT_HAND_GRIP_FINGER_ADVANCE = 0.01;
+const ANIM_IDLE_HOLD = 'Alien_IdleHold';
+const ANIM_RUN_HOLD = 'Alien_RunHold';
+const ANIM_STANDING = 'Alien_Standing';
+const ANIM_DEATH = 'Alien_Death';
+const ANIM_FADE_SECONDS = 0.16;
+const GRAB_ROTATION_SMOOTHING = 0.0008;
+const BAR_HOLD_HIPS_OFFSET = new THREE.Euler(-0.42, -0.02, -0.08);
+const BAR_HOLD_ABDOMEN_OFFSET = new THREE.Euler(0.56, 0.0, -0.18);
+const BAR_HOLD_TORSO_OFFSET = new THREE.Euler(0.44, 0.06, -0.26);
+const BAR_HOLD_NECK_OFFSET = new THREE.Euler(-0.12, -0.04, 0.08);
+const BAR_HOLD_SHOULDER_OFFSET = new THREE.Euler(-0.42, 0.2, -0.95);
+const BAR_HOLD_UPPER_ARM_OFFSET = new THREE.Euler(1.25, 0.18, 0.82);
+const BAR_HOLD_LOWER_ARM_OFFSET = new THREE.Euler(1.05, -0.28, 0.18);
+const BAR_HOLD_PALM_OFFSET = new THREE.Euler(0.34, 0.34, -0.12);
+const BAR_HOLD_UPPER_LEG_LEFT_OFFSET = new THREE.Euler(-0.92, 0.02, -0.26);
+const BAR_HOLD_LOWER_LEG_LEFT_OFFSET = new THREE.Euler(0.98, 0.0, 0.08);
+const BAR_HOLD_FOOT_LEFT_OFFSET = new THREE.Euler(0.3, 0.0, -0.06);
+const BAR_HOLD_UPPER_LEG_RIGHT_OFFSET = new THREE.Euler(-0.74, -0.05, 0.22);
+const BAR_HOLD_LOWER_LEG_RIGHT_OFFSET = new THREE.Euler(0.82, 0.0, -0.04);
+const BAR_HOLD_FOOT_RIGHT_OFFSET = new THREE.Euler(0.22, 0.0, 0.04);
+
+type PoseBoneName =
+  | 'Hips'
+  | 'Abdomen'
+  | 'Torso'
+  | 'Neck'
+  | 'ShoulderL'
+  | 'UpperArmL'
+  | 'LowerArmL'
+  | 'PalmL'
+  | 'UpperLegL'
+  | 'LowerLegL'
+  | 'FootL'
+  | 'UpperLegR'
+  | 'LowerLegR'
+  | 'FootR';
+
+type AnimatedRig = {
+  root: THREE.Group;
+  mixer: THREE.AnimationMixer;
+  actions: Map<string, THREE.AnimationAction>;
+  bones: Partial<Record<PoseBoneName, THREE.Bone>>;
+};
 
 export class LocalPlayer {
   public phys: PhysicsState = {
@@ -58,6 +104,12 @@ export class LocalPlayer {
   private arrowPositions: Float32Array | null = null;
   private readonly scene: THREE.Scene;
   private leftHandGripLocal = DEFAULT_LEFT_HAND_GRIP_LOCAL.clone();
+  private grabHandGripLocal: THREE.Vector3 | null = null;
+  private grabPoseLocked = false;
+  private animatedRigs: AnimatedRig[] = [];
+  private currentAnimation = ANIM_IDLE_HOLD;
+  private currentAnimationTime = 0;
+  private visualQuaternion = new THREE.Quaternion();
 
   public onRoundWin: ((team: 0 | 1) => void) | null = null;
 
@@ -79,6 +131,7 @@ export class LocalPlayer {
         alien.rotation.y = Math.PI;
 
         this.captureLeftHandGripOffset(alien);
+        this.registerAnimatedRig(alien, gltf.animations);
         this.mesh.add(alien);
       },
       undefined,
@@ -112,6 +165,7 @@ export class LocalPlayer {
           }
         });
 
+        this.registerAnimatedRig(helmet, gltf.animations);
         this.mesh.add(helmet);
       },
       undefined,
@@ -161,8 +215,13 @@ export class LocalPlayer {
         this.updateRespawning(arena, dt);
         break;
     }
+    this.updateAnimation(input, dt);
+    const visualQuat = this.computeVisualQuaternion(cam, dt);
+    if (this.phase === 'GRABBING' || this.phase === 'AIMING') {
+      this.lockGripToBar(visualQuat);
+    }
     this.mesh.position.copy(this.phys.pos);
-    this.mesh.quaternion.copy(cam.getQuaternion());
+    this.mesh.quaternion.copy(visualQuat);
   }
 
   private updateFrozen(arena: Arena, dt: number): void {
@@ -260,7 +319,7 @@ export class LocalPlayer {
 
   private updateGrabbing(
     input: InputManager,
-    cam: CameraController,
+    _cam: CameraController,
     _dt: number,
   ): void {
     if (!this.grabbedBarPos) {
@@ -268,7 +327,6 @@ export class LocalPlayer {
       return;
     }
 
-    this.lockGripToBar(cam);
     this.phys.vel.set(0, 0, 0);
 
     // E releases the bar — stay at current bar position with zero velocity
@@ -295,7 +353,6 @@ export class LocalPlayer {
       return;
     }
 
-    this.lockGripToBar(cam);
     this.phys.vel.set(0, 0, 0);
 
     const { dy } = input.consumeAimDelta();
@@ -330,7 +387,9 @@ export class LocalPlayer {
     this.grabbedBarPos = barPos.clone();
     this.phys.vel.set(0, 0, 0);
     this.phase = 'GRABBING';
-    this.lockGripToBar(cam);
+    this.lockGrabPose();
+    const visualQuat = this.computeVisualQuaternion(cam, 1 / 60);
+    this.lockGripToBar(visualQuat);
     this.hideArrow();
   }
 
@@ -341,6 +400,8 @@ export class LocalPlayer {
     this.phys.vel.copy(fwd).multiplyScalar(this.launchPower);
     this.launchPower = 0;
     this.grabbedBarPos = null;
+    this.grabHandGripLocal = null;
+    this.grabPoseLocked = false;
     this.phase = 'FLOATING';
     this.hideArrow();
   }
@@ -412,29 +473,239 @@ export class LocalPlayer {
   }
 
   private captureLeftHandGripOffset(alien: THREE.Group): void {
-    alien.updateMatrixWorld(true);
+    const gripLocal = this.measureLeftHandGripOffset(alien);
+    if (gripLocal) {
+      this.leftHandGripLocal.copy(gripLocal);
+    }
+  }
 
-    const palm = alien.getObjectByName('PalmL');
-    const fingerTip = alien.getObjectByName('MiddleFinger4L');
-    if (!palm || !fingerTip) {
+  private registerAnimatedRig(root: THREE.Group, clips: THREE.AnimationClip[]): void {
+    const mixer = new THREE.AnimationMixer(root);
+    const actions = new Map<string, THREE.AnimationAction>();
+
+    for (const clip of clips) {
+      const action = mixer.clipAction(clip);
+      action.enabled = true;
+      action.setLoop(THREE.LoopRepeat, Infinity);
+      actions.set(clip.name, action);
+    }
+
+    this.animatedRigs.push({
+      root,
+      mixer,
+      actions,
+      bones: this.collectPoseBones(root),
+    });
+
+    const action = actions.get(this.currentAnimation) ?? actions.get(ANIM_IDLE_HOLD);
+    if (action) {
+      action.reset();
+      action.play();
+      action.time = this.currentAnimationTime;
+    }
+  }
+
+  private updateAnimation(input: InputManager, dt: number): void {
+    if (this.phase === 'GRABBING' || this.phase === 'AIMING') {
+      if (!this.grabPoseLocked) {
+        this.lockGrabPose();
+      }
       return;
     }
+
+    this.grabPoseLocked = false;
+    const nextAnimation = this.selectAnimation(input);
+    if (nextAnimation !== this.currentAnimation) {
+      this.playAnimation(nextAnimation);
+    }
+
+    this.currentAnimationTime += dt;
+    for (const rig of this.animatedRigs) {
+      rig.mixer.update(dt);
+    }
+  }
+
+  private selectAnimation(input: InputManager): string {
+    if (this.phase === 'FROZEN') {
+      return ANIM_DEATH;
+    }
+    if (this.phase === 'RESPAWNING') {
+      return ANIM_STANDING;
+    }
+    if (this.phase === 'GRABBING' || this.phase === 'AIMING') {
+      return ANIM_STANDING;
+    }
+
+    if (this.phase === 'BREACH') {
+      const walk = input.getWalkAxes();
+      if (this.onGround && (walk.x !== 0 || walk.z !== 0)) {
+        return ANIM_RUN_HOLD;
+      }
+    }
+
+    return ANIM_IDLE_HOLD;
+  }
+
+  private playAnimation(name: string): void {
+    this.currentAnimationTime = 0;
+
+    for (const rig of this.animatedRigs) {
+      const next = rig.actions.get(name) ?? rig.actions.get(ANIM_IDLE_HOLD);
+      const prev = rig.actions.get(this.currentAnimation);
+      if (!next || next === prev) {
+        continue;
+      }
+
+      prev?.fadeOut(ANIM_FADE_SECONDS);
+      next.reset();
+      next.fadeIn(ANIM_FADE_SECONDS);
+      next.play();
+    }
+
+    this.currentAnimation = name;
+  }
+
+  private collectPoseBones(root: THREE.Group): Partial<Record<PoseBoneName, THREE.Bone>> {
+    const names: PoseBoneName[] = [
+      'Hips',
+      'Abdomen',
+      'Torso',
+      'Neck',
+      'ShoulderL',
+      'UpperArmL',
+      'LowerArmL',
+      'PalmL',
+      'UpperLegL',
+      'LowerLegL',
+      'FootL',
+      'UpperLegR',
+      'LowerLegR',
+      'FootR',
+    ];
+    const bones: Partial<Record<PoseBoneName, THREE.Bone>> = {};
+
+    for (const name of names) {
+      const bone = root.getObjectByName(name);
+      if (bone instanceof THREE.Bone) {
+        bones[name] = bone;
+      }
+    }
+
+    return bones;
+  }
+
+  private applyBarHoldPose(): void {
+    for (const rig of this.animatedRigs) {
+      this.applyPoseOffset(rig.bones.Hips, BAR_HOLD_HIPS_OFFSET);
+      this.applyPoseOffset(rig.bones.Abdomen, BAR_HOLD_ABDOMEN_OFFSET);
+      this.applyPoseOffset(rig.bones.Torso, BAR_HOLD_TORSO_OFFSET);
+      this.applyPoseOffset(rig.bones.Neck, BAR_HOLD_NECK_OFFSET);
+      this.applyPoseOffset(rig.bones.ShoulderL, BAR_HOLD_SHOULDER_OFFSET);
+      this.applyPoseOffset(rig.bones.UpperArmL, BAR_HOLD_UPPER_ARM_OFFSET);
+      this.applyPoseOffset(rig.bones.LowerArmL, BAR_HOLD_LOWER_ARM_OFFSET);
+      this.applyPoseOffset(rig.bones.PalmL, BAR_HOLD_PALM_OFFSET);
+      this.applyPoseOffset(rig.bones.UpperLegL, BAR_HOLD_UPPER_LEG_LEFT_OFFSET);
+      this.applyPoseOffset(rig.bones.LowerLegL, BAR_HOLD_LOWER_LEG_LEFT_OFFSET);
+      this.applyPoseOffset(rig.bones.FootL, BAR_HOLD_FOOT_LEFT_OFFSET);
+      this.applyPoseOffset(rig.bones.UpperLegR, BAR_HOLD_UPPER_LEG_RIGHT_OFFSET);
+      this.applyPoseOffset(rig.bones.LowerLegR, BAR_HOLD_LOWER_LEG_RIGHT_OFFSET);
+      this.applyPoseOffset(rig.bones.FootR, BAR_HOLD_FOOT_RIGHT_OFFSET);
+    }
+  }
+
+  private lockGrabPose(): void {
+    if (this.currentAnimation !== ANIM_STANDING) {
+      this.playAnimation(ANIM_STANDING);
+    }
+
+    this.currentAnimationTime = 0;
+    for (const rig of this.animatedRigs) {
+      rig.mixer.setTime(0);
+    }
+
+    this.applyBarHoldPose();
+    this.grabHandGripLocal = this.measureLeftHandGripOffset(this.animatedRigs[0]?.root ?? null);
+    this.grabPoseLocked = true;
+  }
+
+  private applyPoseOffset(bone: THREE.Bone | undefined, offset: THREE.Euler): void {
+    if (!bone) {
+      return;
+    }
+
+    const offsetQuat = new THREE.Quaternion().setFromEuler(offset);
+    bone.quaternion.multiply(offsetQuat);
+  }
+
+  private measureLeftHandGripOffset(root: THREE.Group | null): THREE.Vector3 | null {
+    if (!root) {
+      return null;
+    }
+
+    root.updateMatrixWorld(true);
+
+    const palm = root.getObjectByName('PalmL');
+    const fingerTip = root.getObjectByName('MiddleFinger4L');
+    if (!palm || !fingerTip) {
+      return null;
+    }
+    const thumbTip = root.getObjectByName('Thumb3L');
 
     const palmWorld = new THREE.Vector3();
     const fingerTipWorld = new THREE.Vector3();
     palm.getWorldPosition(palmWorld);
     fingerTip.getWorldPosition(fingerTipWorld);
 
-    const gripWorld = palmWorld.lerp(fingerTipWorld, 0.55);
-    this.leftHandGripLocal.copy(this.mesh.worldToLocal(gripWorld));
+    // Blend across the closed hand so the bar sits inside the palm instead of
+    // feeling centered in the wrist or floating near the fingertips.
+    const gripWorld = new THREE.Vector3().lerpVectors(
+      palmWorld,
+      fingerTipWorld,
+      LEFT_HAND_GRIP_FINGERTIP_BLEND,
+    );
+    if (thumbTip) {
+      const thumbTipWorld = new THREE.Vector3();
+      thumbTip.getWorldPosition(thumbTipWorld);
+      gripWorld.lerp(thumbTipWorld, LEFT_HAND_GRIP_THUMB_PULL);
+    }
+
+    const fingerDir = fingerTipWorld.clone().sub(palmWorld).normalize();
+    gripWorld.addScaledVector(fingerDir, LEFT_HAND_GRIP_FINGER_ADVANCE);
+    const gripInRoot = root.worldToLocal(gripWorld.clone());
+    return gripInRoot.applyMatrix4(root.matrix);
   }
 
-  private lockGripToBar(cam: CameraController): void {
+  private computeVisualQuaternion(cam: CameraController, dt: number): THREE.Quaternion {
+    const cameraQuat = cam.getQuaternion();
+    if (this.phase !== 'GRABBING' && this.phase !== 'AIMING') {
+      this.visualQuaternion.copy(cameraQuat);
+      return this.visualQuaternion;
+    }
+
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraQuat);
+    const flatForward = new THREE.Vector3(forward.x, 0, forward.z);
+    if (flatForward.lengthSq() < 1e-5) {
+      flatForward.set(0, 0, -1);
+    } else {
+      flatForward.normalize();
+    }
+
+    const target = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 0, -1),
+      flatForward,
+    );
+    const alpha = 1 - Math.pow(GRAB_ROTATION_SMOOTHING, dt);
+    this.visualQuaternion.slerp(target, alpha);
+    return this.visualQuaternion;
+  }
+
+  private lockGripToBar(visualQuat: THREE.Quaternion): void {
     if (!this.grabbedBarPos) {
       return;
     }
 
-    const handOffset = this.leftHandGripLocal.clone().applyQuaternion(cam.getQuaternion());
+    const gripLocal = this.grabHandGripLocal ?? this.leftHandGripLocal;
+    const handOffset = gripLocal.clone().applyQuaternion(visualQuat);
     this.phys.pos.copy(this.grabbedBarPos).sub(handOffset);
   }
 
@@ -450,6 +721,8 @@ export class LocalPlayer {
         }
         this.phase = 'FROZEN';
         this.grabbedBarPos = null;
+        this.grabHandGripLocal = null;
+        this.grabPoseLocked = false;
         this.hideArrow();
         break;
       case 'rightArm':
@@ -460,6 +733,8 @@ export class LocalPlayer {
         if (this.phase === 'GRABBING' || this.phase === 'AIMING') {
           this.phase = 'FLOATING';
           this.grabbedBarPos = null;
+          this.grabHandGripLocal = null;
+          this.grabPoseLocked = false;
           this.hideArrow();
         }
         break;
@@ -507,6 +782,8 @@ export class LocalPlayer {
     };
     this.launchPower = 0;
     this.grabbedBarPos = null;
+    this.grabHandGripLocal = null;
+    this.grabPoseLocked = false;
     this.currentBreachTeam = this.team;
     this.hideArrow();
     this.phys.vel.set(0, 0, 0);
