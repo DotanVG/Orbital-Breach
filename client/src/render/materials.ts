@@ -37,11 +37,14 @@ export function makeGhostMaterial(team: 0 | 1): THREE.MeshStandardMaterial {
   });
 }
 
-export function makeBreachRoomMaterial(team: 0 | 1): THREE.MeshBasicMaterial {
-  // Same dark opaque colour as the portal door panels — solid walls, no see-through
-  const color = team === 0 ? 0x001a2e : 0x1a001a;
-  return new THREE.MeshBasicMaterial({
+export function makeBreachRoomMaterial(team: 0 | 1): THREE.MeshStandardMaterial {
+  // Subtle team-tinted walls — emissive so they're visible even in low ambient light
+  const color   = team === 0 ? 0x0a2a3a : 0x2a0a2a;
+  const emissive = team === 0 ? 0x00ffff : 0xff00ff;
+  return new THREE.MeshStandardMaterial({
     color,
+    emissive,
+    emissiveIntensity: 0.06,
     side: THREE.DoubleSide,
   });
 }

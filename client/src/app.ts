@@ -6,6 +6,7 @@ import { LocalPlayer } from './player';
 import { Projectile } from './projectile';
 import { HUD, type GamePhase } from './render/hud';
 import { SceneManager } from './render/scene';
+import { MainMenu } from './ui/menu';
 import { generateArenaLayout } from './arena/states';
 import { COUNTDOWN_SECONDS, ROUND_END_DELAY, GRAB_RADIUS } from '../../shared/constants';
 import type { FullPlayerInfo, EnemyPlayerInfo } from '../../shared/schema';
@@ -19,6 +20,7 @@ export class App {
   private player: LocalPlayer;
   private arena: Arena;
   private hud: HUD;
+  private menu: MainMenu;
 
   private phase: GamePhase = 'LOBBY';
   private countdownTimer = COUNTDOWN_SECONDS;
@@ -32,21 +34,18 @@ export class App {
     this.arena = new Arena(this.sceneMgr.getScene());
     this.player = new LocalPlayer(this.sceneMgr.getScene());
     this.hud = new HUD();
+    this.menu = new MainMenu();
 
     // Wire round-win callback
     this.player.onRoundWin = (team) => this.onRoundWin(team);
   }
 
   public start(): void {
-    this.hud.showStart();
-
-    document.addEventListener('click', () => {
-      if (!this.input.isLocked()) {
-        this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
-        this.hud.hideStart();
-        this.beginNewRound();
-      }
-    });
+    this.menu.show();
+    this.menu.onPlay = () => {
+      this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
+      this.beginNewRound();
+    };
 
     requestAnimationFrame((t) => this.loop(t));
   }
