@@ -60,6 +60,16 @@ export class InputManager {
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) this.keys.delete('MouseLeft');
     });
+
+    window.addEventListener('blur', () => {
+      this.clearState();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        this.clearState();
+      }
+    });
   }
 
   // ── Aiming mode ──────────────────────────────────────────────────
@@ -196,5 +206,17 @@ export class InputManager {
 
   public isLocked(): boolean {
     return document.pointerLockElement != null;
+  }
+
+  private clearState(): void {
+    this.keys.clear();
+    this.mouseDx = 0;
+    this.mouseDy = 0;
+    this.aimDy = 0;
+    this.grabPressed = false;
+    this.hPressed = false;
+    this.gunTuneTogglePressed = false;
+    this.gunTuneResetPressed = false;
+    this.gunTunePrintPressed = false;
   }
 }

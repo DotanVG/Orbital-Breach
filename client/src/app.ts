@@ -48,6 +48,13 @@ export class App {
 
     // Wire round-win callback
     this.player.onRoundWin = (team) => this.onRoundWin(team);
+
+    this.sceneMgr.getRenderer().domElement.addEventListener('mousedown', () => {
+      if (this.phase === 'LOBBY' || this.menu.isVisible() || this.input.isLocked()) {
+        return;
+      }
+      this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
+    });
   }
 
   public start(): void {
@@ -107,7 +114,6 @@ export class App {
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.033); // cap at ~30fps min
     this.lastTime = timestamp;
 
-    if (this.input.isLocked()) {
       // ── CRITICAL ORDER: mode switches BEFORE consumeMouseDelta ──
       this.input.setAimingMode(this.player.phase === 'AIMING');
       // Zero-G free-look in arena; gravity mode inside breach rooms
@@ -140,7 +146,7 @@ export class App {
       const inZeroG = this.player.phase === 'FLOATING'
         || this.player.phase === 'GRABBING'
         || this.player.phase === 'AIMING';
-      if (this.phase === 'PLAYING' && inZeroG && this.player.canFire() && this.input.consumeFire()) {
+      if (this.phase === 'PLAYING' && this.input.isLocked() && inZeroG && this.player.canFire() && this.input.consumeFire()) {
         // Determine center of screen in the distance to aim perfectly
         const target = this.player.getPosition().clone().addScaledVector(this.cam.getForward(), 60.0);
         const fallbackOrigin = this.player.getPosition()
@@ -241,8 +247,6 @@ export class App {
       });
 
       this.updateGunTuneOverlay();
-    }
-
     this.sceneMgr.render();
     requestAnimationFrame((t) => this.loop(t));
   }
