@@ -6,8 +6,10 @@ import { LocalPlayer } from './player';
 import { Projectile } from './projectile';
 import { HUD, type GamePhase } from './render/hud';
 import { SceneManager } from './render/scene';
+import { GunViewModel } from './render/gun';
 import { MainMenu } from './ui/menu';
 import { generateArenaLayout } from './arena/states';
+import { FEATURE_FLAGS } from './featureFlags';
 import { COUNTDOWN_SECONDS, ROUND_END_DELAY, GRAB_RADIUS } from '../../shared/constants';
 import type { FullPlayerInfo, EnemyPlayerInfo } from '../../shared/schema';
 
@@ -26,6 +28,9 @@ export class App {
   private countdownTimer = COUNTDOWN_SECONDS;
   private lastTime = 0;
   private projectiles: Projectile[] = [];
+  private gun: GunViewModel;
+  private thirdPerson = false;
+  private gunTuneOverlay: HTMLDivElement;
 
   public constructor() {
     this.sceneMgr = new SceneManager();
@@ -36,8 +41,20 @@ export class App {
     this.hud = new HUD();
     this.menu = new MainMenu();
 
+    // Camera must be in the scene graph for parented children (gun model) to render
+    this.sceneMgr.getScene().add(this.sceneMgr.getCamera());
+    this.gun = new GunViewModel(this.sceneMgr.getCamera());
+    this.gunTuneOverlay = this.createGunTuneOverlay();
+
     // Wire round-win callback
     this.player.onRoundWin = (team) => this.onRoundWin(team);
+
+    this.sceneMgr.getRenderer().domElement.addEventListener('mousedown', () => {
+      if (this.phase === 'LOBBY' || this.menu.isVisible() || this.input.isLocked()) {
+        return;
+      }
+      this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
+    });
   }
 
   public start(): void {
@@ -54,7 +71,7 @@ export class App {
 
   private beginNewRound(): void {
     this.hud.hideRoundEnd();
-    this.cam.resetZeroGFlip();   // allow one-time 90° flip on first breach-room exit
+    this.cam.resetZeroGFlip();   // reset zero-G seed so first breach exit re-seeds from gravity orientation
     // Clear projectiles from previous round
     for (const p of this.projectiles) p.dispose();
     this.projectiles = [];
@@ -97,7 +114,6 @@ export class App {
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.033); // cap at ~30fps min
     this.lastTime = timestamp;
 
-    if (this.input.isLocked()) {
       // ── CRITICAL ORDER: mode switches BEFORE consumeMouseDelta ──
       this.input.setAimingMode(this.player.phase === 'AIMING');
       // Zero-G free-look in arena; gravity mode inside breach rooms
@@ -125,13 +141,28 @@ export class App {
       this.player.update(this.input, this.cam, this.arena, dt);
       this.arena.update(dt);
 
-      // Weapon: fire projectile on LMB (only while playing and player can fire)
-      if (this.phase === 'PLAYING' && this.player.canFire() && this.input.consumeFire()) {
-        const origin = this.player.getPosition().clone()
-          .addScaledVector(this.cam.getForward(), 1.0);  // spawn ahead of player
+      // Weapon: fire projectile on LMB (only while playing, player can fire, and gravity is off —
+      // i.e. player is floating or hanging a bar, never inside a breach/gravity room)
+      const inZeroG = this.player.phase === 'FLOATING'
+        || this.player.phase === 'GRABBING'
+        || this.player.phase === 'AIMING';
+      if (this.phase === 'PLAYING' && this.input.isLocked() && inZeroG && this.player.canFire() && this.input.consumeFire()) {
+        // Determine center of screen in the distance to aim perfectly
+        const target = this.player.getPosition().clone().addScaledVector(this.cam.getForward(), 60.0);
+        const fallbackOrigin = this.player.getPosition()
+          .clone()
+          .add(new THREE.Vector3(0.2, -0.22, -0.6).applyQuaternion(this.cam.getQuaternion()));
+        const firstPersonOrigin = this.gun.getMuzzleWorldPosition();
+        const thirdPersonOrigin = this.player.getThirdPersonGunMuzzleWorldPosition();
+        const muzzleOrigin = (this.thirdPerson || (FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld()))
+          ? thirdPersonOrigin
+          : firstPersonOrigin;
+        const origin = isFiniteVector3(muzzleOrigin) ? muzzleOrigin : fallbackOrigin;
+        const direction = target.sub(origin).normalize();
+
         const color  = this.player.team === 0 ? 0x00ffff : 0xff00ff;
         this.projectiles.push(
-          new Projectile(this.sceneMgr.getScene(), origin, this.cam.getForward(), color),
+          new Projectile(this.sceneMgr.getScene(), origin, direction, color),
         );
       }
 
@@ -139,8 +170,47 @@ export class App {
       for (const p of this.projectiles) p.update(dt);
       this.projectiles = this.projectiles.filter(p => !p.dead);
 
+      if (FEATURE_FLAGS.thirdPersonGunTuning) {
+        if (this.input.consumeGunTuneToggle()) {
+          this.player.toggleThirdPersonGunTuning();
+        }
+        if (this.input.consumeGunTuneReset()) {
+          this.player.resetThirdPersonGunTuning();
+        }
+        if (this.input.consumeGunTunePrint()) {
+          this.player.logThirdPersonGunTuning();
+        }
+
+        if (this.player.isThirdPersonGunTuningEnabled()) {
+          const tuningAxes = this.input.getGunTuneAxes();
+          this.player.nudgeThirdPersonGun(
+            tuningAxes.position,
+            tuningAxes.rotation,
+            tuningAxes.fine,
+          );
+        }
+      }
+
+      // Third person toggle & selfie hold
+      if (FEATURE_FLAGS.thirdPersonLookBehind && this.input.consumeThirdPersonToggle()) {
+        this.thirdPerson = !this.thirdPerson;
+      }
+      const isSelfie = FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld();
+
       // Camera follows player
-      this.cam.apply(this.player.getPosition());
+      this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie);
+
+      const thirdPersonGunVisible = this.phase !== 'LOBBY'
+        && this.player.phase !== 'RESPAWNING'
+        && (this.thirdPerson || isSelfie);
+      this.player.setThirdPersonGunVisible(thirdPersonGunVisible);
+
+      // Gun visible only while a round is active, player is alive, and we are in 1st person
+      const gunVisible = this.phase !== 'LOBBY' 
+        && this.player.phase !== 'RESPAWNING' 
+        && !this.thirdPerson 
+        && !isSelfie;
+      this.gun.setVisible(gunVisible);
 
       // HUD update
       let nearBar = this.arena.getNearestBar(this.player.getPosition(), GRAB_RADIUS) !== null;
@@ -175,9 +245,59 @@ export class App {
         ownTeam,
         enemyTeam,
       });
-    }
 
+      this.updateGunTuneOverlay();
     this.sceneMgr.render();
     requestAnimationFrame((t) => this.loop(t));
   }
+
+  private createGunTuneOverlay(): HTMLDivElement {
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.right = '16px';
+    overlay.style.bottom = '16px';
+    overlay.style.zIndex = '30';
+    overlay.style.maxWidth = '320px';
+    overlay.style.padding = '10px 12px';
+    overlay.style.border = '1px solid rgba(0, 255, 255, 0.5)';
+    overlay.style.borderRadius = '8px';
+    overlay.style.background = 'rgba(2, 8, 20, 0.82)';
+    overlay.style.color = '#cfffff';
+    overlay.style.font = '12px/1.45 monospace';
+    overlay.style.whiteSpace = 'pre-line';
+    overlay.style.pointerEvents = 'none';
+    overlay.style.display = 'none';
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  private updateGunTuneOverlay(): void {
+    const tuning = this.player.getThirdPersonGunTuningState();
+    if (!FEATURE_FLAGS.thirdPersonGunTuning || !tuning.enabled) {
+      this.gunTuneOverlay.style.display = 'none';
+      return;
+    }
+
+    this.gunTuneOverlay.style.display = 'block';
+    this.gunTuneOverlay.textContent = [
+      'Gun Tune: ON',
+      '',
+      `Offset  x:${tuning.offset.x.toFixed(3)}  y:${tuning.offset.y.toFixed(3)}  z:${tuning.offset.z.toFixed(3)}`,
+      `Rotate  x:${tuning.rotation.x.toFixed(3)}  y:${tuning.rotation.y.toFixed(3)}  z:${tuning.rotation.z.toFixed(3)}`,
+      '',
+      'Arrows/PageUp/PageDown: move',
+      'I/K J/L U/O: rotate',
+      'Shift: fine step',
+      'Enter: print values',
+      'Backspace: reset',
+      'P: close tuner',
+    ].join('\n');
+  }
+}
+
+function isFiniteVector3(value: THREE.Vector3 | null): value is THREE.Vector3 {
+  return value !== null
+    && Number.isFinite(value.x)
+    && Number.isFinite(value.y)
+    && Number.isFinite(value.z);
 }

@@ -22,8 +22,76 @@ import {
 } from './physics';
 import { Arena } from './arena/arena';
 import { makePlayerMaterial } from './render/materials';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export type HitZone = 'head' | 'body' | 'rightArm' | 'leftArm' | 'legs';
+
+const DEFAULT_LEFT_HAND_GRIP_LOCAL = new THREE.Vector3(-0.27, -0.322, 0.287);
+const LEFT_HAND_GRIP_FINGERTIP_BLEND = 0.64;
+const LEFT_HAND_GRIP_THUMB_PULL = 0.16;
+const LEFT_HAND_GRIP_FINGER_ADVANCE = 0.01;
+const ANIM_IDLE_HOLD = 'Alien_IdleHold';
+const ANIM_JUMP = 'Alien_Jump';
+const ANIM_RUN_HOLD = 'Alien_RunHold';
+const ANIM_STANDING = 'Alien_Standing';
+const ANIM_DEATH = 'Alien_Death';
+const ANIM_FADE_SECONDS = 0.16;
+const BREACH_JUMP_TAKEOFF_SPEED = 2.35;
+const BREACH_BREATH_SPEED = 1.8;
+const BREACH_BREATH_ABDOMEN_Y = 0.012;
+const BREACH_BREATH_TORSO_Y = 0.008;
+const BREACH_BREATH_NECK_Y = 0.004;
+const THIRD_PERSON_GUN_POSITION_STEP = 0.01;
+const THIRD_PERSON_GUN_FINE_POSITION_STEP = 0.002;
+const THIRD_PERSON_GUN_ROTATION_STEP = 0.05;
+const THIRD_PERSON_GUN_FINE_ROTATION_STEP = 0.01;
+const THIRD_PERSON_GUN_SCALE = 0.28;
+const THIRD_PERSON_GUN_OFFSET = new THREE.Vector3(0.02, 0.03, -0.08);
+const THIRD_PERSON_GUN_ROTATION = new THREE.Euler(-17.72, 0.0, 1.31);
+const GRAB_ROTATION_SMOOTHING = 0.0008;
+const BAR_HOLD_HIPS_OFFSET = new THREE.Euler(-0.42, -0.02, -0.08);
+const BAR_HOLD_ABDOMEN_OFFSET = new THREE.Euler(0.56, 0.0, -0.18);
+const BAR_HOLD_TORSO_OFFSET = new THREE.Euler(0.44, 0.06, -0.26);
+const BAR_HOLD_NECK_OFFSET = new THREE.Euler(-0.12, -0.04, 0.08);
+const BAR_HOLD_SHOULDER_OFFSET = new THREE.Euler(-0.42, 0.2, -0.95);
+const BAR_HOLD_UPPER_ARM_OFFSET = new THREE.Euler(1.25, 0.18, 0.82);
+const BAR_HOLD_LOWER_ARM_OFFSET = new THREE.Euler(1.05, -0.28, 0.18);
+const BAR_HOLD_PALM_OFFSET = new THREE.Euler(0.34, 0.34, -0.12);
+const BAR_HOLD_UPPER_LEG_LEFT_OFFSET = new THREE.Euler(-0.92, 0.02, -0.26);
+const BAR_HOLD_LOWER_LEG_LEFT_OFFSET = new THREE.Euler(0.98, 0.0, 0.08);
+const BAR_HOLD_FOOT_LEFT_OFFSET = new THREE.Euler(0.3, 0.0, -0.06);
+const BAR_HOLD_UPPER_LEG_RIGHT_OFFSET = new THREE.Euler(-0.74, -0.05, 0.22);
+const BAR_HOLD_LOWER_LEG_RIGHT_OFFSET = new THREE.Euler(0.82, 0.0, -0.04);
+const BAR_HOLD_FOOT_RIGHT_OFFSET = new THREE.Euler(0.22, 0.0, 0.04);
+
+type PoseBoneName =
+  | 'Hips'
+  | 'Abdomen'
+  | 'Torso'
+  | 'Neck'
+  | 'ShoulderR'
+  | 'UpperArmR'
+  | 'LowerArmR'
+  | 'PalmR'
+  | 'ShoulderL'
+  | 'UpperArmL'
+  | 'LowerArmL'
+  | 'PalmL'
+  | 'UpperLegL'
+  | 'LowerLegL'
+  | 'FootL'
+  | 'UpperLegR'
+  | 'LowerLegR'
+  | 'FootR';
+
+type AnimatedRig = {
+  root: THREE.Group;
+  mixer: THREE.AnimationMixer;
+  actions: Map<string, THREE.AnimationAction>;
+  bones: Partial<Record<PoseBoneName, THREE.Bone>>;
+  breathingBasePositions: Partial<Record<'Abdomen' | 'Torso' | 'Neck', THREE.Vector3>>;
+  frozenJumpRightArmPose: Partial<Record<'ShoulderR' | 'UpperArmR' | 'LowerArmR' | 'PalmR', THREE.Quaternion>>;
+};
 
 export class LocalPlayer {
   public phys: PhysicsState = {
@@ -49,20 +117,85 @@ export class LocalPlayer {
 
   private respawnTimer = 0;
   private onGround = false;
+  private breachJumpAnimationActive = false;
 
-  private mesh: THREE.Mesh;
-  private arrowLine: THREE.Line | null = null;
-  private arrowPositions: Float32Array | null = null;
-  private readonly scene: THREE.Scene;
+  private mesh: THREE.Group;
+  private leftHandGripLocal = DEFAULT_LEFT_HAND_GRIP_LOCAL.clone();
+  private grabHandGripLocal: THREE.Vector3 | null = null;
+  private grabPoseLocked = false;
+  private animatedRigs: AnimatedRig[] = [];
+  private currentAnimation = ANIM_IDLE_HOLD;
+  private currentAnimationTime = 0;
+  private breachBreathTime = 0;
+  private thirdPersonGun: THREE.Group | null = null;
+  private thirdPersonGunVisible = false;
+  private thirdPersonGunMuzzleLocal: THREE.Vector3 | null = null;
+  private thirdPersonGunOffset = THIRD_PERSON_GUN_OFFSET.clone();
+  private thirdPersonGunRotation = THIRD_PERSON_GUN_ROTATION.clone();
+  private thirdPersonGunTuningEnabled = false;
+  private visualQuaternion = new THREE.Quaternion();
 
   public onRoundWin: ((team: 0 | 1) => void) | null = null;
 
   public constructor(scene: THREE.Scene) {
-    this.scene = scene;
-    this.mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(PLAYER_RADIUS, 12, 8),
-      makePlayerMaterial(0),
+    this.mesh = new THREE.Group();
+
+    const loader = new GLTFLoader();
+
+    // Load Alien Body
+    loader.load(
+      '/models/Alien.glb',
+      (gltf) => {
+        const alien = gltf.scene;
+        alien.scale.setScalar(0.2); // Reduced from 0.7
+        alien.position.y = -PLAYER_RADIUS * 0.8; // Adjusted height for new scale
+        alien.position.z = 0.3; // Push model behind the camera view
+        // Face forward relative to camera
+        alien.rotation.y = Math.PI;
+
+        this.captureLeftHandGripOffset(alien);
+        this.registerAnimatedRig(alien, gltf.animations);
+        this.attachThirdPersonGun(alien);
+        this.mesh.add(alien);
+      },
+      undefined,
+      (err) => console.error('[LocalPlayer] failed to load Alien.glb', err)
     );
+
+    // Load Alien Helmet
+    loader.load(
+      '/models/Alien_Helmet.glb',
+      (gltf) => {
+        const helmet = gltf.scene;
+        helmet.scale.setScalar(0.2);
+        helmet.position.y = -PLAYER_RADIUS * 0.8;
+        helmet.position.z = 0.3; // Push behind the camera
+        helmet.rotation.y = Math.PI;
+
+        // The helmet export ships with an opaque "Glass" material.
+        // Make only that material translucent so the dome reads like a visor
+        // instead of a solid black sphere over the player's head.
+        helmet.traverse((obj) => {
+          if (!(obj instanceof THREE.Mesh)) return;
+
+          const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+          for (const material of materials) {
+            if (material.name !== 'Glass') continue;
+            material.transparent = true;
+            material.opacity = 0.22;
+            material.depthWrite = false;
+            material.roughness = 0.12;
+            material.metalness = 0.0;
+          }
+        });
+
+        this.registerAnimatedRig(helmet, gltf.animations);
+        this.mesh.add(helmet);
+      },
+      undefined,
+      (err) => console.error('[LocalPlayer] failed to load Alien_Helmet.glb', err)
+    );
+
     scene.add(this.mesh);
   }
 
@@ -106,10 +239,17 @@ export class LocalPlayer {
         this.updateRespawning(arena, dt);
         break;
     }
+    this.updateAnimation(input, dt);
+    const visualQuat = this.computeVisualQuaternion(cam, dt);
+    if (this.phase === 'GRABBING' || this.phase === 'AIMING') {
+      this.lockGripToBar(visualQuat);
+    }
     this.mesh.position.copy(this.phys.pos);
+    this.mesh.quaternion.copy(visualQuat);
   }
 
   private updateFrozen(arena: Arena, dt: number): void {
+    this.breachJumpAnimationActive = false;
     integrateZeroG(this.phys, dt);
     bounceArena(this.phys);
     arena.bounceObstacles(this.phys);
@@ -127,7 +267,9 @@ export class LocalPlayer {
 
     // Floor matches clampBreachRoom: center.y - (BREACH_ROOM_H/2 - PLAYER_RADIUS)
     const floorY = center.y - BREACH_ROOM_H / 2 + PLAYER_RADIUS;
-    this.onGround = this.phys.pos.y <= floorY + 0.08;
+    const wasOnGround = this.phys.pos.y <= floorY + 0.08;
+    const jumpStarted = input.isJumping() && wasOnGround;
+    this.onGround = wasOnGround;
 
     integrateBreachRoom(
       this.phys,
@@ -140,12 +282,20 @@ export class LocalPlayer {
     );
 
     clampBreachRoom(this.phys, center, openAxis, openSign, arena.isGoalDoorOpen(this.currentBreachTeam));
+    this.onGround = this.phys.pos.y <= floorY + 0.02;
+
+    if (jumpStarted) {
+      this.breachJumpAnimationActive = true;
+      this.captureJumpRightArmPose();
+    } else if (this.onGround || this.phys.vel.y <= 0) {
+      this.breachJumpAnimationActive = false;
+    }
 
     const grabInput = input.consumeGrab();
     const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS);
     if (nearBar && grabInput && this.canGrabBar()) {
       if (arena.isGoalDoorOpen(this.currentBreachTeam)) {
-        this.grabBar(nearBar);
+        this.grabBar(nearBar, cam);
         return;
       }
     }
@@ -161,6 +311,7 @@ export class LocalPlayer {
     arena: Arena,
     dt: number,
   ): void {
+    this.breachJumpAnimationActive = false;
     const goalAxis = arena.getBreachOpenAxis(this.team);
     const perpAxis: 'x' | 'z' = goalAxis === 'z' ? 'x' : 'z';
     const team0FaceSign = (-arena.getBreachOpenSign(0)) as 1 | -1;
@@ -198,21 +349,21 @@ export class LocalPlayer {
     const grabInput = input.consumeGrab();
     const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS);
     if (nearBar && grabInput && this.canGrabBar()) {
-      this.grabBar(nearBar);
+      this.grabBar(nearBar, cam);
     }
   }
 
   private updateGrabbing(
     input: InputManager,
     _cam: CameraController,
-    dt: number,
+    _dt: number,
   ): void {
+    this.breachJumpAnimationActive = false;
     if (!this.grabbedBarPos) {
       this.phase = 'FLOATING';
       return;
     }
 
-    this.phys.pos.lerp(this.grabbedBarPos, 1 - Math.pow(0.002, dt));
     this.phys.vel.set(0, 0, 0);
 
     // E releases the bar — stay at current bar position with zero velocity
@@ -231,22 +382,20 @@ export class LocalPlayer {
   private updateAiming(
     input: InputManager,
     cam: CameraController,
-    arena: Arena,
-    dt: number,
+    _arena: Arena,
+    _dt: number,
   ): void {
+    this.breachJumpAnimationActive = false;
     if (!this.grabbedBarPos) {
       this.phase = 'FLOATING';
       return;
     }
 
-    this.phys.pos.lerp(this.grabbedBarPos, 1 - Math.pow(0.002, dt));
     this.phys.vel.set(0, 0, 0);
 
     const { dy } = input.consumeAimDelta();
     this.launchPower += dy * LAUNCH_AIM_SENSITIVITY;
     this.launchPower = clamp(this.launchPower, 0, this.maxLaunchPower());
-
-    this.updateArrow(cam.getForward());
 
     if (!input.isAiming()) {
       this.launch(cam);
@@ -254,6 +403,7 @@ export class LocalPlayer {
   }
 
   private updateRespawning(arena: Arena, dt: number): void {
+    this.breachJumpAnimationActive = false;
     this.respawnTimer -= dt;
     if (this.respawnTimer <= 0) {
       this.respawnTimer = 0;
@@ -270,11 +420,13 @@ export class LocalPlayer {
     }
   }
 
-  private grabBar(barPos: THREE.Vector3): void {
+  private grabBar(barPos: THREE.Vector3, cam: CameraController): void {
     this.grabbedBarPos = barPos.clone();
     this.phys.vel.set(0, 0, 0);
     this.phase = 'GRABBING';
-    this.hideArrow();
+    this.lockGrabPose();
+    const visualQuat = this.computeVisualQuaternion(cam, 1 / 60);
+    this.lockGripToBar(visualQuat);
   }
 
   private launch(cam: CameraController): void {
@@ -284,74 +436,391 @@ export class LocalPlayer {
     this.phys.vel.copy(fwd).multiplyScalar(this.launchPower);
     this.launchPower = 0;
     this.grabbedBarPos = null;
+    this.grabHandGripLocal = null;
+    this.grabPoseLocked = false;
     this.phase = 'FLOATING';
-    this.hideArrow();
   }
 
-  private ensureArrow(): void {
-    if (this.arrowLine) {
+  private captureLeftHandGripOffset(alien: THREE.Group): void {
+    const gripLocal = this.measureLeftHandGripOffset(alien);
+    if (gripLocal) {
+      this.leftHandGripLocal.copy(gripLocal);
+    }
+  }
+
+  private registerAnimatedRig(root: THREE.Group, clips: THREE.AnimationClip[]): void {
+    const mixer = new THREE.AnimationMixer(root);
+    const actions = new Map<string, THREE.AnimationAction>();
+
+    for (const clip of clips) {
+      const action = mixer.clipAction(clip);
+      action.enabled = true;
+      if (clip.name === ANIM_JUMP) {
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = true;
+      } else {
+        action.setLoop(THREE.LoopRepeat, Infinity);
+      }
+      actions.set(clip.name, action);
+    }
+
+    this.animatedRigs.push({
+      root,
+      mixer,
+      actions,
+      bones: this.collectPoseBones(root),
+      breathingBasePositions: this.captureBreathingBasePositions(root),
+      frozenJumpRightArmPose: {},
+    });
+
+    const action = actions.get(this.currentAnimation) ?? actions.get(ANIM_IDLE_HOLD);
+    if (action) {
+      action.reset();
+      action.play();
+      action.time = this.currentAnimationTime;
+    }
+  }
+
+  private attachThirdPersonGun(alien: THREE.Group): void {
+    const palm = ['PalmR', 'Palm.R', 'HandR', 'Hand.R', 'LowerArmR', 'LowerArm.R']
+      .map((name) => alien.getObjectByName(name))
+      .find((node): node is THREE.Object3D => node !== undefined);
+    if (!palm) {
+      console.warn('[LocalPlayer] could not find a right-hand bone for third-person gun attachment');
       return;
     }
 
-    const POINTS = 20;
-    this.arrowPositions = new Float32Array(POINTS * 3);
+    const loader = new GLTFLoader();
+    loader.load(
+      '/models/Ray Gun.glb',
+      (gltf) => {
+        const gun = gltf.scene;
+        gun.scale.setScalar(THIRD_PERSON_GUN_SCALE);
+        gun.position.copy(this.thirdPersonGunOffset);
+        gun.rotation.copy(this.thirdPersonGunRotation);
+        gun.visible = this.thirdPersonGunVisible;
 
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(this.arrowPositions, 3));
+        gun.traverse((obj) => {
+          if (!(obj instanceof THREE.Mesh)) return;
+          obj.castShadow = true;
+          obj.receiveShadow = true;
+          obj.frustumCulled = false;
+        });
 
-    const colors = new Float32Array(POINTS * 3);
-    const tipColor =
-      this.team === 0 ? new THREE.Color(0x00ffff) : new THREE.Color(0xff00ff);
-    for (let i = 0; i < POINTS; i++) {
-      const t = i / (POINTS - 1);
-      const col = new THREE.Color().lerpColors(
-        new THREE.Color(0xffffff),
-        tipColor,
-        t,
+        this.thirdPersonGunMuzzleLocal = this.computeGunMuzzleLocal(gun);
+        palm.add(gun);
+        this.thirdPersonGun = gun;
+        this.applyThirdPersonGunTransform();
+      },
+      undefined,
+      (err) => console.error('[LocalPlayer] failed to load third-person Ray Gun.glb', err),
+    );
+  }
+
+  private updateAnimation(input: InputManager, dt: number): void {
+    if (this.phase === 'GRABBING' || this.phase === 'AIMING') {
+      this.breachBreathTime = 0;
+      this.resetBreachBreathing();
+      if (!this.grabPoseLocked) {
+        this.lockGrabPose();
+      }
+      return;
+    }
+
+    this.grabPoseLocked = false;
+    const nextAnimation = this.selectAnimation(input);
+    if (nextAnimation !== this.currentAnimation) {
+      this.playAnimation(nextAnimation);
+    }
+
+    const animationDt = this.currentAnimation === ANIM_JUMP
+      ? dt * BREACH_JUMP_TAKEOFF_SPEED
+      : dt;
+    this.currentAnimationTime += animationDt;
+    for (const rig of this.animatedRigs) {
+      rig.mixer.update(animationDt);
+    }
+
+    if (this.currentAnimation === ANIM_JUMP) {
+      this.restoreJumpRightArmPose();
+    }
+
+    if (this.isBreachIdle(input)) {
+      this.breachBreathTime += dt;
+      this.applyBreachIdleBreathing(this.breachBreathTime);
+    } else {
+      this.breachBreathTime = 0;
+      this.resetBreachBreathing();
+    }
+  }
+
+  private selectAnimation(input: InputManager): string {
+    if (this.phase === 'FROZEN') {
+      return ANIM_DEATH;
+    }
+    if (this.phase === 'RESPAWNING') {
+      return ANIM_STANDING;
+    }
+    if (this.phase === 'GRABBING' || this.phase === 'AIMING') {
+      return ANIM_STANDING;
+    }
+
+    if (this.phase === 'BREACH') {
+      if (this.breachJumpAnimationActive) {
+        return ANIM_JUMP;
+      }
+      const walk = input.getWalkAxes();
+      if (this.onGround && (walk.x !== 0 || walk.z !== 0)) {
+        return ANIM_RUN_HOLD;
+      }
+    }
+
+    return ANIM_IDLE_HOLD;
+  }
+
+  private isBreachIdle(input: InputManager): boolean {
+    if (this.phase !== 'BREACH' || !this.onGround) {
+      return false;
+    }
+
+    const walk = input.getWalkAxes();
+    return walk.x === 0 && walk.z === 0 && !input.isJumping();
+  }
+
+  private applyBreachIdleBreathing(time: number): void {
+    const breath = 0.5 + 0.5 * Math.sin(time * BREACH_BREATH_SPEED);
+
+    for (const rig of this.animatedRigs) {
+      this.applyBreathingPosition(
+        rig.bones.Abdomen,
+        rig.breathingBasePositions.Abdomen,
+        BREACH_BREATH_ABDOMEN_Y * breath,
       );
-      colors[i * 3] = col.r;
-      colors[i * 3 + 1] = col.g;
-      colors[i * 3 + 2] = col.b;
+      this.applyBreathingPosition(
+        rig.bones.Torso,
+        rig.breathingBasePositions.Torso,
+        BREACH_BREATH_TORSO_Y * breath,
+      );
+      this.applyBreathingPosition(
+        rig.bones.Neck,
+        rig.breathingBasePositions.Neck,
+        BREACH_BREATH_NECK_Y * breath,
+      );
     }
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-    const mat = new THREE.LineBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.8,
-    });
-
-    this.arrowLine = new THREE.Line(geo, mat);
-    this.scene.add(this.arrowLine);
   }
 
-  private updateArrow(forward: THREE.Vector3): void {
-    this.ensureArrow();
-    const line = this.arrowLine!;
-    const positions = this.arrowPositions!;
-    const POINTS = 20;
-    const maxLen = 18;
-    const scale = this.launchPower / (this.maxLaunchPower() || 1);
-
-    for (let i = 0; i < POINTS; i++) {
-      const t = (i / (POINTS - 1)) * scale * maxLen;
-      const pt = this.phys.pos.clone().addScaledVector(forward, t);
-      positions[i * 3] = pt.x;
-      positions[i * 3 + 1] = pt.y;
-      positions[i * 3 + 2] = pt.z;
+  private resetBreachBreathing(): void {
+    for (const rig of this.animatedRigs) {
+      this.resetBreathingPosition(rig.bones.Abdomen, rig.breathingBasePositions.Abdomen);
+      this.resetBreathingPosition(rig.bones.Torso, rig.breathingBasePositions.Torso);
+      this.resetBreathingPosition(rig.bones.Neck, rig.breathingBasePositions.Neck);
     }
-
-    (line.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-    line.visible = true;
-
-    const pulse = 0.35 + 0.65 * Math.abs(Math.sin(Date.now() * 0.005));
-    (line.material as THREE.LineBasicMaterial).opacity = pulse;
   }
 
-  private hideArrow(): void {
-    if (this.arrowLine) {
-      this.arrowLine.visible = false;
+  private playAnimation(name: string): void {
+    this.currentAnimationTime = 0;
+
+    for (const rig of this.animatedRigs) {
+      const next = rig.actions.get(name) ?? rig.actions.get(ANIM_IDLE_HOLD);
+      const prev = rig.actions.get(this.currentAnimation);
+      if (!next || next === prev) {
+        continue;
+      }
+
+      prev?.fadeOut(ANIM_FADE_SECONDS);
+      next.reset();
+      next.fadeIn(ANIM_FADE_SECONDS);
+      next.play();
     }
+
+    this.currentAnimation = name;
+  }
+
+  private collectPoseBones(root: THREE.Group): Partial<Record<PoseBoneName, THREE.Bone>> {
+    const names: PoseBoneName[] = [
+      'Hips',
+      'Abdomen',
+      'Torso',
+      'Neck',
+      'ShoulderR',
+      'UpperArmR',
+      'LowerArmR',
+      'PalmR',
+      'ShoulderL',
+      'UpperArmL',
+      'LowerArmL',
+      'PalmL',
+      'UpperLegL',
+      'LowerLegL',
+      'FootL',
+      'UpperLegR',
+      'LowerLegR',
+      'FootR',
+    ];
+    const bones: Partial<Record<PoseBoneName, THREE.Bone>> = {};
+
+    for (const name of names) {
+      const bone = root.getObjectByName(name);
+      if (bone instanceof THREE.Bone) {
+        bones[name] = bone;
+      }
+    }
+
+    return bones;
+  }
+
+  private captureBreathingBasePositions(
+    root: THREE.Group,
+  ): Partial<Record<'Abdomen' | 'Torso' | 'Neck', THREE.Vector3>> {
+    const names = ['Abdomen', 'Torso', 'Neck'] as const;
+    const basePositions: Partial<Record<'Abdomen' | 'Torso' | 'Neck', THREE.Vector3>> = {};
+
+    for (const name of names) {
+      const bone = root.getObjectByName(name);
+      if (bone instanceof THREE.Bone) {
+        basePositions[name] = bone.position.clone();
+      }
+    }
+
+    return basePositions;
+  }
+
+  private applyBreathingPosition(
+    bone: THREE.Bone | undefined,
+    basePosition: THREE.Vector3 | undefined,
+    yOffset: number,
+  ): void {
+    if (!bone || !basePosition) {
+      return;
+    }
+
+    bone.position.set(basePosition.x, basePosition.y + yOffset, basePosition.z);
+  }
+
+  private resetBreathingPosition(
+    bone: THREE.Bone | undefined,
+    basePosition: THREE.Vector3 | undefined,
+  ): void {
+    if (!bone || !basePosition) {
+      return;
+    }
+
+    bone.position.copy(basePosition);
+  }
+
+  private applyBarHoldPose(): void {
+    for (const rig of this.animatedRigs) {
+      this.applyPoseOffset(rig.bones.Hips, BAR_HOLD_HIPS_OFFSET);
+      this.applyPoseOffset(rig.bones.Abdomen, BAR_HOLD_ABDOMEN_OFFSET);
+      this.applyPoseOffset(rig.bones.Torso, BAR_HOLD_TORSO_OFFSET);
+      this.applyPoseOffset(rig.bones.Neck, BAR_HOLD_NECK_OFFSET);
+      this.applyPoseOffset(rig.bones.ShoulderL, BAR_HOLD_SHOULDER_OFFSET);
+      this.applyPoseOffset(rig.bones.UpperArmL, BAR_HOLD_UPPER_ARM_OFFSET);
+      this.applyPoseOffset(rig.bones.LowerArmL, BAR_HOLD_LOWER_ARM_OFFSET);
+      this.applyPoseOffset(rig.bones.PalmL, BAR_HOLD_PALM_OFFSET);
+      this.applyPoseOffset(rig.bones.UpperLegL, BAR_HOLD_UPPER_LEG_LEFT_OFFSET);
+      this.applyPoseOffset(rig.bones.LowerLegL, BAR_HOLD_LOWER_LEG_LEFT_OFFSET);
+      this.applyPoseOffset(rig.bones.FootL, BAR_HOLD_FOOT_LEFT_OFFSET);
+      this.applyPoseOffset(rig.bones.UpperLegR, BAR_HOLD_UPPER_LEG_RIGHT_OFFSET);
+      this.applyPoseOffset(rig.bones.LowerLegR, BAR_HOLD_LOWER_LEG_RIGHT_OFFSET);
+      this.applyPoseOffset(rig.bones.FootR, BAR_HOLD_FOOT_RIGHT_OFFSET);
+    }
+  }
+
+  private lockGrabPose(): void {
+    if (this.currentAnimation !== ANIM_STANDING) {
+      this.playAnimation(ANIM_STANDING);
+    }
+
+    this.currentAnimationTime = 0;
+    for (const rig of this.animatedRigs) {
+      rig.mixer.setTime(0);
+    }
+
+    this.applyBarHoldPose();
+    this.grabHandGripLocal = this.measureLeftHandGripOffset(this.animatedRigs[0]?.root ?? null);
+    this.grabPoseLocked = true;
+  }
+
+  private applyPoseOffset(bone: THREE.Bone | undefined, offset: THREE.Euler): void {
+    if (!bone) {
+      return;
+    }
+
+    const offsetQuat = new THREE.Quaternion().setFromEuler(offset);
+    bone.quaternion.multiply(offsetQuat);
+  }
+
+  private measureLeftHandGripOffset(root: THREE.Group | null): THREE.Vector3 | null {
+    if (!root) {
+      return null;
+    }
+
+    root.updateMatrixWorld(true);
+
+    const palm = root.getObjectByName('PalmL');
+    const fingerTip = root.getObjectByName('MiddleFinger4L');
+    if (!palm || !fingerTip) {
+      return null;
+    }
+    const thumbTip = root.getObjectByName('Thumb3L');
+
+    const palmWorld = new THREE.Vector3();
+    const fingerTipWorld = new THREE.Vector3();
+    palm.getWorldPosition(palmWorld);
+    fingerTip.getWorldPosition(fingerTipWorld);
+
+    // Blend across the closed hand so the bar sits inside the palm instead of
+    // feeling centered in the wrist or floating near the fingertips.
+    const gripWorld = new THREE.Vector3().lerpVectors(
+      palmWorld,
+      fingerTipWorld,
+      LEFT_HAND_GRIP_FINGERTIP_BLEND,
+    );
+    if (thumbTip) {
+      const thumbTipWorld = new THREE.Vector3();
+      thumbTip.getWorldPosition(thumbTipWorld);
+      gripWorld.lerp(thumbTipWorld, LEFT_HAND_GRIP_THUMB_PULL);
+    }
+
+    const fingerDir = fingerTipWorld.clone().sub(palmWorld).normalize();
+    gripWorld.addScaledVector(fingerDir, LEFT_HAND_GRIP_FINGER_ADVANCE);
+    const gripInRoot = root.worldToLocal(gripWorld.clone());
+    return gripInRoot.applyMatrix4(root.matrix);
+  }
+
+  private computeVisualQuaternion(cam: CameraController, dt: number): THREE.Quaternion {
+    const cameraQuat = cam.getQuaternion();
+    if (this.phase !== 'GRABBING' && this.phase !== 'AIMING') {
+      this.visualQuaternion.copy(cameraQuat);
+      return this.visualQuaternion;
+    }
+
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraQuat);
+    const flatForward = new THREE.Vector3(forward.x, 0, forward.z);
+    if (flatForward.lengthSq() < 1e-5) {
+      flatForward.set(0, 0, -1);
+    } else {
+      flatForward.normalize();
+    }
+
+    const target = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 0, -1),
+      flatForward,
+    );
+    const alpha = 1 - Math.pow(GRAB_ROTATION_SMOOTHING, dt);
+    this.visualQuaternion.slerp(target, alpha);
+    return this.visualQuaternion;
+  }
+
+  private lockGripToBar(visualQuat: THREE.Quaternion): void {
+    if (!this.grabbedBarPos) {
+      return;
+    }
+
+    const gripLocal = this.grabHandGripLocal ?? this.leftHandGripLocal;
+    const handOffset = gripLocal.clone().applyQuaternion(visualQuat);
+    this.phys.pos.copy(this.grabbedBarPos).sub(handOffset);
   }
 
   public applyHit(zone: HitZone, impulse: THREE.Vector3): void {
@@ -366,7 +835,8 @@ export class LocalPlayer {
         }
         this.phase = 'FROZEN';
         this.grabbedBarPos = null;
-        this.hideArrow();
+        this.grabHandGripLocal = null;
+        this.grabPoseLocked = false;
         break;
       case 'rightArm':
         this.damage.rightArm = true;
@@ -376,7 +846,8 @@ export class LocalPlayer {
         if (this.phase === 'GRABBING' || this.phase === 'AIMING') {
           this.phase = 'FLOATING';
           this.grabbedBarPos = null;
-          this.hideArrow();
+          this.grabHandGripLocal = null;
+          this.grabPoseLocked = false;
         }
         break;
       case 'legs':
@@ -423,8 +894,10 @@ export class LocalPlayer {
     };
     this.launchPower = 0;
     this.grabbedBarPos = null;
+    this.grabHandGripLocal = null;
+    this.grabPoseLocked = false;
+    this.breachJumpAnimationActive = false;
     this.currentBreachTeam = this.team;
-    this.hideArrow();
     this.phys.vel.set(0, 0, 0);
 
     const center   = arena.getBreachRoomCenter(this.team);
@@ -442,8 +915,169 @@ export class LocalPlayer {
     return this.phys.pos;
   }
 
-  public getMesh(): THREE.Mesh {
+  public getMesh(): THREE.Group {
     return this.mesh;
+  }
+
+  public setThirdPersonGunVisible(visible: boolean): void {
+    this.thirdPersonGunVisible = visible;
+    if (this.thirdPersonGun) {
+      this.thirdPersonGun.visible = visible;
+    }
+  }
+
+  public getThirdPersonGunMuzzleWorldPosition(): THREE.Vector3 | null {
+    if (!this.thirdPersonGun || !this.thirdPersonGunMuzzleLocal) {
+      return null;
+    }
+
+    this.thirdPersonGun.updateMatrixWorld(true);
+    return this.thirdPersonGun.localToWorld(this.thirdPersonGunMuzzleLocal.clone());
+  }
+
+  public toggleThirdPersonGunTuning(): boolean {
+    this.thirdPersonGunTuningEnabled = !this.thirdPersonGunTuningEnabled;
+    console.info(
+      `[LocalPlayer] Third-person gun tuning ${this.thirdPersonGunTuningEnabled ? 'enabled' : 'disabled'}.`,
+    );
+    if (this.thirdPersonGunTuningEnabled) {
+      this.logThirdPersonGunTuning();
+    }
+    return this.thirdPersonGunTuningEnabled;
+  }
+
+  public isThirdPersonGunTuningEnabled(): boolean {
+    return this.thirdPersonGunTuningEnabled;
+  }
+
+  public nudgeThirdPersonGun(
+    positionAxes: { x: number; y: number; z: number },
+    rotationAxes: { x: number; y: number; z: number },
+    fine: boolean,
+  ): boolean {
+    const positionStep = fine
+      ? THIRD_PERSON_GUN_FINE_POSITION_STEP
+      : THIRD_PERSON_GUN_POSITION_STEP;
+    const rotationStep = fine
+      ? THIRD_PERSON_GUN_FINE_ROTATION_STEP
+      : THIRD_PERSON_GUN_ROTATION_STEP;
+
+    const hasPositionInput = positionAxes.x !== 0 || positionAxes.y !== 0 || positionAxes.z !== 0;
+    const hasRotationInput = rotationAxes.x !== 0 || rotationAxes.y !== 0 || rotationAxes.z !== 0;
+    if (!hasPositionInput && !hasRotationInput) {
+      return false;
+    }
+
+    this.thirdPersonGunOffset.x += positionAxes.x * positionStep;
+    this.thirdPersonGunOffset.y += positionAxes.y * positionStep;
+    this.thirdPersonGunOffset.z += positionAxes.z * positionStep;
+
+    this.thirdPersonGunRotation.x += rotationAxes.x * rotationStep;
+    this.thirdPersonGunRotation.y += rotationAxes.y * rotationStep;
+    this.thirdPersonGunRotation.z += rotationAxes.z * rotationStep;
+
+    this.applyThirdPersonGunTransform();
+    return true;
+  }
+
+  public resetThirdPersonGunTuning(): void {
+    this.thirdPersonGunOffset.copy(THIRD_PERSON_GUN_OFFSET);
+    this.thirdPersonGunRotation.copy(THIRD_PERSON_GUN_ROTATION);
+    this.applyThirdPersonGunTransform();
+    console.info('[LocalPlayer] Third-person gun tuning reset to defaults.');
+    this.logThirdPersonGunTuning();
+  }
+
+  public logThirdPersonGunTuning(): void {
+    console.info(
+      `[LocalPlayer] THIRD_PERSON_GUN_OFFSET = new THREE.Vector3(${this.thirdPersonGunOffset.x.toFixed(3)}, ${this.thirdPersonGunOffset.y.toFixed(3)}, ${this.thirdPersonGunOffset.z.toFixed(3)});`,
+    );
+    console.info(
+      `[LocalPlayer] THIRD_PERSON_GUN_ROTATION = new THREE.Euler(${this.thirdPersonGunRotation.x.toFixed(3)}, ${this.thirdPersonGunRotation.y.toFixed(3)}, ${this.thirdPersonGunRotation.z.toFixed(3)});`,
+    );
+  }
+
+  public getThirdPersonGunTuningState(): {
+    enabled: boolean;
+    offset: THREE.Vector3;
+    rotation: THREE.Euler;
+  } {
+    return {
+      enabled: this.thirdPersonGunTuningEnabled,
+      offset: this.thirdPersonGunOffset.clone(),
+      rotation: this.thirdPersonGunRotation.clone(),
+    };
+  }
+
+  private applyThirdPersonGunTransform(): void {
+    if (!this.thirdPersonGun) {
+      return;
+    }
+
+    this.thirdPersonGun.position.copy(this.thirdPersonGunOffset);
+    this.thirdPersonGun.rotation.copy(this.thirdPersonGunRotation);
+  }
+
+  private captureJumpRightArmPose(): void {
+    for (const rig of this.animatedRigs) {
+      rig.frozenJumpRightArmPose = {
+        ShoulderR: rig.bones.ShoulderR?.quaternion.clone(),
+        UpperArmR: rig.bones.UpperArmR?.quaternion.clone(),
+        LowerArmR: rig.bones.LowerArmR?.quaternion.clone(),
+        PalmR: rig.bones.PalmR?.quaternion.clone(),
+      };
+    }
+  }
+
+  private restoreJumpRightArmPose(): void {
+    for (const rig of this.animatedRigs) {
+      const pose = rig.frozenJumpRightArmPose;
+      if (pose.ShoulderR && rig.bones.ShoulderR) {
+        rig.bones.ShoulderR.quaternion.copy(pose.ShoulderR);
+      }
+      if (pose.UpperArmR && rig.bones.UpperArmR) {
+        rig.bones.UpperArmR.quaternion.copy(pose.UpperArmR);
+      }
+      if (pose.LowerArmR && rig.bones.LowerArmR) {
+        rig.bones.LowerArmR.quaternion.copy(pose.LowerArmR);
+      }
+      if (pose.PalmR && rig.bones.PalmR) {
+        rig.bones.PalmR.quaternion.copy(pose.PalmR);
+      }
+    }
+  }
+
+  private computeGunMuzzleLocal(root: THREE.Group): THREE.Vector3 {
+    const muzzleNode = this.findGunMuzzleNode(root) ?? root;
+
+    if (muzzleNode instanceof THREE.Mesh && muzzleNode.geometry) {
+      if (!muzzleNode.geometry.boundingBox) {
+        muzzleNode.geometry.computeBoundingBox();
+      }
+      const bbox = muzzleNode.geometry.boundingBox;
+      if (bbox) {
+        const localPoint = new THREE.Vector3(
+          (bbox.min.x + bbox.max.x) * 0.5,
+          (bbox.min.y + bbox.max.y) * 0.5,
+          bbox.min.z - 0.02,
+        );
+        return root.worldToLocal(muzzleNode.localToWorld(localPoint));
+      }
+    }
+
+    root.updateMatrixWorld(true);
+    const bbox = new THREE.Box3().setFromObject(muzzleNode);
+    const center = bbox.getCenter(new THREE.Vector3());
+    const muzzleWorld = new THREE.Vector3(center.x, center.y, bbox.min.z - 0.02);
+    return root.worldToLocal(muzzleWorld);
+  }
+
+  private findGunMuzzleNode(root: THREE.Object3D): THREE.Object3D | null {
+    return root.getObjectByName('Muzzle.005')
+      ?? root.getObjectByName('Muzzle')
+      ?? root.getObjectByName('muzzle')
+      ?? root.children.find((child) => child.name.toLowerCase().includes('muzzle'))
+      ?? null;
   }
 
   public getScore(): number {
