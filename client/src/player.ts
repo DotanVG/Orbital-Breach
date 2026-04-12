@@ -31,10 +31,12 @@ const LEFT_HAND_GRIP_FINGERTIP_BLEND = 0.64;
 const LEFT_HAND_GRIP_THUMB_PULL = 0.16;
 const LEFT_HAND_GRIP_FINGER_ADVANCE = 0.01;
 const ANIM_IDLE_HOLD = 'Alien_IdleHold';
+const ANIM_JUMP = 'Alien_Jump';
 const ANIM_RUN_HOLD = 'Alien_RunHold';
 const ANIM_STANDING = 'Alien_Standing';
 const ANIM_DEATH = 'Alien_Death';
 const ANIM_FADE_SECONDS = 0.16;
+const BREACH_JUMP_TAKEOFF_SPEED = 2.35;
 const BREACH_BREATH_SPEED = 1.8;
 const BREACH_BREATH_ABDOMEN_Y = 0.012;
 const BREACH_BREATH_TORSO_Y = 0.008;
@@ -67,6 +69,10 @@ type PoseBoneName =
   | 'Abdomen'
   | 'Torso'
   | 'Neck'
+  | 'ShoulderR'
+  | 'UpperArmR'
+  | 'LowerArmR'
+  | 'PalmR'
   | 'ShoulderL'
   | 'UpperArmL'
   | 'LowerArmL'
@@ -84,6 +90,7 @@ type AnimatedRig = {
   actions: Map<string, THREE.AnimationAction>;
   bones: Partial<Record<PoseBoneName, THREE.Bone>>;
   breathingBasePositions: Partial<Record<'Abdomen' | 'Torso' | 'Neck', THREE.Vector3>>;
+  frozenJumpRightArmPose: Partial<Record<'ShoulderR' | 'UpperArmR' | 'LowerArmR' | 'PalmR', THREE.Quaternion>>;
 };
 
 export class LocalPlayer {
@@ -110,6 +117,7 @@ export class LocalPlayer {
 
   private respawnTimer = 0;
   private onGround = false;
+  private breachJumpAnimationActive = false;
 
   private mesh: THREE.Group;
   private leftHandGripLocal = DEFAULT_LEFT_HAND_GRIP_LOCAL.clone();
@@ -241,6 +249,7 @@ export class LocalPlayer {
   }
 
   private updateFrozen(arena: Arena, dt: number): void {
+    this.breachJumpAnimationActive = false;
     integrateZeroG(this.phys, dt);
     bounceArena(this.phys);
     arena.bounceObstacles(this.phys);
@@ -258,7 +267,9 @@ export class LocalPlayer {
 
     // Floor matches clampBreachRoom: center.y - (BREACH_ROOM_H/2 - PLAYER_RADIUS)
     const floorY = center.y - BREACH_ROOM_H / 2 + PLAYER_RADIUS;
-    this.onGround = this.phys.pos.y <= floorY + 0.08;
+    const wasOnGround = this.phys.pos.y <= floorY + 0.08;
+    const jumpStarted = input.isJumping() && wasOnGround;
+    this.onGround = wasOnGround;
 
     integrateBreachRoom(
       this.phys,
@@ -271,6 +282,14 @@ export class LocalPlayer {
     );
 
     clampBreachRoom(this.phys, center, openAxis, openSign, arena.isGoalDoorOpen(this.currentBreachTeam));
+    this.onGround = this.phys.pos.y <= floorY + 0.02;
+
+    if (jumpStarted) {
+      this.breachJumpAnimationActive = true;
+      this.captureJumpRightArmPose();
+    } else if (this.onGround || this.phys.vel.y <= 0) {
+      this.breachJumpAnimationActive = false;
+    }
 
     const grabInput = input.consumeGrab();
     const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS);
@@ -292,6 +311,7 @@ export class LocalPlayer {
     arena: Arena,
     dt: number,
   ): void {
+    this.breachJumpAnimationActive = false;
     const goalAxis = arena.getBreachOpenAxis(this.team);
     const perpAxis: 'x' | 'z' = goalAxis === 'z' ? 'x' : 'z';
     const team0FaceSign = (-arena.getBreachOpenSign(0)) as 1 | -1;
@@ -338,6 +358,7 @@ export class LocalPlayer {
     _cam: CameraController,
     _dt: number,
   ): void {
+    this.breachJumpAnimationActive = false;
     if (!this.grabbedBarPos) {
       this.phase = 'FLOATING';
       return;
@@ -364,6 +385,7 @@ export class LocalPlayer {
     _arena: Arena,
     _dt: number,
   ): void {
+    this.breachJumpAnimationActive = false;
     if (!this.grabbedBarPos) {
       this.phase = 'FLOATING';
       return;
@@ -381,6 +403,7 @@ export class LocalPlayer {
   }
 
   private updateRespawning(arena: Arena, dt: number): void {
+    this.breachJumpAnimationActive = false;
     this.respawnTimer -= dt;
     if (this.respawnTimer <= 0) {
       this.respawnTimer = 0;
@@ -432,7 +455,12 @@ export class LocalPlayer {
     for (const clip of clips) {
       const action = mixer.clipAction(clip);
       action.enabled = true;
-      action.setLoop(THREE.LoopRepeat, Infinity);
+      if (clip.name === ANIM_JUMP) {
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = true;
+      } else {
+        action.setLoop(THREE.LoopRepeat, Infinity);
+      }
       actions.set(clip.name, action);
     }
 
@@ -442,6 +470,7 @@ export class LocalPlayer {
       actions,
       bones: this.collectPoseBones(root),
       breathingBasePositions: this.captureBreathingBasePositions(root),
+      frozenJumpRightArmPose: {},
     });
 
     const action = actions.get(this.currentAnimation) ?? actions.get(ANIM_IDLE_HOLD);
@@ -504,9 +533,16 @@ export class LocalPlayer {
       this.playAnimation(nextAnimation);
     }
 
-    this.currentAnimationTime += dt;
+    const animationDt = this.currentAnimation === ANIM_JUMP
+      ? dt * BREACH_JUMP_TAKEOFF_SPEED
+      : dt;
+    this.currentAnimationTime += animationDt;
     for (const rig of this.animatedRigs) {
-      rig.mixer.update(dt);
+      rig.mixer.update(animationDt);
+    }
+
+    if (this.currentAnimation === ANIM_JUMP) {
+      this.restoreJumpRightArmPose();
     }
 
     if (this.isBreachIdle(input)) {
@@ -530,6 +566,9 @@ export class LocalPlayer {
     }
 
     if (this.phase === 'BREACH') {
+      if (this.breachJumpAnimationActive) {
+        return ANIM_JUMP;
+      }
       const walk = input.getWalkAxes();
       if (this.onGround && (walk.x !== 0 || walk.z !== 0)) {
         return ANIM_RUN_HOLD;
@@ -603,6 +642,10 @@ export class LocalPlayer {
       'Abdomen',
       'Torso',
       'Neck',
+      'ShoulderR',
+      'UpperArmR',
+      'LowerArmR',
+      'PalmR',
       'ShoulderL',
       'UpperArmL',
       'LowerArmL',
@@ -853,6 +896,7 @@ export class LocalPlayer {
     this.grabbedBarPos = null;
     this.grabHandGripLocal = null;
     this.grabPoseLocked = false;
+    this.breachJumpAnimationActive = false;
     this.currentBreachTeam = this.team;
     this.phys.vel.set(0, 0, 0);
 
@@ -972,6 +1016,35 @@ export class LocalPlayer {
 
     this.thirdPersonGun.position.copy(this.thirdPersonGunOffset);
     this.thirdPersonGun.rotation.copy(this.thirdPersonGunRotation);
+  }
+
+  private captureJumpRightArmPose(): void {
+    for (const rig of this.animatedRigs) {
+      rig.frozenJumpRightArmPose = {
+        ShoulderR: rig.bones.ShoulderR?.quaternion.clone(),
+        UpperArmR: rig.bones.UpperArmR?.quaternion.clone(),
+        LowerArmR: rig.bones.LowerArmR?.quaternion.clone(),
+        PalmR: rig.bones.PalmR?.quaternion.clone(),
+      };
+    }
+  }
+
+  private restoreJumpRightArmPose(): void {
+    for (const rig of this.animatedRigs) {
+      const pose = rig.frozenJumpRightArmPose;
+      if (pose.ShoulderR && rig.bones.ShoulderR) {
+        rig.bones.ShoulderR.quaternion.copy(pose.ShoulderR);
+      }
+      if (pose.UpperArmR && rig.bones.UpperArmR) {
+        rig.bones.UpperArmR.quaternion.copy(pose.UpperArmR);
+      }
+      if (pose.LowerArmR && rig.bones.LowerArmR) {
+        rig.bones.LowerArmR.quaternion.copy(pose.LowerArmR);
+      }
+      if (pose.PalmR && rig.bones.PalmR) {
+        rig.bones.PalmR.quaternion.copy(pose.PalmR);
+      }
+    }
   }
 
   private computeGunMuzzleLocal(root: THREE.Group): THREE.Vector3 {
