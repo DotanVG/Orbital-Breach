@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["vitest/globals", "node"],
+    "paths": {
+      "three": ["./client/node_modules/three"]
+    }
+  },
+  "include": ["tests/**/*.ts", "shared/**/*.ts"]
+}
