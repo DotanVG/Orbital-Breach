@@ -1,6 +1,6 @@
 # CLAUDE.md — Orbital Breach Dev Guide
 
-This file is gitignored. It exists solely to orient Claude Code at the start of every session.
+This file is tracked. It exists to orient Claude Code at the start of every session.
 
 ---
 
@@ -10,6 +10,20 @@ This file is gitignored. It exists solely to orient Claude Code at the start of 
 Two teams in a floating arena fight to breach the enemy's gravity room. Shots freeze enemies. If all enemies are frozen, their base is vulnerable. First team to physically walk through the enemy's breach portal scores.
 
 Stack: Three.js + TypeScript client (Vite), Node.js + WebSocket server (ts-node-dev), shared/ types.
+
+---
+
+## Claude project files
+
+- `CLAUDE.md` â€” shared repo memory and workflow instructions
+- `CLAUDE.local.md` â€” optional private repo-specific memory for the current developer; keep it gitignored
+- `.claude/settings.json` â€” shared Claude project settings, plugins, and hooks
+- `.claude/settings.local.json` â€” local-only Claude settings; keep it gitignored
+- `.claude/skills/` â€” repo-local slash commands and reusable workflows
+- `.claude/hooks/` â€” scripts referenced by `.claude/settings.json`
+- `.worktreeinclude` â€” local-only Claude files that should be copied into new Claude worktrees when those files exist locally
+
+If you use Claude worktrees, keep your private repo-specific files in `CLAUDE.local.md` and `.claude/settings.local.json` so `.worktreeinclude` can bring them along automatically.
 
 ---
 
@@ -310,8 +324,21 @@ These skills live under `.claude/skills/` and are available in the repo.
 - `web-game-foundations` for architecture, module boundaries, and runtime conventions
 - `three-webgl-game` for plain Three.js runtime work, cameras, loaders, and rendering
 - `web-3d-asset-pipeline` for GLB/glTF cleanup, optimization, and validation
+- `/preflight` to run the repo ship checks before commit, push, or PR
+- `/golden-path` to run the manual Orbital Breach gameplay smoke checklist
+- `/ship-staging` to package and push intended changes to `staging`
+- `/port-from-archive` to recover features from archive branches without breaking current invariants
+- `/arena-debug` to debug gameplay, camera, collision, and projectile issues
+- `/claude-audit` to verify the repo Claude setup is still aligned
 
 When working in this repo, prefer those local skills for 3D or browser-game changes.
+
+## Claude Hooks
+
+Shared Claude hooks live in `.claude/settings.json` and execute scripts from `.claude/hooks/`.
+
+- Post-edit validation: after Claude edits code files, run targeted typechecks or tests in the background and wake Claude if one fails
+- Git ship guard: before `git commit` or `git push`, block the command if tracked files still have unstaged changes or the repo preflight fails
 
 ## README upkeep
 

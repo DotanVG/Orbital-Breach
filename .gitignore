@@ -3,6 +3,7 @@ dist
 .env
 .vercel
 PlanTracker.md
+CLAUDE.local.md
 .impeccable.md
 *.log
 .claude/settings.local.json
