@@ -6,6 +6,8 @@ PlanTracker.md
 CLAUDE.md
 .impeccable.md
 *.log
+.claude/worktrees/
+.claude/scheduled_tasks.lock
 # Root-level dev tooling (concurrently) — not part of deployable code
 /package.json
 /package-lock.json
