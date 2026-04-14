@@ -72,112 +72,112 @@ cd server && npm run build    # outputs to server/dist/
 
 ```
 Orbital-Breach/
-├── .claude/                         # AI context files
-├── .gitignore
-├── .impeccable.md
-├── .worktreeinclude
-├── CLAUDE.md                        # Development notes
-├── README.md                        # This file
-├── tsconfig.test.json               # Test TypeScript config
-├── vercel.json                      # Vercel deployment config
-├── vitest.config.ts                 # Test runner config
+├── .claude/                         # AI context files for Claude integration
+├── .gitignore                       # Git ignore configuration
+├── .impeccable.md                   # Code quality standards documentation
+├── .worktreeinclude                 # Git worktree inclusion rules
+├── CLAUDE.md                        # Development notes and AI prompts
+├── README.md                        # This file - project documentation
+├── tsconfig.test.json               # TypeScript config for test files
+├── vercel.json                      # Vercel deployment configuration
+├── vitest.config.ts                 # Vitest test runner configuration
 │
 ├── client/                          # Vite + Three.js browser app (TypeScript)
-│   ├── index.html
-│   ├── package.json
-│   ├── package-lock.json
-│   ├── tsconfig.json
-│   ├── vite.config.ts
+│   ├── index.html                   # HTML entry point for web app
+│   ├── package.json                 # Client dependencies and scripts
+│   ├── package-lock.json            # Locked dependency versions
+│   ├── tsconfig.json                # TypeScript configuration for client
+│   ├── vite.config.ts               # Vite build configuration
 │   ├── public/
-│   │   └── models/                  # 3D assets (GLB format)
-│   │       ├── Alien.glb
-│   │       ├── Alien_Helmet.glb
-│   │       └── Ray Gun.glb
+│   │   └── models/                  # 3D model assets in GLB format
+│   │       ├── Alien.glb            # Player character model
+│   │       ├── Alien_Helmet.glb     # Helmet/head model
+│   │       └── Ray Gun.glb          # Weapon visual model
 │   └── src/
-│       ├── main.ts                  # Entry point
-│       ├── app.ts                   # Game orchestrator
-│       ├── camera.ts                # Dual-mode camera (gravity ↔ zero-G)
-│       ├── combat.ts                # Combat stub
-│       ├── config.ts                # Configuration
-│       ├── featureFlags.ts           # Feature toggles
-│       ├── input.ts                 # Keyboard/mouse input handling
-│       ├── physics.ts               # Physics calculations
+│       ├── main.ts                  # Application entry point - bootstraps game
+│       ├── app.ts                   # Game orchestrator - high-level game logic
+│       ├── camera.ts                # Dual-mode camera controller (gravity & zero-G)
+│       ├── combat.ts                # Combat system stub (in progress)
+│       ├── config.ts                # Global game configuration and settings
+│       ├── featureFlags.ts          # Feature toggle system for experimental features
+│       ├── input.ts                 # Keyboard and mouse input handler
+│       ├── physics.ts               # Physics calculations and collision detection
 │       ├── player.ts                # Player state machine stub
-│       ├── projectile.ts            # Projectile logic
-│       ├── arena/                   # Arena geometry & mechanics
-│       │   ├── arena.ts             # Main arena manager
-│       │   ├── bar.ts               # Grab bar implementation
-│       │   ├── breachRoomQueries.ts # Breach room intersection tests
-│       │   ├── breachWalls.ts       # Breach room wall geometry
-│       │   ├── goal.ts              # Breach portal mechanics
-│       │   ├── obstacleCollision.ts # Obstacle collision detection
-│       │   ├── portalBars.ts        # Portal bar objects
-│       │   ├── portalEnergyWall.ts  # Portal energy barrier visual
-│       │   └── states.ts            # Arena state enum
-│       ├── game/                    # Game loop & systems
-│       │   ├── gameApp.ts           # Main game app controller
-│       │   ├── bulletCollision.ts   # Bullet-player collision
-│       │   ├── cameraYawFromBreach.ts # Camera orientation helper
-│       │   ├── gunTuneOverlay.ts    # Debug gun tuning UI
-│       │   ├── projectileSystem.ts  # Projectile spawn/update system
-│       │   ├── roundController.ts   # Round state management
-│       │   └── weaponFire.ts        # Weapon firing logic
-│       ├── net/                     # Networking (WebSocket)
-│       │   ├── client.ts            # Network client
-│       │   ├── messages.ts          # Message type stubs
-│       │   └── reconciliation.ts    # Server reconciliation stub
-│       ├── player/                  # Player mechanics
-│       │   ├── localPlayer.ts       # LocalPlayer state machine
-│       │   ├── playerAnimationController.ts # Animation handling
-│       │   ├── playerCombat.ts      # Player combat state
-│       │   ├── playerGrabPose.ts    # Grab pose animation
-│       │   ├── playerSpawn.ts       # Spawn logic
-│       │   ├── playerThirdPersonGun.ts # Gun visual in third person
-│       │   └── playerTypes.ts       # TypeScript interfaces
-│       ├── render/                  # Rendering & UI
-│       │   ├── gun.ts               # Gun visual model
-│       │   ├── hud.ts               # HUD manager
-│       │   ├── materials.ts         # Three.js materials
-│       │   ├── scene.ts             # Scene setup
-│       │   └── hud/                 # HUD components
-│       │       ├── hudView.ts       # Main HUD display
-│       │       └── scoreboard.ts    # Scoreboard display
-│       ├── ui/                      # UI screens
-│       │   ├── menu.ts              # Menu controller
+│       ├── projectile.ts            # Projectile/bullet behavior and logic
+│       ├── arena/                   # Arena geometry and game mechanics
+│       │   ├── arena.ts             # Main arena manager and setup
+│       │   ├── bar.ts               # Grab bar implementation for zero-G movement
+│       │   ├── breachRoomQueries.ts # Breach room intersection and query tests
+│       │   ├── breachWalls.ts       # Breach room wall geometry and colliders
+│       │   ├── goal.ts              # Breach portal mechanics and scoring
+│       │   ├── obstacleCollision.ts # Obstacle collision detection system
+│       │   ├── portalBars.ts        # Portal bar visualization and placement
+│       │   ├── portalEnergyWall.ts  # Portal energy barrier visual effects
+│       │   └── states.ts            # Arena state enum (active, paused, etc.)
+│       ├── game/                    # Game loop and core systems
+│       │   ├── gameApp.ts           # Main game app controller and loop manager
+│       │   ├── bulletCollision.ts   # Bullet-to-player collision detection
+│       │   ├── cameraYawFromBreach.ts # Camera orientation helper for breach rooms
+│       │   ├── gunTuneOverlay.ts    # Debug UI for weapon tuning
+│       │   ├── projectileSystem.ts  # Projectile spawn and update system
+│       │   ├── roundController.ts   # Round state management and transitions
+│       │   └── weaponFire.ts        # Weapon firing logic and constraints
+│       ├── net/                     # Networking layer (WebSocket)
+│       │   ├── client.ts            # WebSocket client network manager
+│       │   ├── messages.ts          # Network message type definitions
+│       │   └── reconciliation.ts    # Server reconciliation stub (in progress)
+│       ├── player/                  # Player-specific mechanics
+│       │   ├── localPlayer.ts       # Local player state machine and controller
+│       │   ├── playerAnimationController.ts # Animation state management
+│       │   ├── playerCombat.ts      # Player combat state and damage zones
+│       │   ├── playerGrabPose.ts    # Grab pose animation and IK
+│       │   ├── playerSpawn.ts       # Player spawn location and logic
+│       │   ├── playerThirdPersonGun.ts # Third-person gun visual and positioning
+│       │   └── playerTypes.ts       # TypeScript interfaces for player data
+│       ├── render/                  # Rendering and UI
+│       │   ├── gun.ts               # Gun visual model loader and setup
+│       │   ├── hud.ts               # HUD manager and coordinate system
+│       │   ├── materials.ts         # Three.js material definitions and shared materials
+│       │   ├── scene.ts             # Three.js scene initialization and setup
+│       │   └── hud/                 # HUD UI components
+│       │       ├── hudView.ts       # Main HUD display (health, ammo, score)
+│       │       └── scoreboard.ts    # Player scoreboard and team scores
+│       ├── ui/                      # UI screens and menus
+│       │   ├── menu.ts              # Menu controller and navigation
 │       │   └── menu/
-│       │       └── menuView.ts      # Menu UI view
-│       └── util/                    # Utilities
-│           ├── math.ts              # Math helpers
-│           └── pool.ts              # Object pool utility
+│       │       └── menuView.ts      # Main menu UI view and buttons
+│       └── util/                    # Utility functions and helpers
+│           ├── math.ts              # Math utility functions and vector helpers
+│           └── pool.ts              # Object pool utility for garbage collection
 │
-├── server/                          # Node.js WebSocket server
-│   ├── package.json
-│   ├── package-lock.json
-│   ├── tsconfig.json
+├── server/                          # Node.js WebSocket server (authoritative)
+│   ├── package.json                 # Server dependencies and scripts
+│   ├── package-lock.json            # Locked dependency versions
+│   ├── tsconfig.json                # TypeScript configuration for server
 │   └── src/
-│       ├── index.ts                 # Server entry point
-│       ├── player.ts                # Server-side player state
-│       ├── room.ts                  # Match lifecycle management
+│       ├── index.ts                 # Server entry point and initialization
+│       ├── player.ts                # Server-side player state and data
+│       ├── room.ts                  # Match/room lifecycle management
 │       ├── sim.ts                   # Authoritative physics simulator
 │       └── net/
-│           ├── messageCodec.ts      # Message encoding/decoding
-│           └── wsServer.ts          # WebSocket server setup
+│           ├── messageCodec.ts      # Message encoding and decoding
+│           └── wsServer.ts          # WebSocket server setup and handlers
 │
-├── shared/                          # Pure TypeScript (client & server)
-│   ├── schema.ts                    # Network message types
-│   ├── constants.ts                 # Game tuning parameters
-│   └── arena-gen.ts                 # Procedural arena generation
+├── shared/                          # Shared TypeScript code (client & server)
+│   ├── schema.ts                    # Network message types and protocol
+│   ├── constants.ts                 # Game tuning parameters and balance values
+│   └── arena-gen.ts                 # Procedural arena generation algorithm
 │
-├── docs/                            # Documentation
-│   ├── ARCHITECTURE.md              # Detailed architecture notes
-│   └── TESTING.md                   # Testing guide
+├── docs/                            # Documentation files
+│   ├── ARCHITECTURE.md              # Detailed architecture and system design
+│   └── TESTING.md                   # Testing guide and test strategies
 │
-└── tests/                           # Unit & integration tests
-    ├── arena-gen.test.ts            # Arena generation tests
-    ├── breachRoomQueries.test.ts    # Breach room query tests
-    ├── bulletCollision.test.ts      # Bullet collision tests
-    ├── cameraYawFromBreach.test.ts  # Camera orientation tests
-    └── smoke.test.ts                # Smoke test
+└── tests/                           # Unit and integration tests
+    ├── arena-gen.test.ts            # Arena generation algorithm tests
+    ├── breachRoomQueries.test.ts    # Breach room intersection query tests
+    ├── bulletCollision.test.ts      # Bullet collision system tests
+    ├── cameraYawFromBreach.test.ts  # Camera orientation calculation tests
+    └── smoke.test.ts                # Basic smoke tests
 ```
 
 ### Networking Model
