@@ -136,7 +136,7 @@ export class App {
 
     this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie);
     this.updateGunVisibility(isSelfie);
-    this.updateHud();
+    this.updateHud(dt);
     this.renderDebugTuningOverlay();
 
     this.sceneMgr.render();
@@ -271,7 +271,7 @@ export class App {
     this.gun.setVisible(firstPersonGunVisible);
   }
 
-  private updateHud(): void {
+  private updateHud(dt: number): void {
     let nearBar = this.arena.getNearestBar(this.player.getPosition(), GRAB_RADIUS) !== null;
     if (this.player.phase === 'BREACH' && !this.arena.isGoalDoorOpen(this.player.currentBreachTeam)) {
       nearBar = false;
@@ -301,6 +301,8 @@ export class App {
       tabHeld: this.input.isTabHeld(),
       ownTeam,
       enemyTeam,
+      dt,
+      team: this.player.team,
     });
   }
 }
