@@ -13,6 +13,13 @@ export class InputManager {
   private gunTuneResetPressed = false;
   private gunTunePrintPressed = false;
 
+  // Mobile touch input state
+  private touchLookDx = 0;
+  private touchLookDy = 0;
+  private mobileMoveX = 0;
+  private mobileMoveZ = 0;
+  private mobileControlsActive = false;
+
   public mouseSensitivity = 0.002;
 
   public constructor() {
@@ -78,12 +85,58 @@ export class InputManager {
     this.aimingActive = active;
   }
 
+  // ── Mobile input ──────────────────────────────────────────────────
+  /** Accumulate a touch look delta (called from MobileControls on pointermove). */
+  public setMobileLookDelta(dx: number, dy: number): void {
+    this.touchLookDx += dx;
+    if (this.aimingActive) {
+      this.aimDy += dy;
+    } else {
+      this.touchLookDy += dy;
+    }
+  }
+
+  /** Set virtual joystick axes from mobile controls. x: strafe, z: forward (+z = forward). */
+  public setMobileMoveAxes(x: number, z: number): void {
+    this.mobileMoveX = x;
+    this.mobileMoveZ = z;
+  }
+
+  /** Simulate Space key held from mobile jump/charge button. */
+  public setMobileJumpHeld(active: boolean): void {
+    if (active) this.keys.add('Space');
+    else this.keys.delete('Space');
+  }
+
+  /** One-shot grab press from mobile grab button (mirrors E key). */
+  public pressMobileGrab(): void {
+    this.grabPressed = true;
+  }
+
+  /** Simulate LMB held from mobile fire button. */
+  public setMobileFireHeld(active: boolean): void {
+    if (active) this.keys.add('MouseLeft');
+    else this.keys.delete('MouseLeft');
+  }
+
+  /** Enable mobile control mode — bypasses pointer-lock requirement in canControlGame(). */
+  public setMobileControlsActive(active: boolean): void {
+    this.mobileControlsActive = active;
+  }
+
+  /** Returns true when the player can control the game (pointer locked on desktop, or mobile controls active). */
+  public canControlGame(): boolean {
+    return this.mobileControlsActive || this.isLocked();
+  }
+
   // ── Mouse delta ───────────────────────────────────────────────────
   public consumeMouseDelta(): { dx: number; dy: number } {
-    const dx = this.mouseDx;
-    const dy = this.mouseDy;
+    const dx = this.mouseDx + this.touchLookDx;
+    const dy = this.mouseDy + this.touchLookDy;
     this.mouseDx = 0;
     this.mouseDy = 0;
+    this.touchLookDx = 0;
+    this.touchLookDy = 0;
     return { dx, dy };
   }
 
@@ -95,11 +148,13 @@ export class InputManager {
   }
 
   // ── Movement ──────────────────────────────────────────────────────
-  /** WASD walk axes (XZ only). Used in breach room. */
+  /** WASD walk axes (XZ only). Used in breach room. Merges keyboard + mobile joystick. */
   public getWalkAxes(): { x: number; z: number } {
+    const kx = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
+    const kz = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
     return {
-      x: (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0),
-      z: (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0),
+      x: Math.max(-1, Math.min(1, kx + this.mobileMoveX)),
+      z: Math.max(-1, Math.min(1, kz + this.mobileMoveZ)),
     };
   }
 
@@ -213,10 +268,15 @@ export class InputManager {
     this.mouseDx = 0;
     this.mouseDy = 0;
     this.aimDy = 0;
+    this.touchLookDx = 0;
+    this.touchLookDy = 0;
+    this.mobileMoveX = 0;
+    this.mobileMoveZ = 0;
     this.grabPressed = false;
     this.thirdPersonTogglePressed = false;
     this.gunTuneTogglePressed = false;
     this.gunTuneResetPressed = false;
     this.gunTunePrintPressed = false;
+    // mobileControlsActive is intentionally preserved across blur/visibility changes
   }
 }
