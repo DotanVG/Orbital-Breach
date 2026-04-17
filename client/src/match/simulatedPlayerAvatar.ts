@@ -9,16 +9,21 @@ import {
   ANIM_STANDING,
   PlayerAnimationController,
 } from "../player/playerAnimationController";
+import { PlayerDamageGlow } from "../player/playerDamageGlow";
 import { applyBarHoldPose } from "../player/playerGrabPose";
+import { ThirdPersonGun } from "../player/playerThirdPersonGun";
 
 export class SimulatedPlayerAvatar {
   private readonly animation = new PlayerAnimationController();
+  private readonly damageGlow: PlayerDamageGlow;
   private disposed = false;
+  private readonly gun = new ThirdPersonGun();
   private readonly materials = new Set<THREE.MeshStandardMaterial>();
   private ready = false;
   private readonly root = new THREE.Group();
 
   public constructor(scene: THREE.Scene, team: 0 | 1) {
+    this.damageGlow = new PlayerDamageGlow(team);
     scene.add(this.root);
 
     void loadAlienRenderClone({ team, variant: "bot" })
@@ -29,6 +34,9 @@ export class SimulatedPlayerAvatar {
         this.root.add(helmet);
         this.animation.registerRig(body, bodyAnimations);
         this.animation.registerRig(helmet, helmetAnimations);
+        this.damageGlow.attachTo(body);
+        this.gun.attachTo(body);
+        this.gun.setVisible(true);
         this.collectMaterials();
         this.ready = true;
       })
@@ -39,6 +47,7 @@ export class SimulatedPlayerAvatar {
 
   public update(
     pos: THREE.Vector3,
+    damage: { frozen: boolean; leftArm: boolean; rightArm: boolean; legs: boolean },
     phase: PlayerPhase,
     yaw: number,
     dt: number,
@@ -47,6 +56,8 @@ export class SimulatedPlayerAvatar {
     this.root.position.copy(pos);
     this.root.rotation.set(0, yaw, 0);
     this.root.visible = phase !== "RESPAWNING";
+    this.gun.setVisible(phase !== "RESPAWNING");
+    this.damageGlow.update(damage, phase, dt);
 
     if (!this.ready) return;
 
@@ -68,6 +79,8 @@ export class SimulatedPlayerAvatar {
 
   public dispose(scene: THREE.Scene): void {
     this.disposed = true;
+    this.damageGlow.dispose();
+    this.gun.dispose();
     scene.remove(this.root);
     for (const material of this.materials) {
       material.dispose();

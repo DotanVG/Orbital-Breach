@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { classifyHitZone, applyHit, maxLaunchPower, spawnPosition } from "../shared/player-logic";
+import {
+  classifyHitZone,
+  applyHit,
+  generateSpawnPositions,
+  maxLaunchPower,
+  resolveActorCollisions,
+  spawnPosition,
+} from "../shared/player-logic";
 import { MAX_LAUNCH_SPEED, LEGS_HIT_LAUNCH_FACTOR } from "../shared/constants";
 
 describe("classifyHitZone", () => {
@@ -55,5 +62,49 @@ describe("spawnPosition", () => {
 
     expect(pos.x).toBeGreaterThan(23);
     expect(pos.y).toBeGreaterThan(-3);
+  });
+});
+
+describe("generateSpawnPositions", () => {
+  it("scatters a full 20-player team without overlap", () => {
+    const slots = generateSpawnPositions(0, 20, {
+      getBreachRoomCenter: () => ({ x: 12, y: 0, z: -6 }),
+      getBreachOpenAxis: () => "x",
+      getBreachOpenSign: () => -1,
+    }, 1234);
+
+    expect(slots).toHaveLength(20);
+
+    for (let i = 0; i < slots.length; i += 1) {
+      for (let j = i + 1; j < slots.length; j += 1) {
+        const dx = slots[i].x - slots[j].x;
+        const dy = slots[i].y - slots[j].y;
+        const dz = slots[i].z - slots[j].z;
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        expect(distance).toBeGreaterThanOrEqual(1.6);
+      }
+    }
+  });
+});
+
+describe("resolveActorCollisions", () => {
+  it("separates overlapping bodies and keeps anchored bodies nearly fixed", () => {
+    const bodies = [
+      {
+        anchored: true,
+        pos: { x: 0, y: 0, z: 0 },
+        radius: 0.8,
+      },
+      {
+        pos: { x: 0.3, y: 0, z: 0 },
+        radius: 0.8,
+      },
+    ];
+
+    const moved = resolveActorCollisions(bodies, 2);
+
+    expect(moved).toBe(true);
+    expect(bodies[0].pos.x).toBeCloseTo(0, 4);
+    expect(bodies[1].pos.x).toBeGreaterThanOrEqual(1.59);
   });
 });

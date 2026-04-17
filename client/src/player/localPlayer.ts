@@ -37,6 +37,7 @@ import {
   applyBarHoldPose,
   measureLeftHandGripOffset,
 } from './playerGrabPose';
+import { PlayerDamageGlow } from './playerDamageGlow';
 import { loadAlienRenderClone } from './alienRenderAsset';
 import {
   applyFloatArmTilt,
@@ -79,8 +80,6 @@ export class LocalPlayer {
   public grabbedBarPos: THREE.Vector3 | null = null;
   public currentBreachTeam: 0 | 1 = 0;
 
-  public onRoundWin: ((team: 0 | 1) => void) | null = null;
-
   private respawnTimer = 0;
   private onGround = false;
   private breachJumpAnimationActive = false;
@@ -91,6 +90,7 @@ export class LocalPlayer {
   private grabPoseLocked = false;
 
   private animation = new PlayerAnimationController();
+  private damageGlow = new PlayerDamageGlow(this.team);
   private gun = new ThirdPersonGun();
   private visualQuaternion = new THREE.Quaternion();
   // Tracks the previous frame's animation name so we can detect transitions.
@@ -109,6 +109,7 @@ export class LocalPlayer {
         if (gripLocal) this.leftHandGripLocal.copy(gripLocal);
 
         this.animation.registerRig(body, bodyAnimations);
+        this.damageGlow.attachTo(body);
         this.gun.attachTo(body);
         this.mesh.add(body);
 
@@ -168,6 +169,7 @@ export class LocalPlayer {
         break;
     }
     this.updateAnimation(input, cam, dt);
+    this.damageGlow.update(this.damage, this.phase, dt);
     const visualQuat = this.computeVisualQuaternion(cam, dt);
     if (this.phase === 'GRABBING' || this.phase === 'AIMING') {
       this.lockGripToBar(visualQuat);
@@ -256,18 +258,6 @@ export class LocalPlayer {
       this.currentBreachTeam = this.team;
       this.phase = 'BREACH';
       this.phys.vel.y = 0;
-      return;
-    }
-
-    const enemyTeam = (1 - this.team) as 0 | 1;
-    if (!this.damage.frozen
-      && arena.isGoalDoorOpen(enemyTeam)
-      && arena.isDeepInBreachRoom(this.phys.pos, enemyTeam, 1.0)) {
-      this.currentBreachTeam = enemyTeam;
-      this.phase = 'BREACH';
-      this.phys.vel.y = 0;
-      this.kills++;
-      this.onRoundWin?.(this.team);
       return;
     }
 
@@ -470,7 +460,7 @@ export class LocalPlayer {
     this.phys.pos.copy(this.grabbedBarPos).sub(handOffset);
   }
 
-  public applyHit(zone: HitZone, impulse: THREE.Vector3): void {
+  public applyHit(zone: HitZone, impulse: THREE.Vector3): boolean {
     this.phys.vel.add(impulse);
 
     switch (zone) {
@@ -484,10 +474,10 @@ export class LocalPlayer {
         this.grabbedBarPos = null;
         this.grabHandGripLocal = null;
         this.grabPoseLocked = false;
-        break;
+        return true;
       case 'rightArm':
         this.damage.rightArm = true;
-        break;
+        return false;
       case 'leftArm':
         this.damage.leftArm = true;
         if (this.phase === 'GRABBING' || this.phase === 'AIMING') {
@@ -496,11 +486,11 @@ export class LocalPlayer {
           this.grabHandGripLocal = null;
           this.grabPoseLocked = false;
         }
-        break;
+        return false;
       case 'legs':
         this.damage.legs = true;
         this.launchPower = clamp(this.launchPower, 0, this.maxLaunchPower());
-        break;
+        return false;
     }
   }
 
@@ -512,7 +502,7 @@ export class LocalPlayer {
     return classifyHitZone(impactPoint, playerPos, playerFacing);
   }
 
-  public resetForNewRound(arena: Arena): void {
+  public resetForNewRound(arena: Arena, spawnOverride?: { x: number; y: number; z: number }): void {
     this.damage = {
       frozen: false,
       rightArm: false,
@@ -527,10 +517,12 @@ export class LocalPlayer {
     this.currentBreachTeam = this.team;
     this.phys.vel.set(0, 0, 0);
 
-    const center = arena.getBreachRoomCenter(this.team);
-    const openAxis = arena.getBreachOpenAxis(this.team);
-    const openSign = arena.getBreachOpenSign(this.team);
-    const spawn = computeBreachSpawnPosition(center, openAxis, openSign);
+    const spawn = spawnOverride ?? (() => {
+      const center = arena.getBreachRoomCenter(this.team);
+      const openAxis = arena.getBreachOpenAxis(this.team);
+      const openSign = arena.getBreachOpenSign(this.team);
+      return computeBreachSpawnPosition(center, openAxis, openSign);
+    })();
     this.phys.pos.set(spawn.x, spawn.y, spawn.z);
     this.phase = 'BREACH';
   }

@@ -5,7 +5,9 @@ import type { Vec3 } from "../../../shared/vec3";
 import { v3 } from "../../../shared/vec3";
 
 const DEFAULT_WORLD_UP = { x: 0, y: 1, z: 0 } as const;
-const MAX_FOCUS_RANGE = 26;
+const MAX_FOCUS_RANGE = 28;
+const ROUTE_REACH_DISTANCE = GRAB_RADIUS * 1.25;
+const BAR_LINK_DISTANCE = 9;
 
 type BotArchetype = "sprinter" | "hunter" | "drifter" | "anchor" | "rookie";
 
@@ -28,6 +30,7 @@ export interface EnemySnapshot {
 export interface BotCommand {
   aimHeld: boolean;
   fire: boolean;
+  fireDirection: Vec3 | null;
   grab: boolean;
   lookPitch: number;
   lookYaw: number;
@@ -63,8 +66,31 @@ export interface BotPersonality {
   grabDecisionDelay: number;
   launchChargeSeconds: number;
   pathNoise: number;
+  routeLengthMax: number;
+  routeLengthMin: number;
   rngSeed: number;
+  shotSpreadBase: number;
   weaveOffset: number;
+}
+
+export interface BarRouteGraph {
+  nodes: Array<{
+    neighbors: number[];
+    pos: Vec3;
+  }>;
+}
+
+export function buildBarGraph(bars: Vec3[]): BarRouteGraph {
+  return {
+    nodes: bars.map((pos, index) => ({
+      pos: v3.clone(pos),
+      neighbors: bars
+        .map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
+        .filter(({ candidateIndex }) => candidateIndex !== index)
+        .filter(({ candidate }) => v3.dist(candidate, pos) <= BAR_LINK_DISTANCE)
+        .map(({ candidateIndex }) => candidateIndex),
+    })),
+  };
 }
 
 export function pickPreferredBar(
@@ -158,26 +184,48 @@ export function createBotPersonality(id: string, team: 0 | 1): BotPersonality {
 
 export class BotBrain {
   private aimProgress = 0;
+  private currentRoute: number[] = [];
   private decisionTimer = 0;
   private fireCooldown = 0;
   private grabDelay = 0;
   private lastPhase: PlayerPhase | null = null;
+  private lastWaypointDistance = Infinity;
   private releaseThreshold = 0;
   private roamTime = 0;
+  private roundRouteLength = 2;
+  private roundSeed = 0;
+  private roundShotSpread = 0;
   private rngState = 0;
-  private selectedBar: Vec3 | null = null;
+  private stuckTimer = 0;
 
   public constructor(
     private readonly personality: BotPersonality = createBotPersonality("bot-default", 0),
   ) {
-    this.rngState = personality.rngSeed >>> 0;
+    this.resetForRound(1);
+  }
+
+  public resetForRound(roundSeed: number): void {
+    this.roundSeed = roundSeed;
+    this.rngState = hashString(`${this.personality.rngSeed}:${roundSeed}`) >>> 0;
+    this.currentRoute = [];
+    this.decisionTimer = 0;
+    this.fireCooldown = 0;
+    this.grabDelay = 0;
+    this.lastPhase = null;
+    this.lastWaypointDistance = Infinity;
     this.releaseThreshold = this.randomReleaseThreshold();
+    this.roundRouteLength = this.personality.routeLengthMin
+      + Math.floor(
+        this.nextRandom() * (this.personality.routeLengthMax - this.personality.routeLengthMin + 1),
+      );
+    this.roundShotSpread = this.personality.shotSpreadBase * (1.1 + this.nextRandom() * 1.35);
+    this.stuckTimer = 0;
   }
 
   public tick(
     bot: BotSnapshot,
     arena: SharedArenaQuery,
-    bars: Vec3[],
+    graph: BarRouteGraph,
     enemies: EnemySnapshot[],
     dt: number,
   ): BotCommand {
@@ -186,31 +234,36 @@ export class BotBrain {
     this.decisionTimer = Math.max(0, this.decisionTimer - dt);
 
     if (bot.phase !== this.lastPhase) {
-      this.handlePhaseChange(bot.phase);
+      this.handlePhaseChange(bot.phase, bot, graph, arena);
       this.lastPhase = bot.phase;
     }
 
+    this.advanceRoute(bot.pos, graph, dt);
+
     const enemyPortal = arena.getBreachRoomCenter((1 - bot.team) as 0 | 1);
-    const preferredBar = this.choosePreferredBar(bot.pos, bars, v3.sub(enemyPortal, bot.pos));
     const focusEnemy = findNearestEnemy(
       bot,
       enemies,
       Math.min(MAX_FOCUS_RANGE, this.personality.fireRange * (0.8 + this.personality.enemyFocusBias)),
     );
     const firingEnemy = findNearestEnemy(bot, enemies, this.personality.fireRange);
+    let routeTarget = this.getRouteTarget(graph);
 
-    let aimDir = v3.sub(enemyPortal, bot.pos);
-    if (preferredBar) aimDir = v3.sub(preferredBar, bot.pos);
-    if (focusEnemy) aimDir = v3.sub(focusEnemy.pos, bot.pos);
-    aimDir = this.applyAimNoise(aimDir);
+    if (this.shouldReplan(bot, routeTarget)) {
+      this.planRoute(bot.pos, enemyPortal, graph);
+      routeTarget = this.getRouteTarget(graph);
+    }
 
-    let look = directionToRotation(aimDir);
+    const movementTarget = this.getMovementTarget(bot, enemyPortal, graph);
+    let lookDir = this.applyAimNoise(v3.sub(movementTarget, bot.pos));
+    let look = directionToRotation(lookDir);
     let walkAxes = { x: 0, z: 0 };
     let grab = false;
     let aimHeld = false;
 
     if (bot.phase === "BREACH") {
-      look = directionToRotation(breachExitDirection(arena, bot.currentBreachTeam));
+      lookDir = breachExitDirection(arena, bot.currentBreachTeam);
+      look = directionToRotation(lookDir);
       walkAxes = {
         x: Math.max(
           -1,
@@ -223,7 +276,7 @@ export class BotBrain {
         z: this.personality.breachForwardBias,
       };
     } else if (bot.phase === "FLOATING") {
-      if (preferredBar && v3.dist(bot.pos, preferredBar) <= GRAB_RADIUS * 1.15 && !bot.damage.leftArm) {
+      if (routeTarget && v3.dist(bot.pos, routeTarget) <= ROUTE_REACH_DISTANCE && !bot.damage.leftArm) {
         grab = true;
       }
     } else if (bot.phase === "GRABBING") {
@@ -236,35 +289,59 @@ export class BotBrain {
         this.aimProgress = 0;
         this.releaseThreshold = this.randomReleaseThreshold();
       }
-      const targetDir = focusEnemy
-        ? v3.sub(focusEnemy.pos, bot.pos)
-        : v3.sub(enemyPortal, bot.pos);
-      look = directionToRotation(this.applyAimNoise(targetDir));
+      const launchTarget = this.getLaunchTarget(bot, enemyPortal, graph);
+      look = directionToRotation(this.applyAimNoise(v3.sub(launchTarget, bot.pos)));
     } else if (bot.phase === "FROZEN") {
       this.aimProgress = 0;
-      this.selectedBar = null;
+      this.currentRoute = [];
     }
 
     let fire = false;
+    let fireDirection: Vec3 | null = null;
     if (!bot.damage.rightArm && firingEnemy && this.fireCooldown <= 0) {
       fire = true;
+      fireDirection = this.sampleFireDirection(v3.sub(firingEnemy.pos, bot.pos), bot.phase);
       this.fireCooldown = this.personality.fireCooldown;
-      look = directionToRotation(this.applyAimNoise(v3.sub(firingEnemy.pos, bot.pos)));
     }
 
     return {
       aimHeld,
       fire,
+      fireDirection,
       grab,
       lookPitch: look.pitch,
       lookYaw: look.yaw,
-      targetBar: preferredBar,
+      targetBar: routeTarget ? v3.clone(routeTarget) : null,
       walkAxes,
     };
   }
 
   public getLaunchChargeSeconds(): number {
     return this.personality.launchChargeSeconds;
+  }
+
+  private advanceRoute(botPos: Vec3, graph: BarRouteGraph, dt: number): void {
+    const routeTarget = this.getRouteTarget(graph);
+    if (!routeTarget) {
+      this.lastWaypointDistance = Infinity;
+      this.stuckTimer = 0;
+      return;
+    }
+
+    const distance = v3.dist(botPos, routeTarget);
+    if (distance <= ROUTE_REACH_DISTANCE) {
+      this.currentRoute.shift();
+      this.lastWaypointDistance = Infinity;
+      this.stuckTimer = 0;
+      return;
+    }
+
+    if (distance >= this.lastWaypointDistance - 0.05) {
+      this.stuckTimer += dt;
+    } else {
+      this.stuckTimer = 0;
+    }
+    this.lastWaypointDistance = distance;
   }
 
   private applyAimNoise(dir: Vec3): Vec3 {
@@ -276,41 +353,75 @@ export class BotBrain {
     };
   }
 
-  private choosePreferredBar(botPos: Vec3, bars: Vec3[], preferredDirection: Vec3): Vec3 | null {
-    const shouldRepath = !this.selectedBar
-      || this.decisionTimer <= 0
-      || v3.dist(botPos, this.selectedBar) <= GRAB_RADIUS * 1.4;
+  private getLaunchTarget(
+    bot: BotSnapshot,
+    enemyPortal: Vec3,
+    graph: BarRouteGraph,
+  ): Vec3 {
+    const routeTarget = this.getRouteTarget(graph);
+    if (routeTarget) return routeTarget;
+    return v3.add(enemyPortal, {
+      x: this.personality.barLateralBias * 4,
+      y: this.personality.barVerticalBias * 2,
+      z: 0,
+    });
+  }
 
-    if (shouldRepath) {
-      this.selectedBar = pickPreferredBar(botPos, bars, preferredDirection, {
+  private getMovementTarget(
+    bot: BotSnapshot,
+    enemyPortal: Vec3,
+    graph: BarRouteGraph,
+  ): Vec3 {
+    const routeTarget = this.getRouteTarget(graph);
+    if (routeTarget) return routeTarget;
+    const fallback = pickPreferredBar(
+      bot.pos,
+      graph.nodes.map((node) => node.pos),
+      v3.sub(enemyPortal, bot.pos),
+      {
         directionWeight: this.personality.barDirectionWeight,
         distanceWeight: this.personality.barDistanceWeight,
         lateralBias: this.personality.barLateralBias,
         verticalBias: this.personality.barVerticalBias,
-        noiseSeed: this.personality.weaveOffset,
+        noiseSeed: this.roundSeed,
         pathNoise: this.personality.pathNoise,
-      });
-      this.decisionTimer = this.personality.decisionInterval;
-    }
-
-    return this.selectedBar ? v3.clone(this.selectedBar) : null;
+      },
+    );
+    return fallback ?? enemyPortal;
   }
 
-  private handlePhaseChange(phase: PlayerPhase): void {
+  private getRouteTarget(graph: BarRouteGraph): Vec3 | null {
+    const nextNode = this.currentRoute[0];
+    if (nextNode === undefined) return null;
+    return graph.nodes[nextNode]?.pos ?? null;
+  }
+
+  private handlePhaseChange(
+    phase: PlayerPhase,
+    bot: BotSnapshot,
+    graph: BarRouteGraph,
+    arena: SharedArenaQuery,
+  ): void {
     if (phase === "GRABBING") {
+      this.advanceRoute(bot.pos, graph, 0);
       this.grabDelay = this.personality.grabDecisionDelay;
       this.aimProgress = 0;
       return;
     }
 
     if (phase === "AIMING") {
+      if (this.currentRoute.length === 0) {
+        const enemyPortal = arena.getBreachRoomCenter((1 - bot.team) as 0 | 1);
+        this.planRoute(bot.pos, enemyPortal, graph);
+      }
       this.aimProgress = 0;
       this.releaseThreshold = this.randomReleaseThreshold();
       return;
     }
 
     if (phase !== "FLOATING") {
-      this.selectedBar = null;
+      this.currentRoute = [];
+      this.stuckTimer = 0;
     }
   }
 
@@ -322,9 +433,87 @@ export class BotBrain {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
+  private planRoute(botPos: Vec3, enemyPortal: Vec3, graph: BarRouteGraph): void {
+    if (graph.nodes.length === 0) {
+      this.currentRoute = [];
+      this.decisionTimer = this.personality.decisionInterval;
+      return;
+    }
+
+    const startNode = findNearestBarNode(botPos, graph.nodes.map((node) => node.pos));
+    const targetNode = this.pickRouteDestination(startNode, botPos, enemyPortal, graph);
+    if (targetNode === null) {
+      this.currentRoute = [];
+      this.decisionTimer = this.personality.decisionInterval;
+      return;
+    }
+
+    const path = findShortestPath(graph, startNode, targetNode);
+    this.currentRoute = path.slice(0, this.roundRouteLength);
+    this.decisionTimer = this.personality.decisionInterval;
+    this.stuckTimer = 0;
+    this.lastWaypointDistance = Infinity;
+  }
+
+  private pickRouteDestination(
+    startNode: number | null,
+    botPos: Vec3,
+    enemyPortal: Vec3,
+    graph: BarRouteGraph,
+  ): number | null {
+    let bestIndex: number | null = null;
+    let bestScore = -Infinity;
+    const preferredDirection = v3.sub(enemyPortal, botPos);
+    const preferred = v3.normalize(preferredDirection);
+    const lateralRaw = v3.cross(DEFAULT_WORLD_UP, preferred);
+    const lateral = v3.lengthSq(lateralRaw) > 1e-6
+      ? v3.normalize(lateralRaw)
+      : { x: 1, y: 0, z: 0 };
+
+    for (let i = 0; i < graph.nodes.length; i += 1) {
+      if (i === startNode) continue;
+      const node = graph.nodes[i];
+      const toNode = v3.sub(node.pos, botPos);
+      const distance = v3.length(toNode);
+      if (distance <= 1e-6) continue;
+
+      const normal = v3.normalize(toNode);
+      const directionScore = v3.dot(normal, preferred) * this.personality.barDirectionWeight;
+      const lateralScore = v3.dot(normal, lateral) * this.personality.barLateralBias;
+      const verticalScore = normal.y * this.personality.barVerticalBias;
+      const distanceScore = (1 / Math.max(distance, 0.001)) * this.personality.barDistanceWeight;
+      const routeNoise = (this.nextRandom() * 2 - 1) * this.personality.pathNoise;
+      const score = directionScore + lateralScore + verticalScore + distanceScore + routeNoise;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = i;
+      }
+    }
+
+    return bestIndex;
+  }
+
   private randomReleaseThreshold(): number {
     return this.personality.aimReleaseMin
       + this.nextRandom() * (this.personality.aimReleaseMax - this.personality.aimReleaseMin);
+  }
+
+  private sampleFireDirection(targetDir: Vec3, phase: PlayerPhase): Vec3 {
+    const spread = this.roundShotSpread
+      + phaseSpreadModifier(phase)
+      + this.personality.shotSpreadBase * (0.2 + this.nextRandom() * 0.95);
+    return jitterDirection(v3.normalize(targetDir), spread, this.nextRandom.bind(this));
+  }
+
+  private shouldReplan(bot: BotSnapshot, routeTarget: Vec3 | null): boolean {
+    if (bot.phase !== "FLOATING" && bot.phase !== "AIMING" && bot.phase !== "GRABBING") {
+      return false;
+    }
+    if (!routeTarget) return true;
+    if (this.decisionTimer <= 0) return true;
+    if (this.stuckTimer >= 1.15) return true;
+    return false;
   }
 }
 
@@ -334,7 +523,7 @@ function createArchetypeProfile(
   sideBias: 1 | -1,
 ): BotPersonality {
   const base = {
-    aimNoise: 0.2,
+    aimNoise: 0.12,
     aimReleaseMax: 0.88,
     aimReleaseMin: 0.7,
     archetype,
@@ -352,24 +541,30 @@ function createArchetypeProfile(
     grabDecisionDelay: 0.12,
     launchChargeSeconds: 0.9,
     pathNoise: 0.08,
+    routeLengthMax: 3,
+    routeLengthMin: 2,
     rngSeed: 0,
+    shotSpreadBase: 0.06,
     weaveOffset: seeded() * Math.PI * 2,
   } satisfies BotPersonality;
 
   if (archetype === "sprinter") {
-    base.aimNoise = 0.3 + seeded() * 0.12;
+    base.aimNoise = 0.16 + seeded() * 0.08;
     base.barDistanceWeight = 1.4 + seeded() * 0.4;
-    base.barLateralBias = sideBias * (0.15 + seeded() * 0.3);
+    base.barLateralBias = sideBias * (0.18 + seeded() * 0.3);
     base.breachStrafeAmplitude = 0.2 + seeded() * 0.12;
     base.decisionInterval = 0.18 + seeded() * 0.16;
-    base.enemyFocusBias = 0.38 + seeded() * 0.16;
+    base.enemyFocusBias = 0.34 + seeded() * 0.18;
     base.fireCooldown = 0.42 + seeded() * 0.18;
     base.fireRange = 15 + seeded() * 2.5;
     base.grabDecisionDelay = 0.02 + seeded() * 0.08;
     base.launchChargeSeconds = 0.58 + seeded() * 0.18;
-    base.pathNoise = 0.16 + seeded() * 0.14;
+    base.pathNoise = 0.12 + seeded() * 0.12;
+    base.routeLengthMin = 2;
+    base.routeLengthMax = 3;
+    base.shotSpreadBase = 0.1 + seeded() * 0.035;
   } else if (archetype === "hunter") {
-    base.aimNoise = 0.05 + seeded() * 0.08;
+    base.aimNoise = 0.04 + seeded() * 0.06;
     base.aimReleaseMin = 0.74 + seeded() * 0.06;
     base.aimReleaseMax = 0.86 + seeded() * 0.08;
     base.barDirectionWeight = 3.2 + seeded() * 0.7;
@@ -382,9 +577,12 @@ function createArchetypeProfile(
     base.fireRange = 20 + seeded() * 4;
     base.grabDecisionDelay = 0.04 + seeded() * 0.1;
     base.launchChargeSeconds = 0.74 + seeded() * 0.16;
-    base.pathNoise = 0.04 + seeded() * 0.06;
+    base.pathNoise = 0.03 + seeded() * 0.04;
+    base.routeLengthMin = 2;
+    base.routeLengthMax = 4;
+    base.shotSpreadBase = 0.04 + seeded() * 0.025;
   } else if (archetype === "drifter") {
-    base.aimNoise = 0.26 + seeded() * 0.24;
+    base.aimNoise = 0.24 + seeded() * 0.2;
     base.aimReleaseMin = 0.62 + seeded() * 0.06;
     base.aimReleaseMax = 0.82 + seeded() * 0.1;
     base.barDirectionWeight = 2.1 + seeded() * 0.55;
@@ -399,9 +597,12 @@ function createArchetypeProfile(
     base.fireRange = 13 + seeded() * 3;
     base.grabDecisionDelay = 0.12 + seeded() * 0.2;
     base.launchChargeSeconds = 0.88 + seeded() * 0.26;
-    base.pathNoise = 0.22 + seeded() * 0.18;
+    base.pathNoise = 0.2 + seeded() * 0.18;
+    base.routeLengthMin = 3;
+    base.routeLengthMax = 4;
+    base.shotSpreadBase = 0.12 + seeded() * 0.05;
   } else if (archetype === "anchor") {
-    base.aimNoise = 0.1 + seeded() * 0.16;
+    base.aimNoise = 0.08 + seeded() * 0.12;
     base.aimReleaseMin = 0.78 + seeded() * 0.08;
     base.aimReleaseMax = 0.9 + seeded() * 0.06;
     base.barDirectionWeight = 3.6 + seeded() * 0.7;
@@ -417,8 +618,11 @@ function createArchetypeProfile(
     base.grabDecisionDelay = 0.08 + seeded() * 0.12;
     base.launchChargeSeconds = 0.92 + seeded() * 0.16;
     base.pathNoise = 0.02 + seeded() * 0.05;
+    base.routeLengthMin = 2;
+    base.routeLengthMax = 3;
+    base.shotSpreadBase = 0.06 + seeded() * 0.03;
   } else {
-    base.aimNoise = 0.48 + seeded() * 0.28;
+    base.aimNoise = 0.42 + seeded() * 0.22;
     base.aimReleaseMin = 0.58 + seeded() * 0.08;
     base.aimReleaseMax = 0.84 + seeded() * 0.12;
     base.barDirectionWeight = 2.05 + seeded() * 0.4;
@@ -435,9 +639,89 @@ function createArchetypeProfile(
     base.grabDecisionDelay = 0.18 + seeded() * 0.28;
     base.launchChargeSeconds = 1 + seeded() * 0.24;
     base.pathNoise = 0.16 + seeded() * 0.18;
+    base.routeLengthMin = 2;
+    base.routeLengthMax = 3;
+    base.shotSpreadBase = 0.15 + seeded() * 0.06;
   }
 
   return base;
+}
+
+function findNearestBarNode(botPos: Vec3, bars: Vec3[]): number | null {
+  let bestIndex: number | null = null;
+  let bestDistance = Infinity;
+
+  for (let i = 0; i < bars.length; i += 1) {
+    const distance = v3.distSq(botPos, bars[i]);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = i;
+    }
+  }
+
+  return bestIndex;
+}
+
+function findShortestPath(
+  graph: BarRouteGraph,
+  startNode: number | null,
+  targetNode: number,
+): number[] {
+  if (startNode === null || startNode === targetNode) return [targetNode];
+
+  const queue = [startNode];
+  const visited = new Set<number>([startNode]);
+  const parent = new Map<number, number | null>([[startNode, null]]);
+
+  while (queue.length > 0) {
+    const current = queue.shift() as number;
+    if (current === targetNode) break;
+
+    for (const neighbor of graph.nodes[current]?.neighbors ?? []) {
+      if (visited.has(neighbor)) continue;
+      visited.add(neighbor);
+      parent.set(neighbor, current);
+      queue.push(neighbor);
+    }
+  }
+
+  if (!parent.has(targetNode)) return [targetNode];
+
+  const path: number[] = [];
+  let current: number | null = targetNode;
+  while (current !== null) {
+    path.push(current);
+    current = parent.get(current) ?? null;
+  }
+  path.reverse();
+  return path.slice(1);
+}
+
+function jitterDirection(
+  dir: Vec3,
+  spread: number,
+  random: () => number,
+): Vec3 {
+  if (spread <= 1e-6) return dir;
+
+  const referenceUp = Math.abs(dir.y) > 0.92 ? { x: 1, y: 0, z: 0 } : DEFAULT_WORLD_UP;
+  const right = v3.normalize(v3.cross(dir, referenceUp));
+  const up = v3.normalize(v3.cross(right, dir));
+  const yawOffset = (random() * 2 - 1) * spread;
+  const pitchOffset = (random() * 2 - 1) * spread * 0.8;
+  return v3.normalize(
+    v3.add(
+      dir,
+      v3.add(v3.scale(right, yawOffset), v3.scale(up, pitchOffset)),
+    ),
+  );
+}
+
+function phaseSpreadModifier(phase: PlayerPhase): number {
+  if (phase === "AIMING") return 0.024;
+  if (phase === "GRABBING") return 0.038;
+  if (phase === "FLOATING") return 0.065;
+  return 0.085;
 }
 
 function hashString(value: string): number {

@@ -19,6 +19,10 @@ export class ArenaQueryAdapter implements SharedArenaQuery {
     return this.arena.getBreachOpenSign(team);
   }
 
+  public getAllBarGrabPoints(): Vec3[] {
+    return this.arena.getAllBarGrabPoints().map((bar) => ({ x: bar.x, y: bar.y, z: bar.z }));
+  }
+
   public isGoalDoorOpen(team: 0 | 1): boolean {
     return this.arena.isGoalDoorOpen(team);
   }
@@ -35,10 +39,6 @@ export class ArenaQueryAdapter implements SharedArenaQuery {
     const bar = this.arena.getNearestBar(this.toThree(pos), radius);
     if (!bar) return null;
     return { pos: { x: bar.x, y: bar.y, z: bar.z } };
-  }
-
-  public getAllBarGrabPoints(): Vec3[] {
-    return this.arena.getAllBarGrabPoints().map((bar) => ({ x: bar.x, y: bar.y, z: bar.z }));
   }
 
   private toThree(vec: Vec3) {

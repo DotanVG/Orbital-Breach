@@ -23,6 +23,7 @@ const HUD_MARKUP = `
     position:absolute;left:50%;top:50%;
     transform:translate(-50%,-50%);
     width:6px;height:6px;border-radius:50%;background:#fff;opacity:0.85;
+    box-shadow:0 0 8px rgba(255,255,255,0.3);
   "></div>
 
   <div id="hud-score" style="
@@ -78,6 +79,7 @@ export interface HudElements {
   root: HTMLDivElement;
   countdown: HTMLDivElement;
   objective: HTMLDivElement;
+  crosshair: HTMLDivElement;
   score: HTMLDivElement;
   breach: HTMLDivElement;
   grab: HTMLDivElement;
@@ -112,6 +114,7 @@ export function createHudView(): HudElements {
     root,
     countdown: q('hud-countdown'),
     objective: q('hud-objective'),
+    crosshair: q('hud-crosshair'),
     score: q('hud-score'),
     breach: q('hud-breach'),
     grab: q('hud-grab'),

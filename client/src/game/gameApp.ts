@@ -10,6 +10,7 @@ import { LocalPlayer } from "../player";
 import { GunViewModel } from "../render/gun";
 import { HUD } from "../render/hud";
 import { SceneManager } from "../render/scene";
+import { KillFeed } from "../ui/kill-feed";
 import { MainMenu } from "../ui/menu";
 import { MobileControls } from "../ui/mobileControls";
 import { cameraYawFacingBreachOpening } from "./cameraYawFromBreach";
@@ -27,6 +28,7 @@ export class App {
   private gunTuneOverlay = new GunTuneOverlay();
   private hud: HUD;
   private input: InputManager;
+  private killFeed = new KillFeed();
   private lastTime = 0;
   private match: LocalMatch;
   private menu: MainMenu;
@@ -52,13 +54,33 @@ export class App {
     this.sceneMgr.getScene().add(this.sceneMgr.getCamera());
     this.gun = new GunViewModel(this.sceneMgr.getCamera());
 
-    this.player.onRoundWin = (team) => {
-      this.match.recordHumanScore(team);
-      this.onRoundWin(team);
+    this.match.onEvent = (event) => {
+      switch (event.type) {
+        case "hitConfirm":
+          this.hud.triggerHitConfirm(event.team);
+          break;
+        case "freeze":
+          this.killFeed.addKill(
+            event.killerName,
+            event.killerTeam,
+            event.victimName,
+            event.victimTeam,
+          );
+          break;
+        case "score":
+          this.killFeed.addScore(event.scorerName, event.scorerTeam);
+          break;
+        case "roundWin":
+          this.onRoundWin(event.winningTeam);
+          break;
+        case "roundTie":
+          this.onRoundTie();
+          break;
+      }
     };
-    this.match.onScore = (team) => this.onRoundWin(team);
     this.round.onBeginRound = () => this.beginNewRound();
     this.round.onCountdownEnd = () => this.arena.setPortalDoorsOpen(true);
+    this.round.onRoundTimeout = () => this.match.handleRoundTimeout();
 
     if (this.mobile) {
       this.mobileControls = new MobileControls(this.input);
@@ -105,8 +127,7 @@ export class App {
 
     const layout = generateArenaLayout();
     this.arena.loadLayout(layout);
-    this.player.resetForNewRound(this.arena);
-    this.match.resetForRound(this.arena);
+    this.match.resetForRound(this.arena, this.player);
 
     const openAxis = this.arena.getBreachOpenAxis(this.player.team);
     const openSign = this.arena.getBreachOpenSign(this.player.team);
@@ -118,7 +139,15 @@ export class App {
 
   private onRoundWin(team: 0 | 1): void {
     if (!this.round.isPlaying()) return;
+    this.projectiles.clear();
     this.hud.showRoundEnd(team === 0 ? "CYAN WINS" : "MAGENTA WINS");
+    this.round.endRound();
+  }
+
+  private onRoundTie(): void {
+    if (!this.round.isPlaying()) return;
+    this.projectiles.clear();
+    this.hud.showRoundEnd("TIE");
     this.round.endRound();
   }
 

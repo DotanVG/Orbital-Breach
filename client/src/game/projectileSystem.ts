@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { ARENA_SIZE } from "../../../shared/constants";
-import { Projectile } from "../projectile";
+import { Projectile, type ProjectileTrailMode } from "../projectile";
 import { bulletHitPoint } from "./bulletCollision";
 import { segmentSphereHitPoint } from "./projectileActorCollision";
 
@@ -15,19 +15,25 @@ const PORTAL_DIST = 9.0;
 const WALL_INTENSITY = 5.0;
 const WALL_DIST = 6.0;
 
+const MAX_FLASH_POOL = 18;
+const MAX_SPARK_POOL = 14;
 const SPARK_DURATION = 0.32;
 const SPARK_COUNT = 22;
 
 interface HitFlash {
-  light: THREE.PointLight;
+  active: boolean;
   age: number;
+  light: THREE.PointLight;
+  peak: number;
 }
 
 interface SparkBurst {
+  active: boolean;
+  age: number;
+  count: number;
   points: THREE.Points;
   positions: Float32Array;
   velocities: Float32Array;
-  age: number;
 }
 
 export interface ProjectileActorTarget {
@@ -51,9 +57,12 @@ type CollisionHit =
   | { kind: "portal"; point: THREE.Vector3; distance: number };
 
 export class ProjectileSystem {
-  private projectiles: Projectile[] = [];
   private flashes: HitFlash[] = [];
+  private projectilePool: Projectile[] = [];
+  private projectiles: Projectile[] = [];
   private sparks: SparkBurst[] = [];
+  private readonly tmpDirection = new THREE.Vector3();
+  private readonly tmpSparkNormal = new THREE.Vector3();
 
   public constructor(private readonly scene: THREE.Scene) {}
 
@@ -63,7 +72,9 @@ export class ProjectileSystem {
     team: 0 | 1,
     ownerId: string,
   ): void {
-    this.projectiles.push(new Projectile(this.scene, origin, direction, team, ownerId));
+    const projectile = this.projectilePool.pop() ?? new Projectile(this.scene);
+    projectile.reset(origin, direction, team, ownerId);
+    this.projectiles.push(projectile);
   }
 
   public update(
@@ -74,16 +85,20 @@ export class ProjectileSystem {
     onPortalHit: (pos: THREE.Vector3, color: number) => void,
     onActorHit: (hit: ProjectileActorHit) => void,
   ): void {
+    const fxMode = this.currentFxMode();
+    const trailMode = this.currentTrailMode(fxMode);
+
     for (const projectile of this.projectiles) {
       if (projectile.dead) continue;
 
-      const oldPos = projectile.getPosition().clone();
+      projectile.setTrailMode(trailMode);
       projectile.update(dt);
       let handledFlash = false;
 
       if (!projectile.dead) {
+        const oldPos = projectile.getPreviousPosition();
         const newPos = projectile.getPosition();
-        const direction = new THREE.Vector3().subVectors(newPos, oldPos).normalize();
+        const direction = this.tmpDirection.subVectors(newPos, oldPos).normalize();
         const nearestHit = this.findNearestHit(
           projectile,
           oldPos,
@@ -98,16 +113,21 @@ export class ProjectileSystem {
           handledFlash = true;
 
           if (nearestHit.kind === "obstacle") {
-            this.spawnFlash(nearestHit.point, projectile.getTeamColor(), OBS_INTENSITY, OBS_DIST);
-            this.spawnSparks(nearestHit.point, projectile.getTeamColor(), null);
+            this.spawnFlash(nearestHit.point, projectile.getTeamColor(), OBS_INTENSITY, OBS_DIST, fxMode);
+            this.spawnSparks(nearestHit.point, projectile.getTeamColor(), null, fxMode);
           } else if (nearestHit.kind === "portal") {
-            this.spawnFlash(nearestHit.point, projectile.getTeamColor(), PORTAL_INTENSITY, PORTAL_DIST);
+            this.spawnFlash(nearestHit.point, projectile.getTeamColor(), PORTAL_INTENSITY, PORTAL_DIST, fxMode);
             onPortalHit(nearestHit.point, projectile.getTeamColor());
           } else {
-            this.spawnFlash(nearestHit.point, projectile.getTeamColor(), OBS_INTENSITY, OBS_DIST);
-            this.spawnSparks(nearestHit.point, projectile.getTeamColor(), direction.clone().negate());
+            this.spawnFlash(nearestHit.point, projectile.getTeamColor(), OBS_INTENSITY, OBS_DIST, fxMode);
+            this.spawnSparks(
+              nearestHit.point,
+              projectile.getTeamColor(),
+              this.tmpSparkNormal.copy(direction).negate(),
+              fxMode,
+            );
             onActorHit({
-              direction,
+              direction: direction.clone(),
               impactPoint: nearestHit.point,
               ownerId: projectile.getOwnerId(),
               targetId: nearestHit.targetId,
@@ -120,59 +140,98 @@ export class ProjectileSystem {
         const rawPos = projectile.getPosition();
         const wallPos = this.clampToArena(rawPos);
         const isWall = this.isAtArenaBoundary(rawPos);
-        this.spawnFlash(wallPos, projectile.getTeamColor(), WALL_INTENSITY, WALL_DIST);
+        this.spawnFlash(wallPos, projectile.getTeamColor(), WALL_INTENSITY, WALL_DIST, fxMode);
         if (isWall) {
-          this.spawnSparks(wallPos, projectile.getTeamColor(), this.inwardWallNormal(wallPos));
+          this.spawnSparks(
+            wallPos,
+            projectile.getTeamColor(),
+            this.inwardWallNormal(wallPos),
+            fxMode,
+          );
         }
       }
     }
 
-    this.projectiles = this.projectiles.filter((projectile) => !projectile.dead);
-
-    for (const flash of this.flashes) {
-      flash.age += dt;
-      const t = Math.min(flash.age / FLASH_DURATION, 1);
-      flash.light.intensity = (flash.light.userData.peak as number) * (1 - t * t);
-    }
-    for (const flash of this.flashes.filter((item) => item.age >= FLASH_DURATION)) {
-      this.scene.remove(flash.light);
-      flash.light.dispose();
-    }
-    this.flashes = this.flashes.filter((item) => item.age < FLASH_DURATION);
-
-    for (const spark of this.sparks) {
-      spark.age += dt;
-      for (let i = 0; i < SPARK_COUNT; i += 1) {
-        spark.positions[i * 3] += spark.velocities[i * 3] * dt;
-        spark.positions[i * 3 + 1] += spark.velocities[i * 3 + 1] * dt;
-        spark.positions[i * 3 + 2] += spark.velocities[i * 3 + 2] * dt;
-      }
-      (spark.points.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-      const t = spark.age / SPARK_DURATION;
-      (spark.points.material as THREE.PointsMaterial).opacity = Math.max(0, 1 - t * t);
-    }
-    for (const spark of this.sparks.filter((item) => item.age >= SPARK_DURATION)) {
-      this.scene.remove(spark.points);
-      spark.points.geometry.dispose();
-      (spark.points.material as THREE.Material).dispose();
-    }
-    this.sparks = this.sparks.filter((item) => item.age < SPARK_DURATION);
+    this.recycleDeadProjectiles();
+    this.updateFlashes(dt);
+    this.updateSparks(dt);
   }
 
   public clear(): void {
-    for (const projectile of this.projectiles) projectile.dispose();
+    for (const projectile of this.projectiles) {
+      projectile.dispose();
+      this.projectilePool.push(projectile);
+    }
     this.projectiles = [];
+
     for (const flash of this.flashes) {
-      this.scene.remove(flash.light);
-      flash.light.dispose();
+      flash.active = false;
+      flash.light.visible = false;
     }
-    this.flashes = [];
+
     for (const spark of this.sparks) {
-      this.scene.remove(spark.points);
-      spark.points.geometry.dispose();
-      (spark.points.material as THREE.Material).dispose();
+      spark.active = false;
+      spark.points.visible = false;
     }
-    this.sparks = [];
+  }
+
+  private acquireFlash(): HitFlash | null {
+    const existing = this.flashes.find((flash) => !flash.active);
+    if (existing) return existing;
+    if (this.flashes.length >= MAX_FLASH_POOL) return null;
+
+    const light = new THREE.PointLight(0xffffff, 0, 0, 2);
+    light.visible = false;
+    this.scene.add(light);
+
+    const flash: HitFlash = { active: false, age: 0, light, peak: 0 };
+    this.flashes.push(flash);
+    return flash;
+  }
+
+  private acquireSparkBurst(): SparkBurst | null {
+    const existing = this.sparks.find((spark) => !spark.active);
+    if (existing) return existing;
+    if (this.sparks.length >= MAX_SPARK_POOL) return null;
+
+    const positions = new Float32Array(SPARK_COUNT * 3);
+    const velocities = new Float32Array(SPARK_COUNT * 3);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    const material = new THREE.PointsMaterial({
+      blending: THREE.AdditiveBlending,
+      color: 0xffffff,
+      depthWrite: false,
+      opacity: 1,
+      size: 0.07,
+      transparent: true,
+    });
+    const points = new THREE.Points(geometry, material);
+    points.visible = false;
+    this.scene.add(points);
+
+    const spark: SparkBurst = {
+      active: false,
+      age: 0,
+      count: 0,
+      points,
+      positions,
+      velocities,
+    };
+    this.sparks.push(spark);
+    return spark;
+  }
+
+  private currentFxMode(): "normal" | "high" | "extreme" {
+    if (this.projectiles.length >= 90) return "extreme";
+    if (this.projectiles.length >= 45) return "high";
+    return "normal";
+  }
+
+  private currentTrailMode(mode: "normal" | "high" | "extreme"): ProjectileTrailMode {
+    if (mode === "extreme") return "hidden";
+    if (mode === "high") return "reduced";
+    return "full";
   }
 
   private findNearestHit(
@@ -218,61 +277,13 @@ export class ProjectileSystem {
     return nearest;
   }
 
-  private spawnFlash(pos: THREE.Vector3, color: number, intensity: number, dist: number): void {
-    const light = new THREE.PointLight(color, intensity, dist, 2);
-    light.position.copy(pos);
-    light.userData.peak = intensity;
-    this.scene.add(light);
-    this.flashes.push({ light, age: 0 });
-  }
-
-  private spawnSparks(pos: THREE.Vector3, color: number, normal: THREE.Vector3 | null): void {
-    const positions = new Float32Array(SPARK_COUNT * 3);
-    const velocities = new Float32Array(SPARK_COUNT * 3);
-
-    const nrm = normal ?? new THREE.Vector3(0, 1, 0);
-    const t1 = new THREE.Vector3();
-    const t2 = new THREE.Vector3();
-    if (Math.abs(nrm.x) < 0.9) {
-      t1.crossVectors(nrm, new THREE.Vector3(1, 0, 0)).normalize();
-    } else {
-      t1.crossVectors(nrm, new THREE.Vector3(0, 1, 0)).normalize();
-    }
-    t2.crossVectors(nrm, t1);
-
-    const phiMax = normal ? Math.PI / 2 : Math.PI;
-
-    for (let i = 0; i < SPARK_COUNT; i += 1) {
-      positions[i * 3] = pos.x;
-      positions[i * 3 + 1] = pos.y;
-      positions[i * 3 + 2] = pos.z;
-
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.random() * phiMax;
-      const speed = 2.5 + Math.random() * 5.5;
-      const cp = Math.cos(phi);
-      const sp = Math.sin(phi);
-      const ct = Math.cos(theta);
-      const st = Math.sin(theta);
-
-      velocities[i * 3] = (nrm.x * cp + (t1.x * ct + t2.x * st) * sp) * speed;
-      velocities[i * 3 + 1] = (nrm.y * cp + (t1.y * ct + t2.y * st) * sp) * speed;
-      velocities[i * 3 + 2] = (nrm.z * cp + (t1.z * ct + t2.z * st) * sp) * speed;
-    }
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    const material = new THREE.PointsMaterial({
-      blending: THREE.AdditiveBlending,
-      color,
-      depthWrite: false,
-      opacity: 1,
-      size: 0.07,
-      transparent: true,
-    });
-    const points = new THREE.Points(geometry, material);
-    this.scene.add(points);
-    this.sparks.push({ points, positions, velocities, age: 0 });
+  private inwardWallNormal(clampedPos: THREE.Vector3): THREE.Vector3 {
+    const ax = Math.abs(clampedPos.x);
+    const ay = Math.abs(clampedPos.y);
+    const az = Math.abs(clampedPos.z);
+    if (ax >= ay && ax >= az) return new THREE.Vector3(-Math.sign(clampedPos.x), 0, 0);
+    if (ay >= ax && ay >= az) return new THREE.Vector3(0, -Math.sign(clampedPos.y), 0);
+    return new THREE.Vector3(0, 0, -Math.sign(clampedPos.z));
   }
 
   private isAtArenaBoundary(pos: THREE.Vector3): boolean {
@@ -291,12 +302,133 @@ export class ProjectileSystem {
     );
   }
 
-  private inwardWallNormal(clampedPos: THREE.Vector3): THREE.Vector3 {
-    const ax = Math.abs(clampedPos.x);
-    const ay = Math.abs(clampedPos.y);
-    const az = Math.abs(clampedPos.z);
-    if (ax >= ay && ax >= az) return new THREE.Vector3(-Math.sign(clampedPos.x), 0, 0);
-    if (ay >= ax && ay >= az) return new THREE.Vector3(0, -Math.sign(clampedPos.y), 0);
-    return new THREE.Vector3(0, 0, -Math.sign(clampedPos.z));
+  private recycleDeadProjectiles(): void {
+    if (this.projectiles.length === 0) return;
+
+    const active: Projectile[] = [];
+    for (const projectile of this.projectiles) {
+      if (projectile.dead) {
+        this.projectilePool.push(projectile);
+      } else {
+        active.push(projectile);
+      }
+    }
+    this.projectiles = active;
+  }
+
+  private spawnFlash(
+    pos: THREE.Vector3,
+    color: number,
+    intensity: number,
+    distance: number,
+    mode: "normal" | "high" | "extreme",
+  ): void {
+    const flash = this.acquireFlash();
+    if (!flash) return;
+
+    const intensityScale = mode === "normal" ? 1 : mode === "high" ? 0.7 : 0.45;
+
+    flash.active = true;
+    flash.age = 0;
+    flash.peak = intensity * intensityScale;
+    flash.light.position.copy(pos);
+    flash.light.color.setHex(color);
+    flash.light.distance = distance * intensityScale;
+    flash.light.intensity = flash.peak;
+    flash.light.visible = true;
+  }
+
+  private spawnSparks(
+    pos: THREE.Vector3,
+    color: number,
+    normal: THREE.Vector3 | null,
+    mode: "normal" | "high" | "extreme",
+  ): void {
+    const sparkCount = mode === "normal" ? SPARK_COUNT : mode === "high" ? 10 : 0;
+    if (sparkCount <= 0) return;
+
+    const spark = this.acquireSparkBurst();
+    if (!spark) return;
+
+    const nrm = normal ?? new THREE.Vector3(0, 1, 0);
+    const tangentA = new THREE.Vector3();
+    const tangentB = new THREE.Vector3();
+    if (Math.abs(nrm.x) < 0.9) {
+      tangentA.crossVectors(nrm, new THREE.Vector3(1, 0, 0)).normalize();
+    } else {
+      tangentA.crossVectors(nrm, new THREE.Vector3(0, 1, 0)).normalize();
+    }
+    tangentB.crossVectors(nrm, tangentA);
+    const phiMax = normal ? Math.PI / 2 : Math.PI;
+
+    spark.active = true;
+    spark.age = 0;
+    spark.count = sparkCount;
+    spark.points.visible = true;
+    const material = spark.points.material as THREE.PointsMaterial;
+    material.color.setHex(color);
+    material.opacity = 1;
+
+    for (let i = 0; i < SPARK_COUNT; i += 1) {
+      spark.positions[i * 3] = pos.x;
+      spark.positions[i * 3 + 1] = pos.y;
+      spark.positions[i * 3 + 2] = pos.z;
+
+      if (i >= sparkCount) {
+        spark.velocities[i * 3] = 0;
+        spark.velocities[i * 3 + 1] = 0;
+        spark.velocities[i * 3 + 2] = 0;
+        continue;
+      }
+
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * phiMax;
+      const speed = 2.5 + Math.random() * 5.5;
+      const cp = Math.cos(phi);
+      const sp = Math.sin(phi);
+      const ct = Math.cos(theta);
+      const st = Math.sin(theta);
+
+      spark.velocities[i * 3] = (nrm.x * cp + (tangentA.x * ct + tangentB.x * st) * sp) * speed;
+      spark.velocities[i * 3 + 1] = (nrm.y * cp + (tangentA.y * ct + tangentB.y * st) * sp) * speed;
+      spark.velocities[i * 3 + 2] = (nrm.z * cp + (tangentA.z * ct + tangentB.z * st) * sp) * speed;
+    }
+
+    (spark.points.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+  }
+
+  private updateFlashes(dt: number): void {
+    for (const flash of this.flashes) {
+      if (!flash.active) continue;
+
+      flash.age += dt;
+      const t = Math.min(flash.age / FLASH_DURATION, 1);
+      flash.light.intensity = flash.peak * (1 - t * t);
+
+      if (flash.age >= FLASH_DURATION) {
+        flash.active = false;
+        flash.light.visible = false;
+      }
+    }
+  }
+
+  private updateSparks(dt: number): void {
+    for (const spark of this.sparks) {
+      if (!spark.active) continue;
+
+      spark.age += dt;
+      for (let i = 0; i < spark.count; i += 1) {
+        spark.positions[i * 3] += spark.velocities[i * 3] * dt;
+        spark.positions[i * 3 + 1] += spark.velocities[i * 3 + 1] * dt;
+        spark.positions[i * 3 + 2] += spark.velocities[i * 3 + 2] * dt;
+      }
+      (spark.points.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+      (spark.points.material as THREE.PointsMaterial).opacity = Math.max(0, 1 - (spark.age / SPARK_DURATION) ** 2);
+
+      if (spark.age >= SPARK_DURATION) {
+        spark.active = false;
+        spark.points.visible = false;
+      }
+    }
   }
 }

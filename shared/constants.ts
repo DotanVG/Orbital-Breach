@@ -33,6 +33,7 @@ export const ZERO_G_PORTAL_GRAVITY  = 1.5;
 // Game flow
 export const COUNTDOWN_SECONDS      = 5;
 export const ROUND_END_DELAY        = 5;     // seconds before new round starts
+export const ROUND_DURATION_SECONDS = 120;   // hard cap so every round ends
 
 // Solo bot roster
 export const BOT_NAMES = [

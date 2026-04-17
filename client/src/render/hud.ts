@@ -31,6 +31,8 @@ export interface HudState {
  */
 export class HUD {
   private view: HudElements;
+  private hitConfirmTeam: 0 | 1 = 0;
+  private hitConfirmTimer = 0;
 
   // Typewriter state — only active during the very first countdown
   private isFirstRound = true;
@@ -53,6 +55,11 @@ export class HUD {
     this.view.roundEnd.style.display = 'none';
   }
 
+  public triggerHitConfirm(team: 0 | 1): void {
+    this.hitConfirmTeam = team;
+    this.hitConfirmTimer = 0.14;
+  }
+
   public update(state: HudState): void {
     // Track phase transitions to detect first-round vs subsequent rounds
     if (state.phase !== this.prevPhase) {
@@ -65,6 +72,7 @@ export class HUD {
     this.renderScore(state.score);
     this.renderCountdown(state.phase, state.countdown);
     this.renderObjectiveTypewriter(state.phase, state.dt, state.team);
+    this.renderCrosshair(state.dt);
     this.renderBreachIndicator(state.inBreach);
     this.renderGrabPrompt(state.playerPhase, state.nearBar, state.damage);
     this.renderPowerBar(state.playerPhase, state.launchPower, state.maxLaunchPower);
@@ -83,6 +91,23 @@ export class HUD {
     } else {
       this.view.countdown.style.display = 'none';
     }
+  }
+
+  private renderCrosshair(dt: number): void {
+    this.hitConfirmTimer = Math.max(0, this.hitConfirmTimer - dt);
+    const pulse = this.hitConfirmTimer > 0 ? this.hitConfirmTimer / 0.14 : 0;
+    const glowColor = this.hitConfirmTeam === 0 ? '#00ffff' : '#ff00ff';
+    const scale = 1 + pulse * 0.5;
+    const size = 6 + pulse * 2;
+
+    this.view.crosshair.style.width = `${size.toFixed(2)}px`;
+    this.view.crosshair.style.height = `${size.toFixed(2)}px`;
+    this.view.crosshair.style.transform = `translate(-50%,-50%) scale(${scale.toFixed(3)})`;
+    this.view.crosshair.style.background = pulse > 0 ? glowColor : '#ffffff';
+    this.view.crosshair.style.opacity = pulse > 0 ? '1' : '0.85';
+    this.view.crosshair.style.boxShadow = pulse > 0
+      ? `0 0 ${12 + pulse * 10}px ${glowColor}`
+      : '0 0 8px rgba(255,255,255,0.3)';
   }
 
   private renderObjectiveTypewriter(phase: GamePhase, dt: number, team: 0 | 1): void {
