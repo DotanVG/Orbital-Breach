@@ -160,6 +160,18 @@ const CSS = `
     .menu-btn      { padding: 14px 44px; font-size: 14px; letter-spacing: 4px; }
     .menu-controls { font-size: 10px; line-height: 2.0; margin-top: 24px; padding: 0 16px; }
   }
+
+  /* Landscape mobile: reduce vertical rhythm to fit in ~430px viewport height */
+  @media (max-height: 560px) {
+    .menu-title    { font-size: 30px; letter-spacing: 6px; margin-bottom: 4px; }
+    .menu-subtitle { font-size: 9px; letter-spacing: 3px; margin-bottom: 14px; }
+    .menu-section  { margin-bottom: 10px; }
+    .menu-label    { font-size: 9px; letter-spacing: 3px; margin-bottom: 6px; }
+    .menu-divider  { margin: 2px 0 12px; width: 80%; }
+    .menu-input    { padding: 8px 16px; font-size: 13px; width: 220px; }
+    .menu-btn      { padding: 10px 40px; font-size: 13px; letter-spacing: 4px; }
+    .menu-controls { font-size: 9px; line-height: 1.75; margin-top: 10px; padding: 0 24px; }
+  }
 `;
 
 export interface MenuElements {
@@ -179,10 +191,11 @@ export function injectMenuStyle(): HTMLStyleElement {
 export function createMenuView(savedName: string): MenuElements {
   const mobile = isTouchDevice();
   const controlsHtml = mobile
-    ? `Drag right side to look &nbsp;&middot;&nbsp; Left stick to move<br>
+    ? `Drag screen to look &nbsp;&middot;&nbsp; Left stick walks in gravity room<br>
        <span class="menu-key">FIRE</span> Freeze shot &nbsp;&middot;&nbsp;
-       <span class="menu-key">GRAB</span> Grab bar &nbsp;&middot;&nbsp;
-       <span class="menu-key">JUMP</span> Charge launch`
+       <span class="menu-key">GRAB</span> Grip bar &nbsp;&middot;&nbsp;
+       <span class="menu-key">JUMP&nbsp;/&nbsp;LAUNCH</span> Hold &amp; drag down to charge, release to launch<br>
+       <span class="menu-key">3RD&nbsp;/&nbsp;1ST</span> Toggle camera view`
     : `<span class="menu-key">WASD</span> Move &nbsp;&middot;&nbsp;
        <span class="menu-key">E</span> Grab bar &nbsp;&middot;&nbsp;
        <span class="menu-key">SPACE</span> Charge launch<br>
