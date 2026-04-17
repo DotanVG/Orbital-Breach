@@ -280,7 +280,7 @@ export class MobileControls {
 
   /** Called every frame with normalised power (0–1) and whether to show the meter. */
   public setPowerLevel(pct: number, show: boolean): void {
-    this.powerTrack.style.display = show ? '' : 'none';
+    this.powerTrack.style.display = show ? 'block' : 'none';
     if (!show) {
       this.lastHapticPct = 0;
       return;
