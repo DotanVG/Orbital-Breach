@@ -128,6 +128,22 @@ const CSS = `
     background: rgba(255, 200, 0, 0.38);
     border-color: rgba(255, 200, 0, 0.65);
   }
+  .mob-btn-view {
+    width: 52px;
+    height: 26px;
+    border-radius: 5px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    left: 8px;
+    background: rgba(180, 180, 255, 0.10);
+    border: 1px solid rgba(180, 180, 255, 0.28);
+    color: rgba(180, 180, 255, 0.70);
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+  .mob-btn-view.mob-pressed {
+    background: rgba(180, 180, 255, 0.28);
+    border-color: rgba(180, 180, 255, 0.55);
+  }
 `;
 
 export class MobileControls {
@@ -141,6 +157,9 @@ export class MobileControls {
   private fireBtn: HTMLDivElement;
   private jumpBtn: HTMLDivElement;
   private grabBtn: HTMLDivElement;
+  private viewBtn: HTMLDivElement;
+
+  public onViewToggle: (() => void) | null = null;
 
   private joystickPointerId = -1;
   private joystickCenterX = 0;
@@ -193,15 +212,18 @@ export class MobileControls {
     this.fireBtn = this.makeBtn('mob-btn-fire', 'FIRE');
     this.jumpBtn = this.makeBtn('mob-btn-jump', 'JUMP');
     this.grabBtn = this.makeBtn('mob-btn-grab', 'GRAB');
+    this.viewBtn = this.makeBtn('mob-btn-view', '3RD');
     this.container.appendChild(this.fireBtn);
     this.container.appendChild(this.jumpBtn);
     this.container.appendChild(this.grabBtn);
+    this.container.appendChild(this.viewBtn);
 
     this.bindLookArea();
     this.bindJoystick();
     this.bindFireBtn();
     this.bindJumpBtn();
     this.bindGrabBtn();
+    this.bindViewBtn();
   }
 
   public mount(): void {
@@ -248,7 +270,12 @@ export class MobileControls {
   /** Called every frame — show GRAB button only when the player can grab a nearby bar. */
   public setNearBar(near: boolean, canGrab: boolean): void {
     const showGrab = near && canGrab;
-    this.grabBtn.style.display = showGrab ? '' : 'none';
+    this.grabBtn.style.display = showGrab ? 'flex' : 'none';
+  }
+
+  /** Called every frame — updates view toggle label to show the opposite of current mode. */
+  public setViewMode(thirdPerson: boolean): void {
+    this.viewBtn.textContent = thirdPerson ? '1ST' : '3RD';
   }
 
   /** Called every frame with normalised power (0–1) and whether to show the meter. */
@@ -425,6 +452,19 @@ export class MobileControls {
     };
     this.jumpBtn.addEventListener('pointerup', end);
     this.jumpBtn.addEventListener('pointercancel', end);
+  }
+
+  // VIEW TOGGLE: tap = switch 1st/3rd person
+  private bindViewBtn(): void {
+    this.viewBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.viewBtn.classList.add('mob-pressed');
+      this.onViewToggle?.();
+    });
+    const end = (): void => { this.viewBtn.classList.remove('mob-pressed'); };
+    this.viewBtn.addEventListener('pointerup', end);
+    this.viewBtn.addEventListener('pointercancel', end);
   }
 
   // GRAB: one-shot press; drag = look

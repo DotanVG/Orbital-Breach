@@ -66,6 +66,7 @@ export class App {
       this.mobileControls = new MobileControls(this.input);
       this.mobileControls.mount();
       this.mobileControls.hide(); // hidden until play starts
+      this.mobileControls.onViewToggle = () => { this.thirdPerson = !this.thirdPerson; };
     } else {
       // Desktop only: re-lock pointer when clicking back onto the canvas mid-game
       this.sceneMgr.getRenderer().domElement.addEventListener('mousedown', () => {
@@ -303,6 +304,7 @@ export class App {
       const max = this.player.maxLaunchPower();
       const pct = max > 0 ? this.player.launchPower / max : 0;
       this.mobileControls.setPowerLevel(pct, showPower);
+      this.mobileControls.setViewMode(this.thirdPerson);
     }
 
     const ownTeam: FullPlayerInfo[] = [{
