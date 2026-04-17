@@ -22,6 +22,7 @@ interface FakePlayer {
   kills: number;
   phase: "BREACH" | "FLOATING" | "FROZEN";
   phys: { vel: THREE.Vector3 };
+  resetForNewRound: ReturnType<typeof vi.fn>;
   team: 0 | 1;
   applyHit: ReturnType<typeof vi.fn>;
   getPosition: () => THREE.Vector3;
@@ -35,6 +36,7 @@ function createFakePlayer(team: 0 | 1 = 0): FakePlayer {
     kills: 0,
     phase: "BREACH",
     phys: { vel: new THREE.Vector3() },
+    resetForNewRound: vi.fn(),
     team,
     applyHit: vi.fn(() => false),
     getPosition: () => new THREE.Vector3(0, 0, 0),
@@ -114,6 +116,29 @@ describe("LocalMatch", () => {
       },
     ]);
     expect(match.getScore()).toEqual({ team0: 0, team1: 0 });
+  });
+
+  it("normalizes round spawn slots onto the breach-room floor", () => {
+    const player = createFakePlayer();
+    const arena = {
+      getAllBarGrabPoints: () => [],
+      getBreachOpenAxis: () => "x" as const,
+      getBreachOpenSign: (team: 0 | 1) => (team === 0 ? -1 : 1) as 1 | -1,
+      getBreachRoomCenter: (team: 0 | 1) => new THREE.Vector3(team === 0 ? -18 : 18, 0, 0),
+      getNearestBar: () => null,
+      isDeepInBreachRoom: () => false,
+      isGoalDoorOpen: () => false,
+      isInBreachRoom: () => true,
+    };
+
+    match.resetForRound(arena as never, player as never);
+
+    const playerSpawn = player.resetForNewRound.mock.calls[0]?.[1];
+    const bots = (match as unknown as { bots: Array<{ phys: { pos: THREE.Vector3 } }> }).bots;
+
+    expect(playerSpawn).toBeDefined();
+    expect(playerSpawn.y).toBeCloseTo(-2.12, 4);
+    expect(bots.every((bot) => Math.abs(bot.phys.pos.y + 2.12) < 1e-4)).toBe(true);
   });
 
   it("emits a score event for breach wins", () => {

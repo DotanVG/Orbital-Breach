@@ -350,6 +350,7 @@ export class App {
       score: this.match.getScore(),
       phase: this.round.getPhase(),
       countdown: this.round.getCountdown(),
+      roundTimeRemaining: this.round.getRoundTimeRemaining(),
       playerPhase: this.player.phase,
       launchPower: this.player.launchPower,
       maxLaunchPower: this.player.maxLaunchPower(),

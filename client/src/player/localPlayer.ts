@@ -183,6 +183,7 @@ export class LocalPlayer {
     integrateZeroG(this.phys, dt);
     bounceArena(this.phys);
     arena.bounceObstacles(this.phys);
+    this.tryReturnToOwnBreach(arena);
   }
 
   private updateBreach(
@@ -255,9 +256,7 @@ export class LocalPlayer {
     arena.bounceObstacles(this.phys);
 
     if (arena.isInBreachRoom(this.phys.pos, this.team)) {
-      this.currentBreachTeam = this.team;
-      this.phase = 'BREACH';
-      this.phys.vel.y = 0;
+      this.returnToOwnBreach();
       return;
     }
 
@@ -341,6 +340,18 @@ export class LocalPlayer {
     this.grabHandGripLocal = null;
     this.grabPoseLocked = false;
     this.phase = 'FLOATING';
+  }
+
+  private tryReturnToOwnBreach(arena: Arena): void {
+    if (!arena.isInBreachRoom(this.phys.pos, this.team)) return;
+    this.returnToOwnBreach();
+  }
+
+  private returnToOwnBreach(): void {
+    this.currentBreachTeam = this.team;
+    this.phase = 'BREACH';
+    this.damage.frozen = false;
+    this.phys.vel.y = 0;
   }
 
   private updateAnimation(input: InputManager, cam: CameraController, dt: number): void {

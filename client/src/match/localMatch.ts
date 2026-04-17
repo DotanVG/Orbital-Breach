@@ -140,13 +140,13 @@ export class LocalMatch {
       this.getTeamActorCount(0),
       query,
       this.roundSeed * 11 + 7,
-    );
+    ).map((slot) => settleSpawnOnFloor(slot, query, 0));
     const team1Slots = generateSpawnPositions(
       1,
       this.getTeamActorCount(1),
       query,
       this.roundSeed * 17 + 13,
-    );
+    ).map((slot) => settleSpawnOnFloor(slot, query, 1));
 
     if (this.config.humanTeam === 0) {
       player.resetForNewRound(arena, team0Slots.shift());
@@ -293,9 +293,9 @@ export class LocalMatch {
     isRoundPlaying: boolean,
   ): SpawnProjectileEvent[] {
     const shots: SpawnProjectileEvent[] = [];
+    const query = new ArenaQueryAdapter(arena);
 
     if (isRoundPlaying && !this.roundResolved) {
-      const query = new ArenaQueryAdapter(arena);
       const enemySnapshots = this.buildEnemySnapshots(player);
       for (const bot of this.bots) {
         this.tickBot(
@@ -308,10 +308,15 @@ export class LocalMatch {
         );
       }
 
-      this.resolveActorOverlap(player);
       this.checkForBreachScore(arena, player);
       this.checkFullFreezeWin(player);
+    } else {
+      for (const bot of this.bots) {
+        this.tickBotPassive(bot, arena, dt);
+      }
     }
+
+    this.resolveActorOverlap(player);
 
     for (const bot of this.bots) {
       bot.avatar.update(bot.phys.pos, bot.damage, bot.phase, bot.rot.yaw, dt, bot.phys.vel.length());
@@ -503,6 +508,9 @@ export class LocalMatch {
   ): void {
     if (bot.phase === "FROZEN") {
       integrateFloating(bot, arena, dt);
+      if (arena.isInBreachRoom(bot.phys.pos, bot.team)) {
+        returnBotToOwnBreach(bot);
+      }
       return;
     }
 
@@ -573,6 +581,36 @@ export class LocalMatch {
     }
   }
 
+  private tickBotPassive(
+    bot: BotState,
+    arena: Arena,
+    dt: number,
+  ): void {
+    switch (bot.phase) {
+      case "BREACH":
+        this.stepBotBreachPhysics(bot, arena, dt);
+        break;
+      case "FLOATING":
+      case "FROZEN":
+        integrateFloating(bot, arena, dt);
+        if (arena.isInBreachRoom(bot.phys.pos, bot.team)) {
+          returnBotToOwnBreach(bot);
+        }
+        break;
+      case "GRABBING":
+      case "AIMING":
+        if (bot.grabbedBarPos) {
+          bot.phys.vel.set(0, 0, 0);
+          bot.phys.pos.copy(bot.grabbedBarPos);
+        } else {
+          bot.phase = "FLOATING";
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
   private updateBotBreach(
     bot: BotState,
     command: ReturnType<BotBrain["tick"]>,
@@ -620,9 +658,7 @@ export class LocalMatch {
     integrateFloating(bot, arena, dt);
 
     if (arena.isInBreachRoom(bot.phys.pos, bot.team)) {
-      bot.currentBreachTeam = bot.team;
-      bot.phase = "BREACH";
-      bot.phys.vel.y = 0;
+      returnBotToOwnBreach(bot);
       return;
     }
 
@@ -633,6 +669,25 @@ export class LocalMatch {
         bot.phase = "GRABBING";
       }
     }
+  }
+
+  private stepBotBreachPhysics(bot: BotState, arena: Arena, dt: number): void {
+    const center = arena.getBreachRoomCenter(bot.currentBreachTeam);
+    const openAxis = arena.getBreachOpenAxis(bot.currentBreachTeam);
+    const openSign = arena.getBreachOpenSign(bot.currentBreachTeam);
+    const yawForwardVec = new THREE.Vector3(-Math.sin(bot.rot.yaw), 0, -Math.cos(bot.rot.yaw));
+    const yawRightVec = new THREE.Vector3(Math.cos(bot.rot.yaw), 0, -Math.sin(bot.rot.yaw));
+
+    integrateBreachRoom(
+      bot.phys,
+      { x: 0, z: 0 },
+      yawForwardVec,
+      yawRightVec,
+      false,
+      isOnBreachGround(bot, center.y),
+      dt,
+    );
+    clampBreachRoom(bot.phys, center, openAxis, openSign, arena.isGoalDoorOpen(bot.currentBreachTeam));
   }
 }
 
@@ -765,6 +820,27 @@ function resetBotsForRound(
     bot.brain.resetForRound(roundSeed * 37 + i * 13 + bot.team);
     bot.avatar.update(bot.phys.pos, bot.damage, bot.phase, bot.rot.yaw, 0, 0);
   }
+}
+
+function returnBotToOwnBreach(bot: BotState): void {
+  bot.currentBreachTeam = bot.team;
+  bot.damage.frozen = false;
+  bot.phase = "BREACH";
+  bot.phys.vel.y = 0;
+}
+
+function settleSpawnOnFloor(
+  spawn: Vec3,
+  query: ArenaQueryAdapter,
+  team: 0 | 1,
+): Vec3 {
+  const center = query.getBreachRoomCenter(team);
+  const floorY = center.y - 3 + PLAYER_RADIUS + 0.08;
+  return {
+    x: spawn.x,
+    y: floorY,
+    z: spawn.z,
+  };
 }
 
 function exitRotation(query: ArenaQueryAdapter, team: 0 | 1): { yaw: number; pitch: number } {
