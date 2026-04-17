@@ -1,3 +1,5 @@
+import { isTouchDevice } from '../../platform';
+
 /**
  * Main menu DOM view: injects the stylesheet on first use, builds the
  * menu element from HTML, and exposes the mutable handles (name input,
@@ -148,6 +150,28 @@ const CSS = `
     font-size: 10px; color: #2a3d50; letter-spacing: 2px;
     font-family: 'Share Tech Mono', monospace;
   }
+
+  @media (max-width: 540px) {
+    .menu-title    { font-size: 36px; letter-spacing: 6px; }
+    .menu-subtitle { font-size: 10px; letter-spacing: 3px; margin-bottom: 32px; }
+    .menu-section  { margin-bottom: 20px; }
+    .menu-divider  { width: 80%; }
+    .menu-input    { width: 80%; max-width: 260px; padding: 10px 16px; }
+    .menu-btn      { padding: 14px 44px; font-size: 14px; letter-spacing: 4px; }
+    .menu-controls { font-size: 10px; line-height: 2.0; margin-top: 24px; padding: 0 16px; }
+  }
+
+  /* Landscape mobile: reduce vertical rhythm to fit in ~430px viewport height */
+  @media (max-height: 560px) {
+    .menu-title    { font-size: 30px; letter-spacing: 6px; margin-bottom: 4px; }
+    .menu-subtitle { font-size: 9px; letter-spacing: 3px; margin-bottom: 14px; }
+    .menu-section  { margin-bottom: 10px; }
+    .menu-label    { font-size: 9px; letter-spacing: 3px; margin-bottom: 6px; }
+    .menu-divider  { margin: 2px 0 12px; width: 80%; }
+    .menu-input    { padding: 8px 16px; font-size: 13px; width: 220px; }
+    .menu-btn      { padding: 10px 40px; font-size: 13px; letter-spacing: 4px; }
+    .menu-controls { font-size: 9px; line-height: 1.75; margin-top: 10px; padding: 0 24px; }
+  }
 `;
 
 export interface MenuElements {
@@ -165,6 +189,22 @@ export function injectMenuStyle(): HTMLStyleElement {
 }
 
 export function createMenuView(savedName: string): MenuElements {
+  const mobile = isTouchDevice();
+  const controlsHtml = mobile
+    ? `Drag screen to look &nbsp;&middot;&nbsp; Left stick walks in gravity room<br>
+       <span class="menu-key">FIRE</span> Freeze shot &nbsp;&middot;&nbsp;
+       <span class="menu-key">GRAB</span> Grip bar &nbsp;&middot;&nbsp;
+       <span class="menu-key">JUMP&nbsp;/&nbsp;LAUNCH</span> Hold &amp; drag down to charge, release to launch<br>
+       <span class="menu-key">3RD&nbsp;/&nbsp;1ST</span> Toggle camera view`
+    : `<span class="menu-key">WASD</span> Move &nbsp;&middot;&nbsp;
+       <span class="menu-key">E</span> Grab bar &nbsp;&middot;&nbsp;
+       <span class="menu-key">SPACE</span> Charge launch<br>
+       <span class="menu-key">LMB</span> Freeze shot &nbsp;&middot;&nbsp;
+       <span class="menu-key">V</span> Third-person view &nbsp;&middot;&nbsp;
+       <span class="menu-key">B</span> Selfie view<br>
+       <span class="menu-key">MOUSE</span> Look &nbsp;&middot;&nbsp;
+       <span class="menu-key">ESC</span> Release cursor`;
+
   const container = document.createElement('div');
   container.innerHTML = `
     <div class="menu-root" id="menu-root">
@@ -179,7 +219,8 @@ export function createMenuView(savedName: string): MenuElements {
       <div class="menu-section">
         <div class="menu-label">Call Sign</div>
         <input class="menu-input" id="menu-name" type="text"
-          placeholder="ENTER NAME" maxlength="16" value="${escapeHtml(savedName)}" autocomplete="off" />
+          placeholder="ENTER NAME" maxlength="16" value="${escapeHtml(savedName)}"
+          autocomplete="off" inputmode="${mobile ? 'text' : 'text'}" />
       </div>
 
       <div class="menu-divider"></div>
@@ -188,16 +229,7 @@ export function createMenuView(savedName: string): MenuElements {
         <button class="menu-btn" id="btn-play">PLAY SOLO</button>
       </div>
 
-      <div class="menu-controls">
-        <span class="menu-key">WASD</span> Move &nbsp;&middot;&nbsp;
-        <span class="menu-key">E</span> Grab bar &nbsp;&middot;&nbsp;
-        <span class="menu-key">SPACE</span> Charge launch<br>
-        <span class="menu-key">LMB</span> Freeze shot &nbsp;&middot;&nbsp;
-        <span class="menu-key">V</span> Third-person view &nbsp;&middot;&nbsp;
-        <span class="menu-key">B</span> Selfie view<br>
-        <span class="menu-key">MOUSE</span> Look &nbsp;&middot;&nbsp;
-        <span class="menu-key">ESC</span> Release cursor
-      </div>
+      <div class="menu-controls">${controlsHtml}</div>
 
       <div class="menu-version">v0.1.0 &middot; ORBITAL BREACH</div>
     </div>

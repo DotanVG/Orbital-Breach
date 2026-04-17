@@ -6,6 +6,8 @@ import { HUD } from '../render/hud';
 import { SceneManager } from '../render/scene';
 import { GunViewModel } from '../render/gun';
 import { MainMenu } from '../ui/menu';
+import { MobileControls } from '../ui/mobileControls';
+import { isTouchDevice } from '../platform';
 import { generateArenaLayout } from '../arena/states';
 import { FEATURE_FLAGS } from '../featureFlags';
 import { GRAB_RADIUS } from '../../../shared/constants';
@@ -39,6 +41,8 @@ export class App {
 
   private lastTime = 0;
   private thirdPerson = false;
+  private readonly mobile = isTouchDevice();
+  private mobileControls: MobileControls | null = null;
 
   public constructor() {
     this.sceneMgr = new SceneManager();
@@ -58,18 +62,31 @@ export class App {
     this.round.onBeginRound = () => this.beginNewRound();
     this.round.onCountdownEnd = () => this.arena.setPortalDoorsOpen(true);
 
-    this.sceneMgr.getRenderer().domElement.addEventListener('mousedown', () => {
-      if (this.round.getPhase() === 'LOBBY' || this.menu.isVisible() || this.input.isLocked()) {
-        return;
-      }
-      this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
-    });
+    if (this.mobile) {
+      this.mobileControls = new MobileControls(this.input);
+      this.mobileControls.mount();
+      this.mobileControls.hide(); // hidden until play starts
+      this.mobileControls.onViewToggle = () => { this.thirdPerson = !this.thirdPerson; };
+    } else {
+      // Desktop only: re-lock pointer when clicking back onto the canvas mid-game
+      this.sceneMgr.getRenderer().domElement.addEventListener('mousedown', () => {
+        if (this.round.getPhase() === 'LOBBY' || this.menu.isVisible() || this.input.isLocked()) {
+          return;
+        }
+        this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
+      });
+    }
   }
 
   public start(): void {
     this.menu.show();
     this.menu.onPlay = () => {
-      this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
+      if (this.mobile) {
+        this.input.setMobileControlsActive(true);
+        this.mobileControls?.show();
+      } else {
+        this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
+      }
       this.beginNewRound();
     };
 
@@ -148,7 +165,7 @@ export class App {
       || this.player.phase === 'GRABBING'
       || this.player.phase === 'AIMING';
     if (!this.round.isPlaying()) return;
-    if (!this.input.isLocked() || !inZeroG) return;
+    if (!this.input.canControlGame() || !inZeroG) return;
     if (!this.player.canFire() || !this.input.consumeFire()) return;
 
     const useThirdPersonMuzzle = this.thirdPerson
@@ -277,6 +294,18 @@ export class App {
       nearBar = false;
     }
     const inBreach = this.arena.isInBreachRoom(this.player.getPosition(), this.player.team);
+
+    // Sync mobile controls to current game state
+    if (this.mobile && this.mobileControls) {
+      const canGrab = !this.player.damage.leftArm && !this.player.damage.frozen;
+      this.mobileControls.setPhase(this.player.phase);
+      this.mobileControls.setNearBar(nearBar, canGrab);
+      const showPower = this.player.phase === 'GRABBING' || this.player.phase === 'AIMING';
+      const max = this.player.maxLaunchPower();
+      const pct = max > 0 ? this.player.launchPower / max : 0;
+      this.mobileControls.setPowerLevel(pct, showPower);
+      this.mobileControls.setViewMode(this.thirdPerson);
+    }
 
     const ownTeam: FullPlayerInfo[] = [{
       id: 'local',

@@ -17,6 +17,7 @@ export class SceneManager {
     );
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(this.renderer.domElement);
 
@@ -26,11 +27,16 @@ export class SceneManager {
 
     this.scene.add(new THREE.AmbientLight(0x445577, 1.0));
 
-    window.addEventListener("resize", () => {
-      this.camera.aspect = window.innerWidth / window.innerHeight;
+    const handleResize = (): void => {
+      const vp = window.visualViewport;
+      const w = vp ? Math.round(vp.width) : window.innerWidth;
+      const h = vp ? Math.round(vp.height) : window.innerHeight;
+      this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
-      this.renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+      this.renderer.setSize(w, h);
+    };
+    window.addEventListener("resize", handleResize);
+    window.visualViewport?.addEventListener("resize", handleResize);
   }
 
   public render(): void {
