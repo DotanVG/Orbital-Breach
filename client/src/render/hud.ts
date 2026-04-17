@@ -1,6 +1,9 @@
 import type { DamageState, FullPlayerInfo, EnemyPlayerInfo } from '../../../shared/schema';
 import { createHudView, type HudElements } from './hud/hudView';
 import { buildScoreboardHtml } from './hud/scoreboard';
+import { isTouchDevice } from '../platform';
+
+const IS_MOBILE = isTouchDevice();
 
 export type GamePhase = 'LOBBY' | 'COUNTDOWN' | 'PLAYING' | 'ROUND_END';
 
@@ -17,16 +20,25 @@ export interface HudState {
   tabHeld: boolean;
   ownTeam: FullPlayerInfo[];
   enemyTeam: EnemyPlayerInfo[];
+  dt: number;
+  team: 0 | 1;
 }
 
 /**
  * HUD controller: owns the rendered HUD view and maps gameplay state into
- * DOM updates. Stateless apart from the cached element references — each
- * call to `update` overwrites every dynamic element from the incoming
- * HudState so state drift between frames is impossible.
+ * DOM updates. Per-frame state (typewriter progress, phase tracking) is kept
+ * here; everything else is derived from the incoming HudState each tick.
  */
 export class HUD {
   private view: HudElements;
+
+  // Typewriter state — only active during the very first countdown
+  private isFirstRound = true;
+  private prevPhase: GamePhase = 'LOBBY';
+  private typewriterTimer = 0;
+  private typewriterIdx = 0;
+  private static readonly OBJECTIVE_TEXT =
+    'Objective — Breach Enemy Portal or Freeze them ALL';
 
   public constructor() {
     this.view = createHudView();
@@ -42,8 +54,17 @@ export class HUD {
   }
 
   public update(state: HudState): void {
+    // Track phase transitions to detect first-round vs subsequent rounds
+    if (state.phase !== this.prevPhase) {
+      if (this.prevPhase === 'ROUND_END' && state.phase === 'COUNTDOWN') {
+        this.isFirstRound = false;
+      }
+      this.prevPhase = state.phase;
+    }
+
     this.renderScore(state.score);
     this.renderCountdown(state.phase, state.countdown);
+    this.renderObjectiveTypewriter(state.phase, state.dt, state.team);
     this.renderBreachIndicator(state.inBreach);
     this.renderGrabPrompt(state.playerPhase, state.nearBar, state.damage);
     this.renderPowerBar(state.playerPhase, state.launchPower, state.maxLaunchPower);
@@ -64,6 +85,39 @@ export class HUD {
     }
   }
 
+  private renderObjectiveTypewriter(phase: GamePhase, dt: number, team: 0 | 1): void {
+    const el = this.view.objective;
+    if (this.isFirstRound && phase === 'COUNTDOWN') {
+      // Team color: inverted against the same-colored portal/energy wall behind the text.
+      // Dark backdrop + bright team-tint text ensures contrast regardless of background glow.
+      const textColor  = team === 0 ? '#aaffff' : '#ffaaff';
+      const glowColor  = team === 0 ? '#00ffff' : '#ff00ff';
+      // Dark complement of the team hue so the background blocks the glow bleed
+      const backdropBg = team === 0 ? 'rgba(0,8,8,0.72)' : 'rgba(8,0,8,0.72)';
+
+      el.style.color      = textColor;
+      el.style.textShadow = `0 0 12px ${glowColor}`;
+      el.style.background = backdropBg;
+      el.style.padding    = '4px 14px';
+      el.style.borderRadius = '4px';
+      el.style.display = 'block';
+
+      this.typewriterTimer += dt;
+      const CHARS_PER_SEC = 20;
+      this.typewriterIdx = Math.min(
+        HUD.OBJECTIVE_TEXT.length,
+        Math.floor(this.typewriterTimer * CHARS_PER_SEC),
+      );
+      el.textContent = HUD.OBJECTIVE_TEXT.slice(0, this.typewriterIdx);
+    } else if (phase === 'PLAYING') {
+      el.style.display = 'none';
+      this.typewriterTimer = 0;
+      this.typewriterIdx = 0;
+    } else {
+      el.style.display = 'none';
+    }
+  }
+
   private renderBreachIndicator(inBreach: boolean): void {
     this.view.breach.style.display = inBreach ? 'block' : 'none';
   }
@@ -78,15 +132,20 @@ export class HUD {
     let show = false;
 
     if (playerPhase === 'AIMING') {
-      show = true;
-      promptText = '↓ Pull mouse to charge power  ·  Release [SPACE] to launch';
-      el.style.fontSize = '14px';
-      el.style.color = '#ffff88';
-      el.style.textShadow = '0 0 8px #ffaa00';
+      // On mobile the vertical power bar is sufficient — skip text prompt.
+      if (!IS_MOBILE) {
+        show = true;
+        promptText = '↓ Pull mouse to charge power  ·  Release [SPACE] to launch';
+        el.style.fontSize = '14px';
+        el.style.color = '#ffff88';
+        el.style.textShadow = '0 0 8px #ffaa00';
+      }
     } else if (playerPhase === 'GRABBING') {
       show = true;
-      promptText = 'Hold [SPACE] to aim  ·  [E] to release bar';
-      el.style.fontSize = '15px';
+      promptText = IS_MOBILE
+        ? 'Hold LAUNCH & drag ↓ to charge'
+        : 'Hold [SPACE] to aim  ·  [E] to release bar';
+      el.style.fontSize = IS_MOBILE ? '13px' : '15px';
       el.style.color = '#aaffff';
       el.style.textShadow = '0 0 8px #00ffff';
     } else if (
@@ -95,11 +154,14 @@ export class HUD {
       && !damage.leftArm
       && !damage.frozen
     ) {
-      show = true;
-      promptText = '[E]  GRAB BAR';
-      el.style.fontSize = '17px';
-      el.style.color = '#aaffff';
-      el.style.textShadow = '0 0 8px #00ffff';
+      // On mobile the GRAB button appears instead; skip this text.
+      if (!IS_MOBILE) {
+        show = true;
+        promptText = '[E]  GRAB BAR';
+        el.style.fontSize = '17px';
+        el.style.color = '#aaffff';
+        el.style.textShadow = '0 0 8px #00ffff';
+      }
     }
 
     el.style.display = show ? 'block' : 'none';
@@ -111,6 +173,11 @@ export class HUD {
     launchPower: number,
     maxLaunchPower: number,
   ): void {
+    // On mobile the MobileControls vertical bar handles power display.
+    if (IS_MOBILE) {
+      this.view.powerWrap.style.display = 'none';
+      return;
+    }
     const showBar = playerPhase === 'GRABBING' || playerPhase === 'AIMING';
     this.view.powerWrap.style.display = showBar ? 'block' : 'none';
 

@@ -1,4 +1,5 @@
 import { createMenuView, injectMenuStyle, type MenuElements } from './menu/menuView';
+import { isTouchDevice } from '../platform';
 
 const STORAGE_KEY = 'orbital_player_name';
 
@@ -27,7 +28,10 @@ export class MainMenu {
       const v = elements.nameInput.value.trim();
       if (v) localStorage.setItem(STORAGE_KEY, v);
     });
-    elements.nameInput.focus();
+    // Skip auto-focus on mobile to avoid unwanted virtual keyboard on load
+    if (!isTouchDevice()) {
+      elements.nameInput.focus();
+    }
 
     elements.playButton.addEventListener('click', () => {
       this.saveName();

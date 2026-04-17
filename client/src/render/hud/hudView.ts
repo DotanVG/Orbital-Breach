@@ -11,6 +11,14 @@ const HUD_MARKUP = `
     color:#fff;text-shadow:0 0 40px #00ffff;letter-spacing:0.05em;
   ">10</div>
 
+  <!-- First-round objective typewriter (shown only during first countdown) -->
+  <div id="hud-objective" style="
+    display:none;position:absolute;left:50%;top:58%;
+    transform:translateX(-50%);font-size:16px;letter-spacing:3px;
+    color:#aaffff;text-shadow:0 0 12px #00ffff;text-align:center;
+    max-width:600px;white-space:nowrap;
+  "></div>
+
   <div id="hud-crosshair" style="
     position:absolute;left:50%;top:50%;
     transform:translate(-50%,-50%);
@@ -26,6 +34,7 @@ const HUD_MARKUP = `
   <div id="hud-breach" style="
     display:none;position:absolute;bottom:22px;left:50%;
     transform:translateX(-50%);font-size:13px;color:#88ddff;opacity:0.75;
+    white-space:nowrap;
   ">▼ BREACH ROOM — GRAVITY ACTIVE ▼</div>
 
   <div id="hud-grab" style="
@@ -68,6 +77,7 @@ const HUD_MARKUP = `
 export interface HudElements {
   root: HTMLDivElement;
   countdown: HTMLDivElement;
+  objective: HTMLDivElement;
   score: HTMLDivElement;
   breach: HTMLDivElement;
   grab: HTMLDivElement;
@@ -101,6 +111,7 @@ export function createHudView(): HudElements {
   return {
     root,
     countdown: q('hud-countdown'),
+    objective: q('hud-objective'),
     score: q('hud-score'),
     breach: q('hud-breach'),
     grab: q('hud-grab'),
