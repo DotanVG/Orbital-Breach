@@ -1,4 +1,5 @@
 import { InputManager } from '../input';
+import { checkHapticThreshold } from '../input/mobileInputLogic';
 
 const MOBILE_LOOK_SCALE = 4.0;
 
@@ -290,14 +291,8 @@ export class MobileControls {
     this.powerFill.style.height = `${(pct * 100).toFixed(1)}%`;
     this.powerFill.style.background = `hsl(${h}, 90%, 55%)`;
 
-    // Haptic feedback at 25 % thresholds
-    const thresholds = [0.25, 0.5, 0.75, 1.0];
-    for (const t of thresholds) {
-      if (this.lastHapticPct < t && pct >= t) {
-        navigator.vibrate?.(pct >= 1.0 ? 40 : 15);
-        break;
-      }
-    }
+    const vibrateMs = checkHapticThreshold(this.lastHapticPct, pct);
+    if (vibrateMs !== null) navigator.vibrate?.(vibrateMs);
     this.lastHapticPct = pct;
   }
 

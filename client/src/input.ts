@@ -1,4 +1,5 @@
 import { FIRE_RATE } from '../../shared/constants';
+import { applyMobileLookDelta, mergeWalkAxes, type MobileLookState } from './input/mobileInputLogic';
 
 export class InputManager {
   private keys          = new Set<string>();
@@ -88,12 +89,11 @@ export class InputManager {
   // ── Mobile input ──────────────────────────────────────────────────
   /** Accumulate a touch look delta (called from MobileControls on pointermove). */
   public setMobileLookDelta(dx: number, dy: number): void {
-    this.touchLookDx += dx;
-    if (this.aimingActive) {
-      this.aimDy += dy;
-    } else {
-      this.touchLookDy += dy;
-    }
+    const state: MobileLookState = { touchLookDx: this.touchLookDx, touchLookDy: this.touchLookDy, aimDy: this.aimDy };
+    applyMobileLookDelta(state, this.aimingActive, dx, dy);
+    this.touchLookDx = state.touchLookDx;
+    this.touchLookDy = state.touchLookDy;
+    this.aimDy = state.aimDy;
   }
 
   /** Set virtual joystick axes from mobile controls. x: strafe, z: forward (+z = forward). */
@@ -152,10 +152,7 @@ export class InputManager {
   public getWalkAxes(): { x: number; z: number } {
     const kx = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
     const kz = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
-    return {
-      x: Math.max(-1, Math.min(1, kx + this.mobileMoveX)),
-      z: Math.max(-1, Math.min(1, kz + this.mobileMoveZ)),
-    };
+    return mergeWalkAxes(kx, kz, this.mobileMoveX, this.mobileMoveZ);
   }
 
   /** @deprecated use getWalkAxes() — kept for server sim compatibility */
