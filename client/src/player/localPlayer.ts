@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
   MAX_LAUNCH_SPEED,
   LEGS_HIT_LAUNCH_FACTOR,
@@ -38,6 +37,7 @@ import {
   applyBarHoldPose,
   measureLeftHandGripOffset,
 } from './playerGrabPose';
+import { loadAlienRenderClone } from './alienRenderAsset';
 import {
   applyFloatArmTilt,
   applyArmRecoil,
@@ -103,60 +103,21 @@ export class LocalPlayer {
 
   public constructor(scene: THREE.Scene) {
     this.mesh = new THREE.Group();
-
-    const loader = new GLTFLoader();
-
-    loader.load(
-      '/models/Alien.glb',
-      (gltf) => {
-        const alien = gltf.scene;
-        alien.scale.setScalar(0.2);
-        alien.position.y = -PLAYER_RADIUS * 0.8;
-        alien.position.z = 0.3;
-        alien.rotation.y = Math.PI;
-
-        const gripLocal = measureLeftHandGripOffset(alien);
+    void loadAlienRenderClone({ team: this.team, variant: 'player' })
+      .then(({ body, bodyAnimations, helmet, helmetAnimations }) => {
+        const gripLocal = measureLeftHandGripOffset(body);
         if (gripLocal) this.leftHandGripLocal.copy(gripLocal);
 
-        this.animation.registerRig(alien, gltf.animations);
-        this.gun.attachTo(alien);
-        this.mesh.add(alien);
-      },
-      undefined,
-      (err) => console.error('[LocalPlayer] failed to load Alien.glb', err),
-    );
+        this.animation.registerRig(body, bodyAnimations);
+        this.gun.attachTo(body);
+        this.mesh.add(body);
 
-    loader.load(
-      '/models/Alien_Helmet.glb',
-      (gltf) => {
-        const helmet = gltf.scene;
-        helmet.scale.setScalar(0.2);
-        helmet.position.y = -PLAYER_RADIUS * 0.8;
-        helmet.position.z = 0.3;
-        helmet.rotation.y = Math.PI;
-
-        // The helmet ships with an opaque "Glass" material. Make only that
-        // material translucent so the dome reads like a visor rather than a
-        // solid black sphere over the player's head.
-        helmet.traverse((obj) => {
-          if (!(obj instanceof THREE.Mesh)) return;
-          const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
-          for (const material of materials) {
-            if (material.name !== 'Glass') continue;
-            material.transparent = true;
-            material.opacity = 0.22;
-            material.depthWrite = false;
-            material.roughness = 0.12;
-            material.metalness = 0.0;
-          }
-        });
-
-        this.animation.registerRig(helmet, gltf.animations);
+        this.animation.registerRig(helmet, helmetAnimations);
         this.mesh.add(helmet);
-      },
-      undefined,
-      (err) => console.error('[LocalPlayer] failed to load Alien_Helmet.glb', err),
-    );
+      })
+      .catch((err: unknown) => {
+        console.error('[LocalPlayer] failed to load alien render assets', err);
+      });
 
     scene.add(this.mesh);
   }

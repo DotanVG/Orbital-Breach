@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { ARENA_SIZE } from '../../shared/constants';
 
+function teamColor(team: 0 | 1): number {
+  return team === 0 ? 0x00ffff : 0xff00ff;
+}
+
 const BULLET_SPEED    = 50;      // units/s
 const BULLET_LIFETIME = 2.0;     // seconds — max range = 100 units
 const BULLET_RADIUS   = 0.07;
@@ -14,20 +18,20 @@ export class Projectile {
   private vel: THREE.Vector3;
   private age  = 0;
   public  dead = false;
-  private teamColor: number;
 
   public constructor(
     private scene: THREE.Scene,
     origin: THREE.Vector3,
     direction: THREE.Vector3,
-    teamColor: number,
+    private team: 0 | 1,
+    private ownerId: string,
   ) {
-    this.teamColor = teamColor;
     this.vel = direction.clone().normalize().multiplyScalar(BULLET_SPEED);
+    const color = teamColor(team);
 
     // Core bullet mesh
     const geo = new THREE.SphereGeometry(BULLET_RADIUS, 6, 4);
-    const mat = new THREE.MeshBasicMaterial({ color: teamColor });
+    const mat = new THREE.MeshBasicMaterial({ color });
     this.mesh  = new THREE.Mesh(geo, mat);
     this.mesh.position.copy(origin);
     scene.add(this.mesh);
@@ -40,7 +44,7 @@ export class Projectile {
     const trailGeo = new THREE.BufferGeometry();
     trailGeo.setAttribute('position', new THREE.BufferAttribute(this.trailPositions, 3));
     const trailMat = new THREE.LineBasicMaterial({
-      color: teamColor,
+      color,
       transparent: true,
       opacity: 0.45,
     });
@@ -89,7 +93,15 @@ export class Projectile {
   }
 
   public getTeamColor(): number {
-    return this.teamColor;
+    return teamColor(this.team);
+  }
+
+  public getTeam(): 0 | 1 {
+    return this.team;
+  }
+
+  public getOwnerId(): string {
+    return this.ownerId;
   }
 
   public dispose(): void {

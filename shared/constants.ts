@@ -34,6 +34,20 @@ export const ZERO_G_PORTAL_GRAVITY  = 1.5;
 export const COUNTDOWN_SECONDS      = 5;
 export const ROUND_END_DELAY        = 5;     // seconds before new round starts
 
+// Solo bot roster
+export const BOT_NAMES = [
+  'UNIT-7',
+  'GHOST-3',
+  'NOVA-5',
+  'DRIFT-1',
+  'ECHO-9',
+  'RIFT-2',
+  'LANCER-4',
+  'ORBIT-6',
+  'VOID-8',
+  'PULSE-0',
+] as const;
+
 // Obstacles
 export const OBSTACLE_MIN           = 14;
 export const OBSTACLE_MAX           = 22;
