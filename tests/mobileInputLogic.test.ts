@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   applyMobileLookDelta,
   mergeWalkAxes,
-  checkHapticThreshold,
   type MobileLookState,
 } from '../client/src/input/mobileInputLogic';
 
@@ -86,40 +85,3 @@ describe('mergeWalkAxes', () => {
   });
 });
 
-describe('checkHapticThreshold', () => {
-  it('returns null when no threshold is crossed', () => {
-    expect(checkHapticThreshold(0.1, 0.2)).toBeNull();
-    expect(checkHapticThreshold(0.5, 0.6)).toBeNull();
-  });
-
-  it('returns 15 ms when crossing 25 % threshold', () => {
-    expect(checkHapticThreshold(0.2, 0.25)).toBe(15);
-    expect(checkHapticThreshold(0.0, 0.3)).toBe(15);
-  });
-
-  it('returns 15 ms when crossing 50 % threshold', () => {
-    expect(checkHapticThreshold(0.4, 0.5)).toBe(15);
-  });
-
-  it('returns 15 ms when crossing 75 % threshold', () => {
-    expect(checkHapticThreshold(0.7, 0.76)).toBe(15);
-  });
-
-  it('returns 40 ms when crossing 100 % threshold', () => {
-    expect(checkHapticThreshold(0.9, 1.0)).toBe(40);
-  });
-
-  it('returns null when already past a threshold (no re-trigger)', () => {
-    expect(checkHapticThreshold(0.26, 0.3)).toBeNull();
-    expect(checkHapticThreshold(1.0, 1.0)).toBeNull();
-  });
-
-  it('fires only the first crossed threshold in a large jump', () => {
-    // Jumping from 0 to 0.8 crosses 0.25 first — should return 15, not 40
-    expect(checkHapticThreshold(0.0, 0.8)).toBe(15);
-  });
-
-  it('returns null when power decreases', () => {
-    expect(checkHapticThreshold(0.8, 0.5)).toBeNull();
-  });
-});

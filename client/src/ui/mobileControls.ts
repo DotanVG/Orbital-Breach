@@ -1,5 +1,4 @@
 import { InputManager } from '../input';
-import { checkHapticThreshold } from '../input/mobileInputLogic';
 
 const MOBILE_LOOK_SCALE = 4.0;
 
@@ -172,9 +171,6 @@ export class MobileControls {
   private styleEl: HTMLStyleElement | null = null;
   private input: InputManager;
 
-  // Haptic threshold tracking
-  private lastHapticPct = 0;
-
   constructor(input: InputManager) {
     this.input = input;
 
@@ -255,17 +251,14 @@ export class MobileControls {
     this.joystickZone.style.display = inGravity ? '' : 'none';
 
     // Vertical power track: only when on a bar
-    // (hidden via setPowerLevel show flag too, but gate here for clarity)
     if (!onBar) {
       this.powerTrack.style.display = 'none';
     }
 
-    // JUMP label transforms to LAUNCH when on bar
-    if (onBar) {
-      this.jumpBtn.textContent = 'LAUNCH';
-    } else {
-      this.jumpBtn.textContent = 'JUMP';
-    }
+    // JUMP: only in gravity room or on bar; hidden while floating free
+    const showJump = inGravity || onBar;
+    this.jumpBtn.style.display = showJump ? 'flex' : 'none';
+    this.jumpBtn.textContent = onBar ? 'LAUNCH' : 'JUMP';
   }
 
   /** Called every frame — show GRAB button only when the player can grab a nearby bar. */
@@ -282,18 +275,11 @@ export class MobileControls {
   /** Called every frame with normalised power (0–1) and whether to show the meter. */
   public setPowerLevel(pct: number, show: boolean): void {
     this.powerTrack.style.display = show ? 'block' : 'none';
-    if (!show) {
-      this.lastHapticPct = 0;
-      return;
-    }
+    if (!show) return;
 
     const h = 120 - pct * 120;
     this.powerFill.style.height = `${(pct * 100).toFixed(1)}%`;
     this.powerFill.style.background = `hsl(${h}, 90%, 55%)`;
-
-    const vibrateMs = checkHapticThreshold(this.lastHapticPct, pct);
-    if (vibrateMs !== null) navigator.vibrate?.(vibrateMs);
-    this.lastHapticPct = pct;
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────

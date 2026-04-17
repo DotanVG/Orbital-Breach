@@ -42,17 +42,3 @@ export function mergeWalkAxes(
   };
 }
 
-/**
- * Determine if a power-level change crosses a haptic threshold.
- * Returns vibration duration in ms when a threshold is crossed, null otherwise.
- * Thresholds: 25 %, 50 %, 75 %, 100 % (100 % gives a longer buzz).
- */
-export function checkHapticThreshold(lastPct: number, currentPct: number): number | null {
-  const thresholds = [0.25, 0.5, 0.75, 1.0];
-  for (const t of thresholds) {
-    if (lastPct < t && currentPct >= t) {
-      return currentPct >= 1.0 ? 40 : 15;
-    }
-  }
-  return null;
-}
