@@ -1,7 +1,12 @@
 import * as THREE from "three";
-import { PLAYER_RADIUS } from "../../../shared/constants";
+import { HITBOX_OFFSET_Y, HITBOX_RADIUS } from "../../../shared/constants";
 import type { OnlineActorSnapshot } from "../../../shared/multiplayer";
 import type { PlayerPhase } from "../../../shared/schema";
+import {
+  predictPosition,
+  reconcileAngle,
+  reconcileVector,
+} from "../net/reconciliation";
 import { buildHudRosters } from "./rosterView";
 import { SimulatedPlayerAvatar } from "./simulatedPlayerAvatar";
 
@@ -13,57 +18,127 @@ export interface OnlineProjectileTarget {
   radius: number;
 }
 
+interface RemoteActorTrack {
+  avatar: SimulatedPlayerAvatar;
+  renderPos: THREE.Vector3;
+  renderVel: THREE.Vector3;
+  renderYaw: number;
+  snapshot: OnlineActorSnapshot;
+  receivedAtMs: number;
+}
+
 export class OnlineMatch {
-  private avatars = new Map<string, SimulatedPlayerAvatar>();
-  private snapshots = new Map<string, OnlineActorSnapshot>();
+  private tracks = new Map<string, RemoteActorTrack>();
 
   public constructor(private scene: THREE.Scene) {}
 
   public applySnapshot(actors: OnlineActorSnapshot[], localSessionId: string): void {
-    const incoming = new Set(actors.map((a) => a.id));
+    const nowMs = performance.now();
+    const incoming = new Set(actors.map((actor) => actor.id));
 
-    for (const id of this.avatars.keys()) {
-      if (!incoming.has(id)) {
-        this.avatars.get(id)?.dispose(this.scene);
-        this.avatars.delete(id);
-        this.snapshots.delete(id);
-      }
+    for (const [id, track] of this.tracks) {
+      if (incoming.has(id)) continue;
+      track.avatar.dispose(this.scene);
+      this.tracks.delete(id);
     }
 
     for (const actor of actors) {
       if (actor.id === localSessionId) continue;
 
-      if (!this.avatars.has(actor.id)) {
-        this.avatars.set(actor.id, new SimulatedPlayerAvatar(this.scene, actor.team, actor.name));
+      const snapshot = cloneSnapshot(actor);
+      const existing = this.tracks.get(actor.id);
+      if (!existing) {
+        this.tracks.set(actor.id, {
+          avatar: new SimulatedPlayerAvatar(this.scene, actor.team, actor.name),
+          renderPos: new THREE.Vector3(actor.posX, actor.posY, actor.posZ),
+          renderVel: new THREE.Vector3(actor.velX, actor.velY, actor.velZ),
+          renderYaw: actor.yaw,
+          snapshot,
+          receivedAtMs: nowMs,
+        });
+        continue;
       }
-      this.snapshots.set(actor.id, actor);
+
+      existing.snapshot = snapshot;
+      existing.receivedAtMs = nowMs;
+
+      // Big teleports or fresh respawns should land immediately so the avatar
+      // never drags a stale predicted position across the arena.
+      const authoritativePos = new THREE.Vector3(actor.posX, actor.posY, actor.posZ);
+      if (
+        existing.renderPos.distanceToSquared(authoritativePos) > 36
+        || actor.phase === "RESPAWNING"
+      ) {
+        existing.renderPos.copy(authoritativePos);
+        existing.renderVel.set(actor.velX, actor.velY, actor.velZ);
+        existing.renderYaw = actor.yaw;
+      }
     }
   }
 
   public update(dt: number): void {
-    for (const [id, avatar] of this.avatars) {
-      const snap = this.snapshots.get(id);
-      if (!snap) continue;
+    const nowMs = performance.now();
 
-      const pos = new THREE.Vector3(snap.posX, snap.posY, snap.posZ);
-      avatar.update(
-        pos,
-        { frozen: snap.frozen, leftArm: snap.leftArm, rightArm: snap.rightArm, legs: snap.legs },
-        snap.phase as PlayerPhase,
-        snap.yaw,
+    for (const track of this.tracks.values()) {
+      const authoritativePos = new THREE.Vector3(
+        track.snapshot.posX,
+        track.snapshot.posY,
+        track.snapshot.posZ,
+      );
+      const authoritativeVel = new THREE.Vector3(
+        track.snapshot.velX,
+        track.snapshot.velY,
+        track.snapshot.velZ,
+      );
+      const ageSeconds = (nowMs - track.receivedAtMs) / 1000;
+      const shouldLead = track.snapshot.phase === "FLOATING" || track.snapshot.phase === "BREACH";
+      const predictedPos = shouldLead
+        ? predictPosition(authoritativePos, authoritativeVel, ageSeconds, 0.16)
+        : authoritativePos;
+
+      const previousPos = track.renderPos.clone();
+      const sharpness = track.snapshot.phase === "FROZEN" ? 20 : 12;
+      reconcileVector(track.renderPos, predictedPos, dt, sharpness, 3.5);
+      track.renderYaw = reconcileAngle(track.renderYaw, track.snapshot.yaw, dt, 16);
+
+      if (dt > 1e-5) {
+        track.renderVel.copy(track.renderPos).sub(previousPos).multiplyScalar(1 / dt);
+      } else {
+        track.renderVel.set(0, 0, 0);
+      }
+
+      track.avatar.update(
+        track.renderPos,
+        {
+          frozen: track.snapshot.frozen,
+          leftArm: track.snapshot.leftArm,
+          rightArm: track.snapshot.rightArm,
+          leftLeg: track.snapshot.leftLeg,
+          rightLeg: track.snapshot.rightLeg,
+        },
+        track.snapshot.phase as PlayerPhase,
+        track.renderYaw,
         dt,
-        0,
+        track.renderVel.length(),
       );
     }
   }
 
+  public triggerRemoteShot(actorId: string): void {
+    this.tracks.get(actorId)?.avatar.triggerArmRecoil();
+  }
+
   public getProjectileTargets(): OnlineProjectileTarget[] {
-    return Array.from(this.snapshots.values()).map((snap) => ({
-      id: snap.id,
-      pos: new THREE.Vector3(snap.posX, snap.posY, snap.posZ),
-      team: snap.team,
-      active: !snap.frozen && snap.phase !== "RESPAWNING",
-      radius: PLAYER_RADIUS,
+    return Array.from(this.tracks.values()).map((track) => ({
+      id: track.snapshot.id,
+      pos: new THREE.Vector3(
+        track.renderPos.x,
+        track.renderPos.y + HITBOX_OFFSET_Y,
+        track.renderPos.z,
+      ),
+      team: track.snapshot.team,
+      active: !track.snapshot.frozen && track.snapshot.phase !== "RESPAWNING",
+      radius: HITBOX_RADIUS,
     }));
   }
 
@@ -88,15 +163,15 @@ export class OnlineMatch {
         frozen: localFrozen,
         ping: 0,
       },
-      ...Array.from(this.snapshots.values()).map((snap) => ({
-        id: snap.id,
-        name: snap.name,
-        team: snap.team,
-        isBot: snap.isBot,
-        kills: snap.kills,
-        deaths: snap.deaths,
-        phase: snap.phase as PlayerPhase,
-        frozen: snap.frozen,
+      ...Array.from(this.tracks.values()).map((track) => ({
+        id: track.snapshot.id,
+        name: track.snapshot.name,
+        team: track.snapshot.team,
+        isBot: track.snapshot.isBot,
+        kills: track.snapshot.kills,
+        deaths: track.snapshot.deaths,
+        phase: track.snapshot.phase as PlayerPhase,
+        frozen: track.snapshot.frozen,
         ping: 0,
       })),
     ];
@@ -105,10 +180,13 @@ export class OnlineMatch {
   }
 
   public dispose(): void {
-    for (const avatar of this.avatars.values()) {
-      avatar.dispose(this.scene);
+    for (const track of this.tracks.values()) {
+      track.avatar.dispose(this.scene);
     }
-    this.avatars.clear();
-    this.snapshots.clear();
+    this.tracks.clear();
   }
+}
+
+function cloneSnapshot(actor: OnlineActorSnapshot): OnlineActorSnapshot {
+  return { ...actor };
 }

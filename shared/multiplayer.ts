@@ -30,12 +30,16 @@ export interface OnlineActorSnapshot {
   posX: number;
   posY: number;
   posZ: number;
+  velX: number;
+  velY: number;
+  velZ: number;
   yaw: number;
   phase: string;
   frozen: boolean;
   leftArm: boolean;
   rightArm: boolean;
-  legs: boolean;
+  leftLeg: boolean;
+  rightLeg: boolean;
   kills: number;
   deaths: number;
 }
@@ -69,7 +73,8 @@ export interface PlayerUpdateMessage {
   frozen: boolean;
   leftArm: boolean;
   rightArm: boolean;
-  legs: boolean;
+  leftLeg: boolean;
+  rightLeg: boolean;
   kills: number;
   deaths: number;
 }
@@ -79,6 +84,17 @@ export interface HitReportMessage {
   impX: number;
   impY: number;
   impZ: number;
+}
+
+export interface ShotEventMessage {
+  ownerId: string;
+  team: 0 | 1;
+  originX: number;
+  originY: number;
+  originZ: number;
+  dirX: number;
+  dirY: number;
+  dirZ: number;
 }
 
 export interface BreachReportMessage {
@@ -94,10 +110,16 @@ export interface FreezeEventMessage {
   victimTeam: 0 | 1;
 }
 
-export interface RoundWinEventMessage {
-  winningTeam: 0 | 1;
-  reason: "breach" | "fullFreeze";
+export interface RoundResultEventMessage {
+  outcome: "tie" | "win";
+  winningTeam: 0 | 1 | null;
+  matchWinner: 0 | 1 | null;
+  reason: "breach" | "fullFreeze" | "timeout";
   scorerName: string;
+  finalScore?: {
+    team0: number;
+    team1: number;
+  };
 }
 
 export interface SetReadyMessage {

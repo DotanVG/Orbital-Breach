@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { BOT_NAMES, GRAB_RADIUS, PLAYER_RADIUS } from "../../../shared/constants";
+import { ACTOR_COLLISION_RADIUS, BOT_NAMES, GRAB_RADIUS, HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_POINT_TARGET, PLAYER_RADIUS } from "../../../shared/constants";
+import { findMatchWinner } from "../../../shared/match-flow";
 import { getSoloBotFill, type SoloMatchConfig } from "../../../shared/match";
 import {
   classifyHitZone,
@@ -79,6 +80,11 @@ export type LocalMatchEvent =
     reason: "breach" | "fullFreeze";
     type: "roundWin";
     winningTeam: 0 | 1;
+  }
+  | {
+    type: "matchEnd";
+    winningTeam: 0 | 1;
+    finalScore: { team0: number; team1: number };
   };
 
 interface BotState {
@@ -201,21 +207,27 @@ export class LocalMatch {
   }
 
   public getProjectileTargets(player: LocalPlayer): ProjectileActorTarget[] {
+    const humanCentre = player.getPosition().clone();
+    humanCentre.y += HITBOX_OFFSET_Y;
     return [
       {
         active: player.phase !== "RESPAWNING" && !player.damage.frozen,
         id: LOCAL_PLAYER_ID,
-        pos: player.getPosition().clone(),
-        radius: PLAYER_RADIUS,
+        pos: humanCentre,
+        radius: HITBOX_RADIUS,
         team: this.config.humanTeam,
       },
-      ...this.bots.map((bot) => ({
-        active: bot.phase !== "RESPAWNING" && !bot.damage.frozen,
-        id: bot.id,
-        pos: bot.phys.pos.clone(),
-        radius: PLAYER_RADIUS,
-        team: bot.team,
-      })),
+      ...this.bots.map((bot) => {
+        const botCentre = bot.phys.pos.clone();
+        botCentre.y += HITBOX_OFFSET_Y;
+        return {
+          active: bot.phase !== "RESPAWNING" && !bot.damage.frozen,
+          id: bot.id,
+          pos: botCentre,
+          radius: HITBOX_RADIUS,
+          team: bot.team,
+        };
+      }),
     ];
   }
 
@@ -227,17 +239,23 @@ export class LocalMatch {
     if (this.roundResolved) return;
 
     const owner = this.getActorMeta(event.ownerId, player);
-    const impulse = event.direction.clone().normalize().multiplyScalar(3);
+    // Projectile impacts freeze targets but must not push them — a frozen
+    // player being shoved around the arena is disorienting and lets stray
+    // shots double as crowd control, which is not the design intent.
+    const impulse = event.direction.clone().normalize().multiplyScalar(0);
 
     if (event.targetId === LOCAL_PLAYER_ID) {
       const zone = LocalPlayer.classifyHitZone(
         event.impactPoint,
         player.getPosition(),
         camera.getForward(),
+        HITBOX_OFFSET_Y,
+        HITBOX_RADIUS,
       );
       const frozen = player.applyHit(zone, impulse);
       if (frozen) {
         if (owner) {
+          this.recordFreezeKill(event.ownerId, player);
           this.emitEvent({
             type: "freeze",
             killerName: owner.name,
@@ -258,6 +276,8 @@ export class LocalMatch {
       toVec3(event.impactPoint),
       toVec3(bot.phys.pos),
       yawForward(bot.rot.yaw),
+      HITBOX_OFFSET_Y,
+      HITBOX_RADIUS,
     );
     const frozen = applyHitToBot(bot, zone, impulse);
     if (event.ownerId === LOCAL_PLAYER_ID) {
@@ -268,6 +288,7 @@ export class LocalMatch {
     }
     if (frozen) {
       if (owner) {
+        this.recordFreezeKill(event.ownerId, player);
         this.emitEvent({
           type: "freeze",
           killerName: owner.name,
@@ -352,7 +373,7 @@ export class LocalMatch {
 
     const actors = this.getActorsForScore(player);
     for (const actor of actors) {
-      if (actor.phase !== "FLOATING" || actor.damage.frozen) continue;
+      if ((actor.phase !== "FLOATING" && actor.phase !== "BREACH") || actor.damage.frozen) continue;
 
       const enemyTeam = (1 - actor.team) as 0 | 1;
       if (!arena.isGoalDoorOpen(enemyTeam)) continue;
@@ -362,14 +383,12 @@ export class LocalMatch {
         player.currentBreachTeam = enemyTeam;
         player.phase = "BREACH";
         player.phys.vel.y = 0;
-        player.kills += 1;
       } else {
         const bot = this.getBot(actor.id);
         if (!bot) continue;
         bot.currentBreachTeam = enemyTeam;
         bot.phase = "BREACH";
         bot.phys.vel.y = 0;
-        bot.kills += 1;
       }
 
       this.awardRoundPoint(actor.team, actor.name, "breach");
@@ -390,6 +409,7 @@ export class LocalMatch {
     if (winner === 0) this.score.team0 += 1;
     else this.score.team1 += 1;
     this.emitEvent({ type: "roundWin", winningTeam: winner, reason: "fullFreeze" });
+    this.maybeEmitMatchEnd();
   }
 
   private awardRoundPoint(team: 0 | 1, scorerName: string, reason: "breach" | "fullFreeze"): void {
@@ -408,6 +428,29 @@ export class LocalMatch {
       winningTeam: team,
       reason,
     });
+    this.maybeEmitMatchEnd();
+  }
+
+  private maybeEmitMatchEnd(): void {
+    const winner = findMatchWinner(this.score, MATCH_POINT_TARGET);
+    if (winner === null) return;
+    this.emitEvent({
+      type: "matchEnd",
+      winningTeam: winner,
+      finalScore: { ...this.score },
+    });
+  }
+
+  private recordFreezeKill(actorId: string, player: LocalPlayer): void {
+    if (actorId === LOCAL_PLAYER_ID) {
+      player.kills += 1;
+      return;
+    }
+
+    const bot = this.getBot(actorId);
+    if (bot) {
+      bot.kills += 1;
+    }
   }
 
   private emitEvent(event: LocalMatchEvent): void {
@@ -487,13 +530,15 @@ export class LocalMatch {
         active: player.phase !== "RESPAWNING",
         anchored: isAnchored(player.phase),
         pos: player.getPosition(),
-        radius: PLAYER_RADIUS,
+        radius: ACTOR_COLLISION_RADIUS,
+        vel: player.phys.vel,
       },
       ...this.bots.map((bot) => ({
         active: bot.phase !== "RESPAWNING",
         anchored: isAnchored(bot.phase),
         pos: bot.phys.pos,
-        radius: PLAYER_RADIUS,
+        radius: ACTOR_COLLISION_RADIUS,
+        vel: bot.phys.vel,
       })),
     ]);
   }
@@ -507,10 +552,7 @@ export class LocalMatch {
     shots: SpawnProjectileEvent[],
   ): void {
     if (bot.phase === "FROZEN") {
-      integrateFloating(bot, arena, dt);
-      if (arena.isInBreachRoom(bot.phys.pos, bot.team)) {
-        returnBotToOwnBreach(bot);
-      }
+      integrateFrozenDrift(bot, arena, dt);
       return;
     }
 
@@ -591,11 +633,14 @@ export class LocalMatch {
         this.stepBotBreachPhysics(bot, arena, dt);
         break;
       case "FLOATING":
-      case "FROZEN":
         integrateFloating(bot, arena, dt);
-        if (arena.isInBreachRoom(bot.phys.pos, bot.team)) {
-          returnBotToOwnBreach(bot);
+        const breachTeam = getEnteredBreachTeam(arena, bot.phys.pos);
+        if (breachTeam !== null) {
+          enterBotBreachRoom(bot, breachTeam);
         }
+        break;
+      case "FROZEN":
+        integrateFrozenDrift(bot, arena, dt);
         break;
       case "GRABBING":
       case "AIMING":
@@ -657,8 +702,9 @@ export class LocalMatch {
   ): void {
     integrateFloating(bot, arena, dt);
 
-    if (arena.isInBreachRoom(bot.phys.pos, bot.team)) {
-      returnBotToOwnBreach(bot);
+    const breachTeam = getEnteredBreachTeam(arena, bot.phys.pos);
+    if (breachTeam !== null) {
+      enterBotBreachRoom(bot, breachTeam);
       return;
     }
 
@@ -695,8 +741,9 @@ function createDamageState(): DamageState {
   return {
     frozen: false,
     leftArm: false,
-    legs: false,
+    leftLeg: false,
     rightArm: false,
+    rightLeg: false,
   };
 }
 
@@ -731,15 +778,10 @@ function applyHitToBot(
   switch (zone) {
     case "head":
     case "body":
-      if (!bot.damage.frozen) {
-        bot.damage.frozen = true;
-        bot.deaths += 1;
-      }
-      bot.phase = "FROZEN";
-      bot.grabbedBarPos = null;
-      return true;
+      return promoteBotToFullFreeze(bot);
     case "rightArm":
       bot.damage.rightArm = true;
+      if (allBotLimbsDamaged(bot)) return promoteBotToFullFreeze(bot);
       return false;
     case "leftArm":
       bot.damage.leftArm = true;
@@ -747,12 +789,33 @@ function applyHitToBot(
         bot.phase = "FLOATING";
         bot.grabbedBarPos = null;
       }
+      if (allBotLimbsDamaged(bot)) return promoteBotToFullFreeze(bot);
       return false;
-    case "legs":
-      bot.damage.legs = true;
+    case "leftLeg":
+      bot.damage.leftLeg = true;
       bot.launchPower = Math.min(bot.launchPower, maxLaunchPower(bot.damage));
+      if (allBotLimbsDamaged(bot)) return promoteBotToFullFreeze(bot);
+      return false;
+    case "rightLeg":
+      bot.damage.rightLeg = true;
+      bot.launchPower = Math.min(bot.launchPower, maxLaunchPower(bot.damage));
+      if (allBotLimbsDamaged(bot)) return promoteBotToFullFreeze(bot);
       return false;
   }
+}
+
+function allBotLimbsDamaged(bot: BotState): boolean {
+  return bot.damage.leftArm && bot.damage.rightArm && bot.damage.leftLeg && bot.damage.rightLeg;
+}
+
+function promoteBotToFullFreeze(bot: BotState): true {
+  if (!bot.damage.frozen) {
+    bot.damage.frozen = true;
+    bot.deaths += 1;
+  }
+  bot.phase = "FROZEN";
+  bot.grabbedBarPos = null;
+  return true;
 }
 
 function integrateFloating(bot: BotState, arena: Arena, dt = 0): void {
@@ -771,6 +834,18 @@ function integrateFloating(bot: BotState, arena: Arena, dt = 0): void {
 
   integrateZeroG(bot.phys, dt);
   bounceArena(bot.phys, goalAxis, perpAxis, portalFacesOpen);
+  arena.bounceObstacles(bot.phys);
+}
+
+/**
+ * Frozen drift: zero-G + fully solid arena walls. Frozen bodies cannot
+ * breach — including back into their own room. Limb-damaged (but not
+ * frozen) allies get their limbs healed only by drifting home via the
+ * FLOATING branch (see integrateFloating + returnBotToOwnBreach).
+ */
+function integrateFrozenDrift(bot: BotState, arena: Arena, dt = 0): void {
+  integrateZeroG(bot.phys, dt);
+  bounceArena(bot.phys);
   arena.bounceObstacles(bot.phys);
 }
 
@@ -822,9 +897,20 @@ function resetBotsForRound(
   }
 }
 
-function returnBotToOwnBreach(bot: BotState): void {
-  bot.currentBreachTeam = bot.team;
-  bot.damage.frozen = false;
+function getEnteredBreachTeam(arena: Arena, pos: THREE.Vector3): 0 | 1 | null {
+  if (arena.isInBreachRoom(pos, 0)) return 0;
+  if (arena.isInBreachRoom(pos, 1)) return 1;
+  return null;
+}
+
+function enterBotBreachRoom(bot: BotState, team: 0 | 1): void {
+  // Frozen bots cannot drift home — the arena walls are solid while FROZEN.
+  // A wounded-but-FLOATING bot that makes it back heals its limb damage.
+  bot.currentBreachTeam = team;
+  bot.damage.leftArm = false;
+  bot.damage.rightArm = false;
+  bot.damage.leftLeg = false;
+  bot.damage.rightLeg = false;
   bot.phase = "BREACH";
   bot.phys.vel.y = 0;
 }

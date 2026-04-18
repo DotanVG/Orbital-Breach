@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import {
-  MAX_LAUNCH_SPEED,
-  LEGS_HIT_LAUNCH_FACTOR,
-  LAUNCH_AIM_SENSITIVITY,
+  BOTH_LEGS_HIT_LAUNCH_FACTOR,
   GRAB_RADIUS,
+  LAUNCH_AIM_SENSITIVITY,
+  MAX_LAUNCH_SPEED,
+  ONE_LEG_HIT_LAUNCH_FACTOR,
   PLAYER_RADIUS,
 } from '../../../shared/constants';
 import { clamp } from '../util/math';
@@ -73,7 +74,8 @@ export class LocalPlayer {
     frozen: false,
     rightArm: false,
     leftArm: false,
-    legs: false,
+    leftLeg: false,
+    rightLeg: false,
   };
 
   public launchPower = 0;
@@ -99,6 +101,9 @@ export class LocalPlayer {
   private armRestoreTimer = 0;
   // Counts down from RECOIL_DURATION to 0 after each shot.
   private recoilTimer = 0;
+  // Counts up while phase === 'FROZEN'; after the crossfade window we stop
+  // ticking mixers so the death pose holds instead of looping flails.
+  private frozenHoldTimer = 0;
   private floatLimbTuningEnabled = false;
 
   public constructor(scene: THREE.Scene) {
@@ -137,9 +142,10 @@ export class LocalPlayer {
   }
 
   public maxLaunchPower(): number {
-    return this.damage.legs
-      ? MAX_LAUNCH_SPEED * LEGS_HIT_LAUNCH_FACTOR
-      : MAX_LAUNCH_SPEED;
+    const legsHit = (this.damage.leftLeg ? 1 : 0) + (this.damage.rightLeg ? 1 : 0);
+    if (legsHit === 2) return MAX_LAUNCH_SPEED * BOTH_LEGS_HIT_LAUNCH_FACTOR;
+    if (legsHit === 1) return MAX_LAUNCH_SPEED * ONE_LEG_HIT_LAUNCH_FACTOR;
+    return MAX_LAUNCH_SPEED;
   }
 
   public update(
@@ -180,10 +186,12 @@ export class LocalPlayer {
 
   private updateFrozen(arena: Arena, dt: number): void {
     this.breachJumpAnimationActive = false;
+    // Frozen bodies bounce off every arena wall — fully-frozen players cannot
+    // breach. Limb-damaged (but not frozen) allies unfreeze their limbs by
+    // drifting home via the FLOATING branch of updateFloating.
     integrateZeroG(this.phys, dt);
     bounceArena(this.phys);
     arena.bounceObstacles(this.phys);
-    this.tryReturnToOwnBreach(arena);
   }
 
   private updateBreach(
@@ -255,8 +263,9 @@ export class LocalPlayer {
     bounceArena(this.phys, goalAxis, perpAxis, portalFacesOpen);
     arena.bounceObstacles(this.phys);
 
-    if (arena.isInBreachRoom(this.phys.pos, this.team)) {
-      this.returnToOwnBreach();
+    const breachTeam = this.getEnteredBreachTeam(arena);
+    if (breachTeam !== null) {
+      this.enterBreachRoom(breachTeam);
       return;
     }
 
@@ -343,14 +352,27 @@ export class LocalPlayer {
   }
 
   private tryReturnToOwnBreach(arena: Arena): void {
-    if (!arena.isInBreachRoom(this.phys.pos, this.team)) return;
-    this.returnToOwnBreach();
+    const breachTeam = this.getEnteredBreachTeam(arena);
+    if (breachTeam === null) return;
+    this.enterBreachRoom(breachTeam);
   }
 
-  private returnToOwnBreach(): void {
-    this.currentBreachTeam = this.team;
+  private getEnteredBreachTeam(arena: Arena): 0 | 1 | null {
+    if (arena.isInBreachRoom(this.phys.pos, 0)) return 0;
+    if (arena.isInBreachRoom(this.phys.pos, 1)) return 1;
+    return null;
+  }
+
+  private enterBreachRoom(team: 0 | 1): void {
+    // Fully-frozen players cannot reach here — FROZEN drift bounces off
+    // every wall, so damage.frozen stays untouched. Allies who are still
+    // FLOATING but wounded can drift home to heal their limb damage.
+    this.currentBreachTeam = team;
     this.phase = 'BREACH';
-    this.damage.frozen = false;
+    this.damage.leftArm = false;
+    this.damage.rightArm = false;
+    this.damage.leftLeg = false;
+    this.damage.rightLeg = false;
     this.phys.vel.y = 0;
   }
 
@@ -372,9 +394,20 @@ export class LocalPlayer {
 
     this.animation.setTargetAnimation(nextAnimation);
 
-    const animationDt = nextAnimation === ANIM_JUMP
-      ? dt * BREACH_JUMP_TAKEOFF_SPEED
-      : dt;
+    // Freeze the rig while the player is frozen: let the ANIM_DEATH crossfade
+    // complete, then tick mixers with dt=0 so the death clip doesn't loop and
+    // the alien holds the death pose.
+    if (this.phase === 'FROZEN') {
+      this.frozenHoldTimer += dt;
+    } else {
+      this.frozenHoldTimer = 0;
+    }
+    const holdFrozenPose = this.phase === 'FROZEN' && this.frozenHoldTimer > ANIM_FADE_SECONDS;
+    const animationDt = holdFrozenPose
+      ? 0
+      : nextAnimation === ANIM_JUMP
+        ? dt * BREACH_JUMP_TAKEOFF_SPEED
+        : dt;
     this.animation.tickMixers(animationDt);
 
     // After leaving the jump clip, keep restoring for one crossfade window so
@@ -477,17 +510,10 @@ export class LocalPlayer {
     switch (zone) {
       case 'head':
       case 'body':
-        if (!this.damage.frozen) {
-          this.damage.frozen = true;
-          this.deaths++;
-        }
-        this.phase = 'FROZEN';
-        this.grabbedBarPos = null;
-        this.grabHandGripLocal = null;
-        this.grabPoseLocked = false;
-        return true;
+        return this.promoteToFullFreeze();
       case 'rightArm':
         this.damage.rightArm = true;
+        if (this.allLimbsDamaged()) return this.promoteToFullFreeze();
         return false;
       case 'leftArm':
         this.damage.leftArm = true;
@@ -497,20 +523,45 @@ export class LocalPlayer {
           this.grabHandGripLocal = null;
           this.grabPoseLocked = false;
         }
+        if (this.allLimbsDamaged()) return this.promoteToFullFreeze();
         return false;
-      case 'legs':
-        this.damage.legs = true;
+      case 'leftLeg':
+        this.damage.leftLeg = true;
         this.launchPower = clamp(this.launchPower, 0, this.maxLaunchPower());
+        if (this.allLimbsDamaged()) return this.promoteToFullFreeze();
+        return false;
+      case 'rightLeg':
+        this.damage.rightLeg = true;
+        this.launchPower = clamp(this.launchPower, 0, this.maxLaunchPower());
+        if (this.allLimbsDamaged()) return this.promoteToFullFreeze();
         return false;
     }
+  }
+
+  private allLimbsDamaged(): boolean {
+    return this.damage.leftArm && this.damage.rightArm && this.damage.leftLeg && this.damage.rightLeg;
+  }
+
+  private promoteToFullFreeze(): true {
+    if (!this.damage.frozen) {
+      this.damage.frozen = true;
+      this.deaths++;
+    }
+    this.phase = 'FROZEN';
+    this.grabbedBarPos = null;
+    this.grabHandGripLocal = null;
+    this.grabPoseLocked = false;
+    return true;
   }
 
   public static classifyHitZone(
     impactPoint: THREE.Vector3,
     playerPos: THREE.Vector3,
     playerFacing: THREE.Vector3,
+    hitOffsetY = 0,
+    hitRadius?: number,
   ): HitZone {
-    return classifyHitZone(impactPoint, playerPos, playerFacing);
+    return classifyHitZone(impactPoint, playerPos, playerFacing, hitOffsetY, hitRadius);
   }
 
   public resetForNewRound(arena: Arena, spawnOverride?: { x: number; y: number; z: number }): void {
@@ -518,7 +569,8 @@ export class LocalPlayer {
       frozen: false,
       rightArm: false,
       leftArm: false,
-      legs: false,
+      leftLeg: false,
+      rightLeg: false,
     };
     this.launchPower = 0;
     this.grabbedBarPos = null;
@@ -548,6 +600,10 @@ export class LocalPlayer {
 
   public setThirdPersonGunVisible(visible: boolean): void {
     this.gun.setVisible(visible);
+  }
+
+  public setThirdPersonGunFrozenTint(color: number | null): void {
+    this.gun.setFrozenTint(color);
   }
 
   public getThirdPersonGunMuzzleWorldPosition(): THREE.Vector3 | null {

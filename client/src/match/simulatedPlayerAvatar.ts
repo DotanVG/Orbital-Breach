@@ -1,8 +1,9 @@
 import * as THREE from "three";
-import type { PlayerPhase } from "../../../shared/schema";
+import type { DamageState, PlayerPhase } from "../../../shared/schema";
 import { loadAlienRenderClone } from "../player/alienRenderAsset";
 import {
   ANIM_DEATH,
+  ANIM_FADE_SECONDS,
   ANIM_FLOAT,
   ANIM_IDLE_HOLD,
   ANIM_RUN_HOLD,
@@ -11,6 +12,7 @@ import {
 } from "../player/playerAnimationController";
 import { PlayerDamageGlow } from "../player/playerDamageGlow";
 import { applyBarHoldPose } from "../player/playerGrabPose";
+import { applyArmRecoil, RECOIL_DURATION } from "../player/playerAimPose";
 import { ThirdPersonGun } from "../player/playerThirdPersonGun";
 import { PlayerNameTag } from "../render/playerNameTag";
 
@@ -18,9 +20,11 @@ export class SimulatedPlayerAvatar {
   private readonly animation = new PlayerAnimationController();
   private readonly damageGlow: PlayerDamageGlow;
   private disposed = false;
+  private frozenHoldTimer = 0;
   private readonly gun = new ThirdPersonGun();
   private readonly materials = new Set<THREE.MeshStandardMaterial>();
   private readonly nameTag: PlayerNameTag;
+  private recoilTimer = 0;
   private ready = false;
   private readonly root = new THREE.Group();
 
@@ -51,7 +55,7 @@ export class SimulatedPlayerAvatar {
 
   public update(
     pos: THREE.Vector3,
-    damage: { frozen: boolean; leftArm: boolean; rightArm: boolean; legs: boolean },
+    damage: DamageState,
     phase: PlayerPhase,
     yaw: number,
     dt: number,
@@ -69,7 +73,19 @@ export class SimulatedPlayerAvatar {
 
     const animation = selectAnimation(phase, moveSpeed);
     this.animation.setTargetAnimation(animation);
-    this.animation.tickMixers(dt);
+
+    // Hold the frozen pose: once the crossfade into ANIM_DEATH settles, tick
+    // the mixer with dt=0 so the alien doesn't keep flailing through the
+    // death loop. Reset the timer whenever phase leaves FROZEN.
+    if (phase === "FROZEN") {
+      this.frozenHoldTimer += dt;
+    } else {
+      this.frozenHoldTimer = 0;
+    }
+    const animationDt = phase === "FROZEN" && this.frozenHoldTimer > ANIM_FADE_SECONDS
+      ? 0
+      : dt;
+    this.animation.tickMixers(animationDt);
 
     if (phase === "GRABBING" || phase === "AIMING") {
       applyBarHoldPose(this.animation.getRigs());
@@ -80,7 +96,16 @@ export class SimulatedPlayerAvatar {
       this.animation.resetBreathing();
     }
 
+    this.recoilTimer = Math.max(0, this.recoilTimer - dt);
+    if (this.recoilTimer > 0) {
+      applyArmRecoil(this.animation.getRigs(), this.recoilTimer / RECOIL_DURATION);
+    }
+
     this.applyPhaseVisuals(phase);
+  }
+
+  public triggerArmRecoil(): void {
+    this.recoilTimer = RECOIL_DURATION;
   }
 
   public dispose(scene: THREE.Scene): void {

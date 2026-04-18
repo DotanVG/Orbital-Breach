@@ -6,7 +6,8 @@ export interface DamageState {
   frozen:   boolean;   // head or body hit — permanent for round, player drifts
   rightArm: boolean;   // can't fire pistol
   leftArm:  boolean;   // can't grab bars
-  legs:     boolean;   // max launch power capped at 2/3
+  leftLeg:  boolean;   // one-leg hit caps launch at 3/4
+  rightLeg: boolean;   // both-legs hit caps launch at 1/2
 }
 
 // --- Arena state ---
@@ -44,7 +45,7 @@ export interface PlayerNetState {
   phase:     PlayerPhase;
   damage:    DamageState;
   ping:      number;
-  kills:     number;   // breaches scored
+  kills:     number;   // freezes landed
   deaths:    number;   // times frozen
   connected: boolean;  // false = ghost body (disconnected player still floating)
   isBot?:    boolean;
