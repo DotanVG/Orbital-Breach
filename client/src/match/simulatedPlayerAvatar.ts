@@ -12,6 +12,7 @@ import {
 } from "../player/playerAnimationController";
 import { PlayerDamageGlow } from "../player/playerDamageGlow";
 import { applyBarHoldPose } from "../player/playerGrabPose";
+import { applyArmRecoil, RECOIL_DURATION } from "../player/playerAimPose";
 import { ThirdPersonGun } from "../player/playerThirdPersonGun";
 import { PlayerNameTag } from "../render/playerNameTag";
 
@@ -23,6 +24,7 @@ export class SimulatedPlayerAvatar {
   private readonly gun = new ThirdPersonGun();
   private readonly materials = new Set<THREE.MeshStandardMaterial>();
   private readonly nameTag: PlayerNameTag;
+  private recoilTimer = 0;
   private ready = false;
   private readonly root = new THREE.Group();
 
@@ -94,7 +96,16 @@ export class SimulatedPlayerAvatar {
       this.animation.resetBreathing();
     }
 
+    this.recoilTimer = Math.max(0, this.recoilTimer - dt);
+    if (this.recoilTimer > 0) {
+      applyArmRecoil(this.animation.getRigs(), this.recoilTimer / RECOIL_DURATION);
+    }
+
     this.applyPhaseVisuals(phase);
+  }
+
+  public triggerArmRecoil(): void {
+    this.recoilTimer = RECOIL_DURATION;
   }
 
   public dispose(scene: THREE.Scene): void {

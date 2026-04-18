@@ -4,6 +4,7 @@ import {
   canStartLobbyRound,
   getPreferredJoinTeam,
 } from "../shared/multiplayer";
+import { MATCH_TEAM_SIZES } from "../shared/match";
 
 describe("getPreferredJoinTeam", () => {
   it("balances new humans onto the less populated side", () => {
@@ -35,5 +36,11 @@ describe("buildBotName", () => {
   it("uses readable team-prefixed bot names", () => {
     expect(buildBotName(0, 0)).toBe("CY-BOT-01");
     expect(buildBotName(2, 1)).toBe("MG-BOT-03");
+  });
+});
+
+describe("MATCH_TEAM_SIZES", () => {
+  it("includes the 2v2 duos variant for online playlists", () => {
+    expect(MATCH_TEAM_SIZES).toContain(2);
   });
 });

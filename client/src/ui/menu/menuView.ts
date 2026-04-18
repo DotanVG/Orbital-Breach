@@ -308,6 +308,11 @@ const CSS = `
     background: rgba(255, 255, 255, 0.05);
   }
 
+  .menu-input option {
+    color: var(--menu-text);
+    background: #071019;
+  }
+
   .menu-input--error {
     border-color: rgba(255, 115, 156, 0.56) !important;
     box-shadow: 0 0 0 3px rgba(255, 115, 156, 0.12) !important;
@@ -612,6 +617,7 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
             <label class="menu-label" for="menu-match-size">Solo Match Size</label>
             <select class="menu-input" id="menu-match-size" aria-label="Solo match size">
               <option value="1" ${matchSize === 1 ? "selected" : ""}>1v1 Skirmish</option>
+              <option value="2" ${matchSize === 2 ? "selected" : ""}>2v2 Duos</option>
               <option value="5" ${matchSize === 5 ? "selected" : ""}>5v5 Squad Clash</option>
               <option value="10" ${matchSize === 10 ? "selected" : ""}>10v10 Arena Rush</option>
               <option value="20" ${matchSize === 20 ? "selected" : ""}>20v20 Zero-G War</option>

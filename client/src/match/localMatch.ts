@@ -373,7 +373,7 @@ export class LocalMatch {
 
     const actors = this.getActorsForScore(player);
     for (const actor of actors) {
-      if (actor.phase !== "FLOATING" || actor.damage.frozen) continue;
+      if ((actor.phase !== "FLOATING" && actor.phase !== "BREACH") || actor.damage.frozen) continue;
 
       const enemyTeam = (1 - actor.team) as 0 | 1;
       if (!arena.isGoalDoorOpen(enemyTeam)) continue;
@@ -634,8 +634,9 @@ export class LocalMatch {
         break;
       case "FLOATING":
         integrateFloating(bot, arena, dt);
-        if (arena.isInBreachRoom(bot.phys.pos, bot.team)) {
-          returnBotToOwnBreach(bot);
+        const breachTeam = getEnteredBreachTeam(arena, bot.phys.pos);
+        if (breachTeam !== null) {
+          enterBotBreachRoom(bot, breachTeam);
         }
         break;
       case "FROZEN":
@@ -701,8 +702,9 @@ export class LocalMatch {
   ): void {
     integrateFloating(bot, arena, dt);
 
-    if (arena.isInBreachRoom(bot.phys.pos, bot.team)) {
-      returnBotToOwnBreach(bot);
+    const breachTeam = getEnteredBreachTeam(arena, bot.phys.pos);
+    if (breachTeam !== null) {
+      enterBotBreachRoom(bot, breachTeam);
       return;
     }
 
@@ -895,10 +897,16 @@ function resetBotsForRound(
   }
 }
 
-function returnBotToOwnBreach(bot: BotState): void {
+function getEnteredBreachTeam(arena: Arena, pos: THREE.Vector3): 0 | 1 | null {
+  if (arena.isInBreachRoom(pos, 0)) return 0;
+  if (arena.isInBreachRoom(pos, 1)) return 1;
+  return null;
+}
+
+function enterBotBreachRoom(bot: BotState, team: 0 | 1): void {
   // Frozen bots cannot drift home — the arena walls are solid while FROZEN.
   // A wounded-but-FLOATING bot that makes it back heals its limb damage.
-  bot.currentBreachTeam = bot.team;
+  bot.currentBreachTeam = team;
   bot.damage.leftArm = false;
   bot.damage.rightArm = false;
   bot.damage.leftLeg = false;

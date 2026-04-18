@@ -14,18 +14,21 @@ import {
   type HitReportMessage,
   type LobbyTeam,
   type PlayerUpdateMessage,
-  type RoundWinEventMessage,
+  type RoundResultEventMessage,
   type SetReadyMessage,
   type SetTeamSizeMessage,
+  type ShotEventMessage,
   type SwitchTeamMessage,
 } from "../../../shared/multiplayer";
 import type { MatchTeamSize } from "../../../shared/match";
+import { findMatchWinner } from "../../../shared/match-flow";
 import { generateArenaLayout } from "../../../shared/arena-gen";
 import { isCallSignClean } from "../../../shared/profanity";
 import {
   ARENA_SIZE,
   BREACH_ROOM_D,
   BREACH_ROOM_H,
+  MATCH_POINT_TARGET,
   MAX_SPEED,
   PLAYER_RADIUS,
 } from "../../../shared/constants";
@@ -46,13 +49,14 @@ const VALID_PHASES = new Set<string>(["BREACH", "FLOATING", "GRABBING", "AIMING"
 export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   public maxClients = 32;
   public autoDispose = true;
-  public patchRate = 100;
+  public patchRate = 50;
 
   private countdownTimer: ReturnType<typeof setInterval> | null = null;
   private roundTimer: ReturnType<typeof setInterval> | null = null;
   private roundEndTimer: ReturnType<typeof setTimeout> | null = null;
   private matchTick: ReturnType<typeof setInterval> | null = null;
   private botCounters: Record<LobbyTeam, number> = { 0: 0, 1: 0 };
+  private countdownPreparedRound = false;
   private roundResolved = false;
   private lastPlayerUpdate = new Map<string, number>();
 
@@ -74,6 +78,9 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     });
     this.onMessage("player_update", (client, message: PlayerUpdateMessage) => {
       this.handlePlayerUpdateMessage(client, message);
+    });
+    this.onMessage("shot_event", (client, message: ShotEventMessage) => {
+      this.handleShotEventMessage(client, message);
     });
     this.onMessage("hit_report", (client, message: HitReportMessage) => {
       this.handleHitReportMessage(client, message);
@@ -178,7 +185,6 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }
 
     member.team = message.team;
-    member.ready = false;
     this.syncLobbyFlow();
   }
 
@@ -204,7 +210,6 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
     this.state.teamSize = nextTeamSize;
     this.trimBotsToTeamSize();
-    this.resetLobbyReadiness();
     this.syncLobbyFlow();
   }
 
@@ -219,7 +224,6 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       this.removeAllBots();
     }
 
-    this.resetLobbyReadiness();
     this.syncLobbyFlow();
   }
 
@@ -251,6 +255,32 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     actor.rightLeg = Boolean(message.rightLeg);
     actor.kills = Math.min(MAX_KILLS, Math.max(0, Math.trunc(Number(message.kills)) || 0));
     actor.deaths = Math.min(MAX_KILLS, Math.max(0, Math.trunc(Number(message.deaths)) || 0));
+  }
+
+  private handleShotEventMessage(client: RoomClient, message: ShotEventMessage): void {
+    if (this.state.phase !== "PLAYING" || this.roundResolved) return;
+
+    const actor = this.state.actors.get(client.sessionId);
+    if (!actor || actor.frozen || actor.rightArm || actor.phase === "RESPAWNING") return;
+
+    const direction = normalizeDirection(
+      Number(message.dirX),
+      Number(message.dirY),
+      Number(message.dirZ),
+    );
+    if (!direction) return;
+
+    const shotEvent: ShotEventMessage = {
+      ownerId: actor.id,
+      team: actor.team,
+      originX: clampFinite(Number(message.originX), -POS_CLAMP, POS_CLAMP),
+      originY: clampFinite(Number(message.originY), -POS_CLAMP, POS_CLAMP),
+      originZ: clampFinite(Number(message.originZ), -POS_CLAMP, POS_CLAMP),
+      dirX: direction.x,
+      dirY: direction.y,
+      dirZ: direction.z,
+    };
+    this.broadcast("shot_event", shotEvent);
   }
 
   private handleHitReportMessage(client: RoomClient, message: HitReportMessage): void {
@@ -318,6 +348,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
   private startCountdown(): void {
     this.clearTimers();
+    this.prepareCountdownRound();
     this.state.phase = "COUNTDOWN";
     this.state.countdownRemaining = MULTIPLAYER_COUNTDOWN_SECONDS;
     void this.lock();
@@ -326,25 +357,41 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       this.state.countdownRemaining = Math.max(0, this.state.countdownRemaining - 1);
       if (this.state.countdownRemaining <= 0) {
         this.clearCountdownTimer();
-        this.startRound();
+        this.beginRoundPlay();
       }
     }, 1000);
   }
 
   private cancelCountdown(): void {
     this.clearCountdownTimer();
+    this.revertPreparedCountdownRound();
     this.state.phase = "LOBBY";
     this.state.countdownRemaining = 0;
+    this.state.roundTimeRemaining = 0;
     void this.unlock();
   }
 
-  private startRound(): void {
-    this.state.phase = "PLAYING";
+  private prepareCountdownRound(): void {
     this.state.roundNumber += 1;
     this.state.roundTimeRemaining = MULTIPLAYER_ROUND_SECONDS;
     this.roundResolved = false;
-
+    this.countdownPreparedRound = true;
     this.spawnActors();
+  }
+
+  private revertPreparedCountdownRound(): void {
+    if (!this.countdownPreparedRound) return;
+    this.countdownPreparedRound = false;
+    this.state.roundNumber = Math.max(0, this.state.roundNumber - 1);
+    this.clearActors();
+  }
+
+  private beginRoundPlay(): void {
+    this.countdownPreparedRound = false;
+    this.state.phase = "PLAYING";
+    this.state.countdownRemaining = 0;
+    this.state.roundTimeRemaining = MULTIPLAYER_ROUND_SECONDS;
+    this.roundResolved = false;
 
     this.roundTimer = setInterval(() => {
       this.state.roundTimeRemaining = Math.max(0, this.state.roundTimeRemaining - 1);
@@ -352,13 +399,15 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
         this.clearRoundTimer();
         if (!this.roundResolved) {
           this.roundResolved = true;
-          const winEvent: RoundWinEventMessage = {
-            winningTeam: 0,
-            reason: "fullFreeze",
+          const resultEvent: RoundResultEventMessage = {
+            outcome: "tie",
+            winningTeam: null,
+            matchWinner: null,
+            reason: "timeout",
             scorerName: "Time",
           };
-          this.broadcast("round_win_event", winEvent);
-          this.finishRound();
+          this.broadcast("round_result_event", resultEvent);
+          this.finishRound(null);
         }
       }
     }, 1000);
@@ -368,20 +417,35 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }, MATCH_TICK_MS);
   }
 
-  private finishRound(): void {
+  private finishRound(matchWinner: 0 | 1 | null): void {
     this.clearRoundTimer();
     this.clearMatchTick();
 
     this.state.phase = "ROUND_END";
+    this.state.countdownRemaining = 0;
     this.state.roundTimeRemaining = 0;
-    this.resetLobbyReadiness();
     this.clearActors();
 
     this.roundEndTimer = setTimeout(() => {
+      this.roundEndTimer = null;
+      this.countdownPreparedRound = false;
+
+      if (
+        matchWinner === null
+        && canStartLobbyRound(this.getMemberSnapshots(), this.state.teamSize as MatchTeamSize)
+      ) {
+        this.startCountdown();
+        return;
+      }
+
       this.state.phase = "LOBBY";
       this.state.countdownRemaining = 0;
       this.state.roundTimeRemaining = 0;
+      if (matchWinner !== null) {
+        this.resetScore();
+      }
       void this.unlock();
+      this.syncLobbyFlow();
     }, MULTIPLAYER_ROUND_END_SECONDS * 1000);
   }
 
@@ -410,15 +474,31 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       this.state.scoreTeam1 += 1;
     }
 
-    const winEvent: RoundWinEventMessage = {
+    const matchWinner = findMatchWinner(
+      {
+        team0: this.state.scoreTeam0,
+        team1: this.state.scoreTeam1,
+      },
+      MATCH_POINT_TARGET,
+    );
+
+    const resultEvent: RoundResultEventMessage = {
+      outcome: "win",
       winningTeam: team,
+      matchWinner,
       reason,
       scorerName,
     };
-    this.broadcast("round_win_event", winEvent);
+    if (matchWinner !== null) {
+      resultEvent.finalScore = {
+        team0: this.state.scoreTeam0,
+        team1: this.state.scoreTeam1,
+      };
+    }
+    this.broadcast("round_result_event", resultEvent);
 
     setTimeout(() => {
-      this.finishRound();
+      this.finishRound(matchWinner);
     }, 3000);
   }
 
@@ -629,6 +709,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
   private cancelRoundFlow(): void {
     this.clearTimers();
+    this.countdownPreparedRound = false;
   }
 
   // ── Message helpers ─────────────────────────────────────────────────────────
@@ -653,6 +734,20 @@ function sanitizePlayerName(rawName?: string): string {
 function clampFinite(value: number, min: number, max: number): number {
   if (!isFinite(value)) return 0;
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeDirection(
+  x: number,
+  y: number,
+  z: number,
+): { x: number; y: number; z: number } | null {
+  const length = Math.hypot(x, y, z);
+  if (!isFinite(length) || length < 1e-5) return null;
+  return {
+    x: x / length,
+    y: y / length,
+    z: z / length,
+  };
 }
 
 function breachRoomCenter(goalAxis: "x" | "y" | "z", sign: 1 | -1): { x: number; y: number; z: number } {

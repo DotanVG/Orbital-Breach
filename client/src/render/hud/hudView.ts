@@ -155,8 +155,8 @@ const HUD_CSS = `
     display: none;
     position: absolute;
     left: 50%;
-    top: 96px;
-    transform: translateX(-50%);
+    top: 58%;
+    transform: translate(-50%, -50%);
     max-width: min(620px, 82vw);
     padding: 10px 16px;
     border-radius: 999px;
@@ -576,7 +576,7 @@ const HUD_CSS = `
     }
 
     .ob-objective {
-      top: 84px;
+      top: 60%;
       max-width: 92vw;
       padding: 9px 12px;
       font-size: 11px;
@@ -643,7 +643,7 @@ const HUD_CSS = `
 
   @media (max-height: 620px) {
     .ob-objective {
-      top: 74px;
+      top: 62%;
     }
 
     .ob-tutorial {

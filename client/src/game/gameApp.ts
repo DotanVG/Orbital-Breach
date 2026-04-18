@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import { GRAB_RADIUS, HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_END_DELAY } from "../../../shared/constants";
 import { generateArenaLayout } from "../../../shared/arena-gen";
 import type { MultiplayerRoomSnapshot } from "../../../shared/multiplayer";
@@ -17,6 +18,7 @@ import { SceneManager } from "../render/scene";
 import { KillFeed } from "../ui/kill-feed";
 import { MainMenu } from "../ui/menu";
 import { MobileControls } from "../ui/mobileControls";
+import { SessionMenu, type SessionSettings } from "../ui/sessionMenu";
 import { cameraYawFacingBreachOpening } from "./cameraYawFromBreach";
 import { FloatArmTuneOverlay } from "./floatArmTuneOverlay";
 import { ProjectileSystem } from "./projectileSystem";
@@ -38,6 +40,7 @@ export class App {
   private latestOnlineSnapshot: MultiplayerRoomSnapshot | null = null;
   private previousOnlinePhase: MultiplayerRoomSnapshot["phase"] | null = null;
   private onlinePlayerName = "Pilot";
+  private onlineBreachReported = false;
 
   private arena: Arena;
   private cam: CameraController;
@@ -59,6 +62,7 @@ export class App {
   private projectiles: ProjectileSystem;
   private round = new RoundController();
   private sceneMgr: SceneManager;
+  private sessionMenu = new SessionMenu();
   private thirdPerson = false;
   private tutorial = new FirstTimeTutorial();
 
@@ -75,6 +79,8 @@ export class App {
     this.onlineMatch = new OnlineMatch(this.sceneMgr.getScene());
     this.hud.setVisible(false);
     this.killFeed.setVisible(false);
+    this.sessionMenu.setLauncherVisible(false);
+    this.applySessionSettings(this.sessionMenu.getSettings());
 
     this.sceneMgr.getScene().add(this.sceneMgr.getCamera());
     this.gun = new GunViewModel(this.sceneMgr.getCamera());
@@ -109,6 +115,14 @@ export class App {
     this.round.onBeginRound = () => this.beginNewRound();
     this.round.onCountdownEnd = () => this.arena.setPortalDoorsOpen(true);
     this.round.onRoundTimeout = () => this.match.handleRoundTimeout();
+    this.sessionMenu.onLauncherRequest = () => this.openSessionMenu();
+    this.sessionMenu.onResume = () => this.closeSessionMenu();
+    this.sessionMenu.onMainMenu = () => {
+      void this.handleSessionMenuMainMenu();
+    };
+    this.sessionMenu.onSettingsChange = (settings) => {
+      this.applySessionSettings(settings);
+    };
 
     this.net.onStateChange = (snapshot) => {
       this.latestOnlineSnapshot = snapshot;
@@ -116,20 +130,29 @@ export class App {
       const prev = this.previousOnlinePhase;
       this.previousOnlinePhase = snapshot.phase;
 
-      if (!this.onlineGameActive) {
+      if (!this.onlineGameActive || snapshot.phase === "LOBBY") {
         this.multiplayer.render(snapshot);
       }
 
-      if (prev !== "PLAYING" && snapshot.phase === "PLAYING") {
-        this.startOnlineGame(snapshot);
+      const shouldBeginOnlineRound =
+        snapshot.phase === "COUNTDOWN"
+        && prev !== "COUNTDOWN"
+        && prev !== "PLAYING";
+      const joinedLiveRound = !this.onlineGameActive && snapshot.phase === "PLAYING";
+
+      if (shouldBeginOnlineRound || joinedLiveRound) {
+        this.beginOnlineRound(snapshot);
+      }
+
+      if (snapshot.phase === "LOBBY") {
+        if (this.onlineGameActive) {
+          this.endOnlineGame();
+        }
         return;
       }
 
       if (this.onlineGameActive) {
-        if (snapshot.phase === "LOBBY") {
-          this.endOnlineGame();
-          return;
-        }
+        this.arena.setPortalDoorsOpen(snapshot.phase === "PLAYING");
         this.onlineMatch.applySnapshot(snapshot.actors, snapshot.sessionId);
       }
     };
@@ -149,16 +172,43 @@ export class App {
       }
     };
 
-    this.net.onRoundWinEvent = (event) => {
-      if (this.onlineGameActive) {
-        this.projectiles.clear();
-        if (event.winningTeam === 0) {
-          this.hud.showRoundEnd("CYAN WINS");
-        } else {
-          this.hud.showRoundEnd("MAGENTA WINS");
-        }
+    this.net.onRoundResultEvent = (event) => {
+      if (!this.onlineGameActive) return;
+
+      this.projectiles.clear();
+      this.onlineBreachReported = false;
+
+      if (event.outcome === "tie") {
+        this.hud.showRoundEnd("TIE");
+        return;
+      }
+
+      if (event.reason === "breach" && event.winningTeam !== null) {
         this.killFeed.addScore(event.scorerName, event.winningTeam);
       }
+
+      if (event.matchWinner !== null && event.finalScore) {
+        const label = event.matchWinner === 0 ? "CYAN" : "MAGENTA";
+        this.hud.showRoundEnd(
+          `${label} WINS THE MATCH  ${event.finalScore.team0} - ${event.finalScore.team1}`,
+        );
+        return;
+      }
+
+      this.hud.showRoundEnd(event.winningTeam === 0 ? "CYAN WINS" : "MAGENTA WINS");
+    };
+
+    this.net.onShotEvent = (event) => {
+      if (!this.onlineGameActive) return;
+      if (event.ownerId === this.getOnlineLocalActorId()) return;
+
+      this.projectiles.spawn(
+        new THREE.Vector3(event.originX, event.originY, event.originZ),
+        new THREE.Vector3(event.dirX, event.dirY, event.dirZ),
+        event.team,
+        event.ownerId,
+      );
+      this.onlineMatch.triggerRemoteShot(event.ownerId);
     };
 
     this.net.onLeave = () => {
@@ -179,6 +229,9 @@ export class App {
     this.multiplayer.onFillBots = (fill) => {
       this.net.fillBots(fill);
     };
+    this.multiplayer.onOpenSettings = () => {
+      this.openSessionMenu();
+    };
     this.multiplayer.onTeamSizeChange = (teamSize) => {
       this.net.setTeamSize(teamSize);
     };
@@ -192,7 +245,7 @@ export class App {
       };
     } else {
       this.sceneMgr.getRenderer().domElement.addEventListener("mousedown", () => {
-        if (this.menu.isVisible() || this.input.isLocked()) return;
+        if (this.menu.isVisible() || this.input.isLocked() || this.sessionMenu.isOpen()) return;
         if (this.appMode === "solo" && this.round.getPhase() === "LOBBY") return;
         if (this.appMode === "online" && !this.onlineGameActive) return;
         this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
@@ -217,6 +270,14 @@ export class App {
   private loop(timestamp: number): void {
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.033);
     this.lastTime = timestamp;
+
+    if (this.input.consumeMenuToggle()) {
+      if (this.sessionMenu.isOpen()) {
+        this.closeSessionMenu();
+      } else if (this.appMode !== "menu") {
+        this.openSessionMenu();
+      }
+    }
 
     if (this.appMode === "solo") {
       this.tickSoloGame(dt);
@@ -289,11 +350,12 @@ export class App {
 
     this.tickOnlineWeaponFire();
 
+    const localActorId = this.getOnlineLocalActorId();
     const localCentre = this.player.getPosition().clone();
     localCentre.y += HITBOX_OFFSET_Y;
     const localTarget = {
       active: this.player.phase !== "RESPAWNING" && !this.player.damage.frozen,
-      id: "local-player",
+      id: localActorId,
       pos: localCentre,
       radius: HITBOX_RADIUS,
       team: this.player.team,
@@ -335,13 +397,40 @@ export class App {
     const shot = buildShotFromCamera(this.player, this.cam, this.gun, false);
     if (!shot) return;
 
-    this.projectiles.spawn(shot.origin, shot.direction, this.player.team, "local-player");
+    const localActorId = this.getOnlineLocalActorId();
+    this.projectiles.spawn(shot.origin, shot.direction, this.player.team, localActorId);
+    this.net.sendShot({
+      ownerId: localActorId,
+      team: this.player.team,
+      originX: shot.origin.x,
+      originY: shot.origin.y,
+      originZ: shot.origin.z,
+      dirX: shot.direction.x,
+      dirY: shot.direction.y,
+      dirZ: shot.direction.z,
+    });
     this.player.triggerArmRecoil();
     this.tutorial.noteShotFired();
   }
 
   private handleOnlineProjectileHit(hit: ProjectileHitEvent): void {
-    if (hit.targetId === "local-player") {
+    const localActorId = this.getOnlineLocalActorId();
+    if (hit.targetId === localActorId) {
+      return;
+    }
+
+    if (hit.ownerId === localActorId) {
+      this.net.sendHitReport({
+        targetId: hit.targetId,
+        impX: 0,
+        impY: 0,
+        impZ: 0,
+      });
+      this.hud.triggerHitConfirm(this.player.team);
+      return;
+    }
+
+    if (hit.targetId === localActorId) {
       if (hit.ownerId !== "local-player") {
         const zone = LocalPlayer.classifyHitZone(
           hit.impactPoint,
@@ -369,7 +458,8 @@ export class App {
 
   private checkOnlineBreachScore(): void {
     if (!this.onlineGameActive) return;
-    if (this.player.phase !== "FLOATING" || this.player.damage.frozen) return;
+    if (this.onlineBreachReported || this.player.damage.frozen) return;
+    if (this.player.phase !== "FLOATING" && this.player.phase !== "BREACH") return;
 
     const enemyTeam = (1 - this.player.team) as 0 | 1;
     if (!this.arena.isGoalDoorOpen(enemyTeam)) return;
@@ -378,6 +468,7 @@ export class App {
     this.player.currentBreachTeam = enemyTeam;
     this.player.phase = "BREACH";
     this.player.phys.vel.y = 0;
+    this.onlineBreachReported = true;
 
     this.net.sendBreachReport({
       scorerTeam: this.player.team,
@@ -409,42 +500,57 @@ export class App {
 
   // ── Online game lifecycle ───────────────────────────────────────────────────
 
-  private startOnlineGame(snapshot: MultiplayerRoomSnapshot): void {
+  private beginOnlineRound(snapshot: MultiplayerRoomSnapshot): void {
     this.onlineGameActive = true;
+    this.onlineBreachReported = false;
     this.playerUpdateTimer = 0;
     this.tutorial.beginRun();
 
     this.multiplayer.hide();
     this.hud.setVisible(true);
     this.killFeed.setVisible(true);
+    this.hud.hideRoundEnd();
 
     const layout = generateArenaLayout(snapshot.roundNumber);
     this.arena.loadLayout(layout);
     this.projectiles.clear();
 
     this.player.team = snapshot.selfTeam;
-    this.player.kills = 0;
-    this.player.deaths = 0;
-    this.player.resetForNewRound(this.arena);
+    const selfActor = snapshot.actors.find((actor) => actor.id === snapshot.sessionId);
+    this.player.kills = selfActor?.kills ?? 0;
+    this.player.deaths = selfActor?.deaths ?? 0;
+    this.player.resetForNewRound(
+      this.arena,
+      selfActor
+        ? { x: selfActor.posX, y: selfActor.posY, z: selfActor.posZ }
+        : undefined,
+    );
 
     const openAxis = this.arena.getBreachOpenAxis(this.player.team);
     const openSign = this.arena.getBreachOpenSign(this.player.team);
     this.cam.resetForBreachSpawn(cameraYawFacingBreachOpening(openAxis, openSign));
 
-    this.arena.setPortalDoorsOpen(true);
+    this.arena.setPortalDoorsOpen(snapshot.phase === "PLAYING");
 
     this.onlineMatch.applySnapshot(snapshot.actors, snapshot.sessionId);
 
     if (this.mobile) {
-      this.input.setMobileControlsActive(true);
-      this.mobileControls?.show();
+      const menuOpen = this.sessionMenu.isOpen();
+      this.input.setMobileControlsActive(!menuOpen);
+      if (menuOpen) {
+        this.mobileControls?.hide();
+      } else {
+        this.mobileControls?.show();
+      }
     }
     // Pointer lock is acquired on the first canvas click (mousedown handler),
     // not here — requestPointerLock() requires a direct user gesture.
   }
 
   private endOnlineGame(): void {
+    this.closeSessionMenu();
     this.onlineGameActive = false;
+    this.onlineBreachReported = false;
 
     this.onlineMatch.dispose();
     this.projectiles.clear();
@@ -541,8 +647,8 @@ export class App {
 
     this.hud.update({
       score: snap.score,
-      phase: "PLAYING",
-      countdown: 0,
+      phase: snap.phase,
+      countdown: snap.countdownRemaining,
       roundTimeRemaining: snap.roundTimeRemaining,
       playerPhase: this.player.phase,
       launchPower: this.player.launchPower,
@@ -556,7 +662,7 @@ export class App {
       tutorialPrompt: this.tutorial.update({
         currentBreachTeam: this.player.currentBreachTeam,
         frozen: this.player.damage.frozen,
-        inRound: true,
+        inRound: snap.phase === "COUNTDOWN" || snap.phase === "PLAYING",
         mobile: this.mobile,
         phase: this.player.phase,
         team: this.player.team,
@@ -618,6 +724,7 @@ export class App {
   }
 
   private returnToMenuFromSolo(): void {
+    this.closeSessionMenu();
     this.appMode = "menu";
     this.matchOver = false;
     this.projectiles.clear();
@@ -627,8 +734,82 @@ export class App {
     this.input.exitPointerLock();
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
+    this.input.setUiBlocked(false);
     this.match.dispose();
+    this.sessionMenu.setLauncherVisible(false);
     this.menu.show();
+  }
+
+  private openSessionMenu(): void {
+    if (this.appMode === "menu") return;
+
+    const inLiveMatch = this.appMode === "solo" || this.onlineGameActive;
+    const title = this.appMode === "solo"
+      ? "Solo Flight Menu"
+      : this.onlineGameActive
+        ? "Live Match Menu"
+        : "Lobby Menu";
+    const subtitle = inLiveMatch
+      ? this.mobile
+        ? "Resume when you are ready, or return straight to the main menu."
+        : "Resume when you are ready, then click the arena to recapture mouse look."
+      : "Step back to the room shell or return all the way to the main menu.";
+    const resumeLabel = this.appMode === "solo"
+      ? "Resume Match"
+      : this.onlineGameActive
+        ? "Resume Match"
+        : "Back To Lobby";
+
+    this.input.exitPointerLock();
+    this.input.setUiBlocked(true);
+    if (this.mobile) {
+      this.mobileControls?.hide();
+      this.input.setMobileControlsActive(false);
+    }
+
+    this.sessionMenu.open({
+      title,
+      subtitle,
+      resumeLabel,
+      mainMenuLabel: "Return To Main Menu",
+    });
+  }
+
+  private closeSessionMenu(): void {
+    if (!this.sessionMenu.isOpen()) return;
+
+    this.sessionMenu.close();
+    this.input.setUiBlocked(false);
+
+    if (!this.mobile) return;
+
+    if (this.appMode === "solo" || this.onlineGameActive) {
+      this.input.setMobileControlsActive(true);
+      this.mobileControls?.show();
+      return;
+    }
+
+    this.mobileControls?.hide();
+    this.input.setMobileControlsActive(false);
+  }
+
+  private async handleSessionMenuMainMenu(): Promise<void> {
+    this.closeSessionMenu();
+    if (this.appMode === "solo") {
+      this.returnToMenuFromSolo();
+      return;
+    }
+    if (this.appMode === "online") {
+      await this.returnToMenuFromOnline();
+    }
+  }
+
+  private applySessionSettings(settings: SessionSettings): void {
+    this.input.mouseSensitivity = settings.mouseSensitivity;
+  }
+
+  private getOnlineLocalActorId(): string {
+    return this.net.getSessionId() ?? "local-player";
   }
 
   // ── Solo match start ────────────────────────────────────────────────────────
@@ -636,6 +817,7 @@ export class App {
   private startSoloMatch(selection: PlaySelection): void {
     this.appMode = "solo";
     this.matchOver = false;
+    this.onlineBreachReported = false;
     this.tutorial.beginRun();
     if (this.matchEndHandle) {
       clearTimeout(this.matchEndHandle);
@@ -644,6 +826,8 @@ export class App {
     this.multiplayer.hide();
     this.hud.setVisible(true);
     this.killFeed.setVisible(true);
+    this.input.setUiBlocked(false);
+    this.sessionMenu.setLauncherVisible(true);
 
     this.match.startNewGame({
       humanName: selection.name,
@@ -667,20 +851,27 @@ export class App {
     this.appMode = "online";
     this.onlinePlayerName = selection.name;
     this.onlineGameActive = false;
+    this.onlineBreachReported = false;
     this.previousOnlinePhase = null;
     this.projectiles.clear();
     this.hud.setVisible(false);
     this.killFeed.setVisible(false);
+    this.input.setUiBlocked(false);
     this.input.exitPointerLock();
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
+    this.sessionMenu.setLauncherVisible(true);
     this.multiplayer.showConnecting(selection.name);
 
     try {
       const snapshot = await this.net.connect({ name: selection.name });
       this.latestOnlineSnapshot = snapshot;
       this.previousOnlinePhase = snapshot.phase;
-      this.multiplayer.render(snapshot);
+      if (snapshot.phase === "COUNTDOWN" || snapshot.phase === "PLAYING") {
+        this.beginOnlineRound(snapshot);
+      } else {
+        this.multiplayer.render(snapshot);
+      }
     } catch (error) {
       console.error("Failed to connect to the multiplayer room.", error);
       this.multiplayer.setStatus("Could not reach the Colyseus server. Check that the server is running.", "error");
@@ -688,8 +879,10 @@ export class App {
   }
 
   private async returnToMenuFromOnline(): Promise<void> {
+    this.closeSessionMenu();
     this.appMode = "menu";
     this.onlineGameActive = false;
+    this.onlineBreachReported = false;
     this.onlineMatch.dispose();
     this.multiplayer.hide();
     this.hud.setVisible(false);
@@ -697,7 +890,9 @@ export class App {
     this.killFeed.setVisible(false);
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
+    this.input.setUiBlocked(false);
     this.input.exitPointerLock();
+    this.sessionMenu.setLauncherVisible(false);
 
     try {
       await this.net.disconnect();

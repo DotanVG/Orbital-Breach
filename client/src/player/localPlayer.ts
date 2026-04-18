@@ -263,8 +263,9 @@ export class LocalPlayer {
     bounceArena(this.phys, goalAxis, perpAxis, portalFacesOpen);
     arena.bounceObstacles(this.phys);
 
-    if (arena.isInBreachRoom(this.phys.pos, this.team)) {
-      this.returnToOwnBreach();
+    const breachTeam = this.getEnteredBreachTeam(arena);
+    if (breachTeam !== null) {
+      this.enterBreachRoom(breachTeam);
       return;
     }
 
@@ -351,15 +352,22 @@ export class LocalPlayer {
   }
 
   private tryReturnToOwnBreach(arena: Arena): void {
-    if (!arena.isInBreachRoom(this.phys.pos, this.team)) return;
-    this.returnToOwnBreach();
+    const breachTeam = this.getEnteredBreachTeam(arena);
+    if (breachTeam === null) return;
+    this.enterBreachRoom(breachTeam);
   }
 
-  private returnToOwnBreach(): void {
+  private getEnteredBreachTeam(arena: Arena): 0 | 1 | null {
+    if (arena.isInBreachRoom(this.phys.pos, 0)) return 0;
+    if (arena.isInBreachRoom(this.phys.pos, 1)) return 1;
+    return null;
+  }
+
+  private enterBreachRoom(team: 0 | 1): void {
     // Fully-frozen players cannot reach here — FROZEN drift bounces off
     // every wall, so damage.frozen stays untouched. Allies who are still
     // FLOATING but wounded can drift home to heal their limb damage.
-    this.currentBreachTeam = this.team;
+    this.currentBreachTeam = team;
     this.phase = 'BREACH';
     this.damage.leftArm = false;
     this.damage.rightArm = false;
