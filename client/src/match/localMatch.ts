@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { BOT_NAMES, GRAB_RADIUS, PLAYER_RADIUS } from "../../../shared/constants";
+import { BOT_NAMES, GRAB_RADIUS, HITBOX_RADIUS, MATCH_POINT_TARGET, PLAYER_RADIUS } from "../../../shared/constants";
+import { findMatchWinner } from "../../../shared/match-flow";
 import { getSoloBotFill, type SoloMatchConfig } from "../../../shared/match";
 import {
   classifyHitZone,
@@ -79,6 +80,11 @@ export type LocalMatchEvent =
     reason: "breach" | "fullFreeze";
     type: "roundWin";
     winningTeam: 0 | 1;
+  }
+  | {
+    type: "matchEnd";
+    winningTeam: 0 | 1;
+    finalScore: { team0: number; team1: number };
   };
 
 interface BotState {
@@ -206,14 +212,14 @@ export class LocalMatch {
         active: player.phase !== "RESPAWNING" && !player.damage.frozen,
         id: LOCAL_PLAYER_ID,
         pos: player.getPosition().clone(),
-        radius: PLAYER_RADIUS,
+        radius: HITBOX_RADIUS,
         team: this.config.humanTeam,
       },
       ...this.bots.map((bot) => ({
         active: bot.phase !== "RESPAWNING" && !bot.damage.frozen,
         id: bot.id,
         pos: bot.phys.pos.clone(),
-        radius: PLAYER_RADIUS,
+        radius: HITBOX_RADIUS,
         team: bot.team,
       })),
     ];
@@ -227,7 +233,10 @@ export class LocalMatch {
     if (this.roundResolved) return;
 
     const owner = this.getActorMeta(event.ownerId, player);
-    const impulse = event.direction.clone().normalize().multiplyScalar(3);
+    // Projectile impacts freeze targets but must not push them — a frozen
+    // player being shoved around the arena is disorienting and lets stray
+    // shots double as crowd control, which is not the design intent.
+    const impulse = event.direction.clone().normalize().multiplyScalar(0);
 
     if (event.targetId === LOCAL_PLAYER_ID) {
       const zone = LocalPlayer.classifyHitZone(
@@ -390,6 +399,7 @@ export class LocalMatch {
     if (winner === 0) this.score.team0 += 1;
     else this.score.team1 += 1;
     this.emitEvent({ type: "roundWin", winningTeam: winner, reason: "fullFreeze" });
+    this.maybeEmitMatchEnd();
   }
 
   private awardRoundPoint(team: 0 | 1, scorerName: string, reason: "breach" | "fullFreeze"): void {
@@ -407,6 +417,17 @@ export class LocalMatch {
       type: "roundWin",
       winningTeam: team,
       reason,
+    });
+    this.maybeEmitMatchEnd();
+  }
+
+  private maybeEmitMatchEnd(): void {
+    const winner = findMatchWinner(this.score, MATCH_POINT_TARGET);
+    if (winner === null) return;
+    this.emitEvent({
+      type: "matchEnd",
+      winningTeam: winner,
+      finalScore: { ...this.score },
     });
   }
 

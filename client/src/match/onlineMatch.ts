@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { PLAYER_RADIUS } from "../../../shared/constants";
+import { HITBOX_RADIUS } from "../../../shared/constants";
 import type { OnlineActorSnapshot } from "../../../shared/multiplayer";
 import type { PlayerPhase } from "../../../shared/schema";
 import { buildHudRosters } from "./rosterView";
@@ -63,7 +63,7 @@ export class OnlineMatch {
       pos: new THREE.Vector3(snap.posX, snap.posY, snap.posZ),
       team: snap.team,
       active: !snap.frozen && snap.phase !== "RESPAWNING",
-      radius: PLAYER_RADIUS,
+      radius: HITBOX_RADIUS,
     }));
   }
 

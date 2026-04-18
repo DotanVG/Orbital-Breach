@@ -1,4 +1,4 @@
-import { GRAB_RADIUS, PLAYER_RADIUS } from "../../../shared/constants";
+import { GRAB_RADIUS, HITBOX_RADIUS, MATCH_END_DELAY } from "../../../shared/constants";
 import { generateArenaLayout } from "../../../shared/arena-gen";
 import type { MultiplayerRoomSnapshot } from "../../../shared/multiplayer";
 import { Arena } from "../arena/arena";
@@ -31,6 +31,8 @@ const PLAYER_UPDATE_RATE = 0.05; // 20hz
 export class App {
   private appMode: "menu" | "solo" | "online" = "menu";
   private onlineGameActive = false;
+  private matchOver = false;
+  private matchEndHandle: ReturnType<typeof setTimeout> | null = null;
   private playerUpdateTimer = 0;
   private latestOnlineSnapshot: MultiplayerRoomSnapshot | null = null;
   private previousOnlinePhase: MultiplayerRoomSnapshot["phase"] | null = null;
@@ -96,6 +98,9 @@ export class App {
           break;
         case "roundTie":
           this.onRoundTie();
+          break;
+        case "matchEnd":
+          this.onMatchEnd(event.winningTeam, event.finalScore);
           break;
       }
     };
@@ -286,7 +291,7 @@ export class App {
       active: this.player.phase !== "RESPAWNING" && !this.player.damage.frozen,
       id: "local-player",
       pos: this.player.getPosition().clone(),
-      radius: PLAYER_RADIUS,
+      radius: HITBOX_RADIUS,
       team: this.player.team,
     };
     const allTargets = [localTarget, ...this.onlineMatch.getProjectileTargets()];
@@ -338,18 +343,18 @@ export class App {
           this.player.getPosition(),
           this.cam.getForward(),
         );
-        this.player.applyHit(zone, hit.direction.clone().normalize().multiplyScalar(3));
+        // Zero impulse — shots freeze but do not push. See localMatch.ts.
+        this.player.applyHit(zone, hit.direction.clone().normalize().multiplyScalar(0));
       }
       return;
     }
 
     if (hit.ownerId === "local-player") {
-      const impulse = hit.direction.clone().normalize().multiplyScalar(3);
       this.net.sendHitReport({
         targetId: hit.targetId,
-        impX: impulse.x,
-        impY: impulse.y,
-        impZ: impulse.z,
+        impX: 0,
+        impY: 0,
+        impZ: 0,
       });
       this.hud.triggerHitConfirm(this.player.team);
     }
@@ -571,10 +576,48 @@ export class App {
     this.round.endRound();
   }
 
+  private onMatchEnd(
+    winningTeam: 0 | 1,
+    finalScore: { team0: number; team1: number },
+  ): void {
+    // onRoundWin already ran and scheduled the next round via round.endRound();
+    // override that so we show the match result and go back to menu instead.
+    this.matchOver = true;
+    this.round.cancelPendingRestart();
+    const label = winningTeam === 0 ? "CYAN" : "MAGENTA";
+    this.hud.showRoundEnd(
+      `${label} WINS THE MATCH  ${finalScore.team0} - ${finalScore.team1}`,
+    );
+    if (this.matchEndHandle) clearTimeout(this.matchEndHandle);
+    this.matchEndHandle = setTimeout(() => {
+      this.matchEndHandle = null;
+      this.returnToMenuFromSolo();
+    }, MATCH_END_DELAY * 1000);
+  }
+
+  private returnToMenuFromSolo(): void {
+    this.appMode = "menu";
+    this.matchOver = false;
+    this.projectiles.clear();
+    this.hud.setVisible(false);
+    this.hud.hideRoundEnd();
+    this.killFeed.setVisible(false);
+    this.input.exitPointerLock();
+    this.mobileControls?.hide();
+    this.input.setMobileControlsActive(false);
+    this.match.dispose();
+    this.menu.show();
+  }
+
   // ── Solo match start ────────────────────────────────────────────────────────
 
   private startSoloMatch(selection: PlaySelection): void {
     this.appMode = "solo";
+    this.matchOver = false;
+    if (this.matchEndHandle) {
+      clearTimeout(this.matchEndHandle);
+      this.matchEndHandle = null;
+    }
     this.multiplayer.hide();
     this.hud.setVisible(true);
     this.killFeed.setVisible(true);
@@ -770,10 +813,13 @@ export class App {
     const phase = this.round.getPhase();
     const playerAlive = this.player.phase !== "RESPAWNING";
     const roundActive = this.appMode === "online" ? this.onlineGameActive : phase !== "LOBBY";
+    // Frozen players cannot fire — hide the viewmodel so it reads visually
+    // as "incapacitated" rather than "armed but idle".
+    const canWield = !this.player.damage.frozen;
 
     this.player.setThirdPersonGunVisible(
-      roundActive && playerAlive && (this.thirdPerson || isSelfie),
+      roundActive && playerAlive && canWield && (this.thirdPerson || isSelfie),
     );
-    this.gun.setVisible(roundActive && playerAlive && !this.thirdPerson && !isSelfie);
+    this.gun.setVisible(roundActive && playerAlive && canWield && !this.thirdPerson && !isSelfie);
   }
 }

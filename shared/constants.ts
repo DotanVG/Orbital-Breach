@@ -1,5 +1,9 @@
 export const ARENA_SIZE             = 40;
 export const PLAYER_RADIUS          = 0.8;
+// Projectile hit test radius — tighter than PLAYER_RADIUS so shots only
+// register on roughly the alien's silhouette, not the spherical collision
+// envelope used to keep actors from clipping through each other.
+export const HITBOX_RADIUS          = 0.55;
 export const TICK_RATE              = 20;
 export const FREEZE_TIME            = 2.0;    // kept for server compat
 export const RESPAWN_TIME           = 2.0;
@@ -34,6 +38,8 @@ export const ZERO_G_PORTAL_GRAVITY  = 1.5;
 export const COUNTDOWN_SECONDS      = 5;
 export const ROUND_END_DELAY        = 5;     // seconds before new round starts
 export const ROUND_DURATION_SECONDS = 120;   // hard cap so every round ends
+export const MATCH_POINT_TARGET     = 5;     // first team to this many rounds wins the match
+export const MATCH_END_DELAY        = 7;     // seconds showing MATCH result before returning to menu
 
 // Solo bot roster
 export const BOT_NAMES = [

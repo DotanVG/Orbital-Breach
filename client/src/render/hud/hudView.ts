@@ -45,7 +45,7 @@ const HUD_MARKUP = `
     color:#fff;text-shadow:0 0 40px #00ffff;letter-spacing:0.05em;
   ">10</div>
 
-  <div id="hud-objective" style="
+  <div id="hud-objective" class="ob-objective" style="
     display:none;position:absolute;left:50%;top:58%;
     transform:translateX(-50%);font-size:16px;letter-spacing:3px;
     color:#aaffff;text-shadow:0 0 12px #00ffff;text-align:center;
@@ -102,6 +102,36 @@ const HUD_MARKUP = `
   "></div>
 `;
 
+const HUD_CSS = `
+  /* Objective banner: long sentence, must wrap on narrow screens. */
+  @media (max-width: 640px) {
+    .ob-objective {
+      white-space: normal !important;
+      max-width: 90vw !important;
+      font-size: 13px !important;
+      letter-spacing: 2px !important;
+      line-height: 1.35 !important;
+      padding: 4px 10px !important;
+    }
+  }
+  @media (max-height: 560px) {
+    .ob-objective {
+      top: 52% !important;
+      font-size: 12px !important;
+      letter-spacing: 1.5px !important;
+    }
+  }
+`;
+
+let hudStyleInjected = false;
+function injectHudStyle(): void {
+  if (hudStyleInjected) return;
+  hudStyleInjected = true;
+  const style = document.createElement('style');
+  style.textContent = HUD_CSS;
+  document.head.appendChild(style);
+}
+
 export interface HudElements {
   root: HTMLDivElement;
   scoreWrap: HTMLDivElement;
@@ -123,6 +153,7 @@ export interface HudElements {
 }
 
 export function createHudView(): HudElements {
+  injectHudStyle();
   const root = document.createElement('div');
   Object.assign(root.style, {
     position: 'fixed',
@@ -134,6 +165,7 @@ export function createHudView(): HudElements {
     fontFamily: 'monospace',
     color: 'white',
     userSelect: 'none',
+    display: 'none',
   });
   root.innerHTML = HUD_MARKUP;
   document.body.appendChild(root);
