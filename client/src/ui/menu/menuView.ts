@@ -96,6 +96,12 @@ const CSS = `
   .menu-input::placeholder { color: #2d4a62; }
   .menu-input:hover:not(:focus) { border-color: #3a5568; }
   .menu-input:focus { border-color: #00ffff55; box-shadow: 0 0 0 1px #00ffff18 inset; }
+  .menu-input--error { border-color: #ff4444 !important; box-shadow: 0 0 0 1px #ff222218 inset !important; }
+  .menu-name-error {
+    min-height: 16px; margin-top: 6px;
+    font-size: 10px; letter-spacing: 1px; color: #ff4444;
+    text-align: center;
+  }
 
   .menu-divider {
     width: 360px; height: 1px;
@@ -147,7 +153,7 @@ const CSS = `
   }
 
   .menu-version {
-    position: fixed; bottom: 12px; right: 16px;
+    position: absolute; bottom: 14px; left: 44px;
     font-size: 10px; color: #2a3d50; letter-spacing: 2px;
     font-family: 'Share Tech Mono', monospace;
   }
@@ -179,8 +185,10 @@ export interface MenuElements {
   container: HTMLDivElement;
   root: HTMLElement;
   nameInput: HTMLInputElement;
+  nameError: HTMLElement;
   matchSizeSelect: HTMLSelectElement;
-  playButton: HTMLButtonElement;
+  playSoloButton: HTMLButtonElement;
+  playOnlineButton: HTMLButtonElement;
 }
 
 export function injectMenuStyle(): HTMLStyleElement {
@@ -222,7 +230,8 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
         <div class="menu-label">Call Sign</div>
         <input class="menu-input" id="menu-name" type="text"
           placeholder="ENTER NAME" maxlength="16" value="${escapeHtml(savedName)}"
-          autocomplete="off" inputmode="${mobile ? 'text' : 'text'}" />
+          autocomplete="off" spellcheck="false" />
+        <div class="menu-name-error" id="menu-name-error" aria-live="polite"></div>
       </div>
 
       <div class="menu-section">
@@ -237,8 +246,9 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
 
       <div class="menu-divider"></div>
 
-      <div class="menu-section">
-        <button class="menu-btn" id="btn-play">PLAY SOLO</button>
+      <div class="menu-section" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <button class="menu-btn" id="btn-play-solo">PLAY SOLO</button>
+        <button class="menu-btn" id="btn-play-online">PLAY ONLINE</button>
       </div>
 
       <div class="menu-controls">${controlsHtml}</div>
@@ -252,8 +262,10 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
     container,
     root: container.querySelector<HTMLElement>('#menu-root')!,
     nameInput: container.querySelector<HTMLInputElement>('#menu-name')!,
+    nameError: container.querySelector<HTMLElement>('#menu-name-error')!,
     matchSizeSelect: container.querySelector<HTMLSelectElement>('#menu-match-size')!,
-    playButton: container.querySelector<HTMLButtonElement>('#btn-play')!,
+    playSoloButton: container.querySelector<HTMLButtonElement>('#btn-play-solo')!,
+    playOnlineButton: container.querySelector<HTMLButtonElement>('#btn-play-online')!,
   };
 }
 
