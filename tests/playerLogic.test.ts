@@ -152,4 +152,47 @@ describe("resolveActorCollisions", () => {
     expect(bodies[0].pos.x).toBeCloseTo(0, 4);
     expect(bodies[1].pos.x).toBeGreaterThanOrEqual(1.59);
   });
+
+  it("cancels approach velocity but preserves tangential momentum", () => {
+    // Two bodies on the x axis. A moves +x at 4, B moves -x at 4 (head-on).
+    // Tangential component (z) is 2 on A — should survive the collision.
+    const a = {
+      pos: { x: 0, y: 0, z: 0 },
+      radius: 0.5,
+      vel: { x: 4, y: 0, z: 2 },
+    };
+    const b = {
+      pos: { x: 0.6, y: 0, z: 0 },
+      radius: 0.5,
+      vel: { x: -4, y: 0, z: 0 },
+    };
+
+    resolveActorCollisions([a, b]);
+
+    // Approach velocity along +x should be cancelled on both bodies.
+    expect(a.vel.x).toBeLessThanOrEqual(0.01);
+    expect(b.vel.x).toBeGreaterThanOrEqual(-0.01);
+    // Tangential (z) velocity on A is preserved — momentum kept.
+    expect(a.vel.z).toBeCloseTo(2, 4);
+  });
+
+  it("leaves velocities untouched when bodies are already separating", () => {
+    const a = {
+      pos: { x: 0, y: 0, z: 0 },
+      radius: 0.5,
+      vel: { x: -3, y: 0, z: 0 },
+    };
+    const b = {
+      pos: { x: 0.6, y: 0, z: 0 },
+      radius: 0.5,
+      vel: { x: 3, y: 0, z: 0 },
+    };
+
+    resolveActorCollisions([a, b]);
+
+    // They overlap — positions get pushed apart — but velocities are already
+    // pointing away from each other, so the approach guard should leave them.
+    expect(a.vel.x).toBeCloseTo(-3, 4);
+    expect(b.vel.x).toBeCloseTo(3, 4);
+  });
 });

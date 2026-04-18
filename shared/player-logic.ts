@@ -47,6 +47,11 @@ export interface CollisionBody {
   anchored?: boolean;
   pos: Vec3;
   radius: number;
+  // Optional velocity. When supplied, resolveActorCollisions cancels the
+  // component of relative velocity pointing INTO the collision (preserving
+  // the tangential / momentum-carrying component) so colliders slide past
+  // each other instead of sticking.
+  vel?: Vec3;
 }
 
 export function classifyHitZone(
@@ -247,6 +252,32 @@ export function resolveActorCollisions(
         other.pos.x += normal.x * otherPush;
         other.pos.y += normal.y * otherPush;
         other.pos.z += normal.z * otherPush;
+
+        // Preserve tangential momentum: kill only the component of relative
+        // velocity pointing INTO the collision. Otherwise both bodies keep
+        // ramming each other every frame and position correction oscillates
+        // (visually: actors lock together with no drift).
+        if (actor.vel && other.vel) {
+          const rvx = other.vel.x - actor.vel.x;
+          const rvy = other.vel.y - actor.vel.y;
+          const rvz = other.vel.z - actor.vel.z;
+          const approach = rvx * normal.x + rvy * normal.y + rvz * normal.z;
+          if (approach < 0) {
+            const actorShare = approach * (actorWeight / (actorWeight + otherWeight));
+            const otherShare = -approach * (otherWeight / (actorWeight + otherWeight));
+            if (actor.vel && actorWeight > 0) {
+              actor.vel.x += normal.x * actorShare;
+              actor.vel.y += normal.y * actorShare;
+              actor.vel.z += normal.z * actorShare;
+            }
+            if (other.vel && otherWeight > 0) {
+              other.vel.x += normal.x * otherShare;
+              other.vel.y += normal.y * otherShare;
+              other.vel.z += normal.z * otherShare;
+            }
+          }
+        }
+
         moved = true;
       }
     }

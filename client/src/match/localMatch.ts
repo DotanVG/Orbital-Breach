@@ -519,12 +519,14 @@ export class LocalMatch {
         anchored: isAnchored(player.phase),
         pos: player.getPosition(),
         radius: ACTOR_COLLISION_RADIUS,
+        vel: player.phys.vel,
       },
       ...this.bots.map((bot) => ({
         active: bot.phase !== "RESPAWNING",
         anchored: isAnchored(bot.phase),
         pos: bot.phys.pos,
         radius: ACTOR_COLLISION_RADIUS,
+        vel: bot.phys.vel,
       })),
     ]);
   }
@@ -811,14 +813,23 @@ function integrateFloating(bot: BotState, arena: Arena, dt = 0): void {
 }
 
 /**
- * Frozen drift: same zero-G + obstacle bounce as FLOATING, but the arena
- * bounce is FULLY SOLID — frozen bodies can't pass through open portals
- * or breach into the enemy room. They still drift and tumble through the
- * arena, just like un-frozen floaters, only without free-pass doors.
+ * Frozen drift: zero-G + obstacle bounce. Only the OWN team's portal face
+ * is passable — frozen bodies can drift back into their home breach room
+ * (and unfreeze via returnBotToOwnBreach) but cannot cross into the enemy
+ * room to score a breach while frozen.
  */
 function integrateFrozenDrift(bot: BotState, arena: Arena, dt = 0): void {
+  const goalAxis = arena.getBreachOpenAxis(bot.team);
+  const perpAxis: "x" | "z" = goalAxis === "z" ? "x" : "z";
+  const ownFaceSign = (-arena.getBreachOpenSign(bot.team)) as 1 | -1;
+  const ownDoorOpen = arena.isGoalDoorOpen(bot.team);
+  const portalFacesOpen = {
+    positive: ownFaceSign === 1 && ownDoorOpen,
+    negative: ownFaceSign === -1 && ownDoorOpen,
+  };
+
   integrateZeroG(bot.phys, dt);
-  bounceArena(bot.phys);
+  bounceArena(bot.phys, goalAxis, perpAxis, portalFacesOpen);
   arena.bounceObstacles(bot.phys);
 }
 

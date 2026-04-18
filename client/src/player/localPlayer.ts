@@ -99,6 +99,9 @@ export class LocalPlayer {
   private armRestoreTimer = 0;
   // Counts down from RECOIL_DURATION to 0 after each shot.
   private recoilTimer = 0;
+  // Counts up while phase === 'FROZEN'; after the crossfade window we stop
+  // ticking mixers so the death pose holds instead of looping flails.
+  private frozenHoldTimer = 0;
   private floatLimbTuningEnabled = false;
 
   public constructor(scene: THREE.Scene) {
@@ -180,8 +183,19 @@ export class LocalPlayer {
 
   private updateFrozen(arena: Arena, dt: number): void {
     this.breachJumpAnimationActive = false;
+    // Only the own-team portal is passable while frozen, so a dead ally can
+    // drift home and unfreeze but cannot cross into the enemy room.
+    const goalAxis = arena.getBreachOpenAxis(this.team);
+    const perpAxis: 'x' | 'z' = goalAxis === 'z' ? 'x' : 'z';
+    const ownFaceSign = (-arena.getBreachOpenSign(this.team)) as 1 | -1;
+    const ownDoorOpen = arena.isGoalDoorOpen(this.team);
+    const portalFacesOpen = {
+      positive: ownFaceSign === 1 && ownDoorOpen,
+      negative: ownFaceSign === -1 && ownDoorOpen,
+    };
+
     integrateZeroG(this.phys, dt);
-    bounceArena(this.phys);
+    bounceArena(this.phys, goalAxis, perpAxis, portalFacesOpen);
     arena.bounceObstacles(this.phys);
     this.tryReturnToOwnBreach(arena);
   }
@@ -372,9 +386,20 @@ export class LocalPlayer {
 
     this.animation.setTargetAnimation(nextAnimation);
 
-    const animationDt = nextAnimation === ANIM_JUMP
-      ? dt * BREACH_JUMP_TAKEOFF_SPEED
-      : dt;
+    // Freeze the rig while the player is frozen: let the ANIM_DEATH crossfade
+    // complete, then tick mixers with dt=0 so the death clip doesn't loop and
+    // the alien holds the death pose.
+    if (this.phase === 'FROZEN') {
+      this.frozenHoldTimer += dt;
+    } else {
+      this.frozenHoldTimer = 0;
+    }
+    const holdFrozenPose = this.phase === 'FROZEN' && this.frozenHoldTimer > ANIM_FADE_SECONDS;
+    const animationDt = holdFrozenPose
+      ? 0
+      : nextAnimation === ANIM_JUMP
+        ? dt * BREACH_JUMP_TAKEOFF_SPEED
+        : dt;
     this.animation.tickMixers(animationDt);
 
     // After leaving the jump clip, keep restoring for one crossfade window so
