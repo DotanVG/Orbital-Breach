@@ -153,7 +153,7 @@ const CSS = `
   }
 
   .menu-version {
-    position: fixed; bottom: 12px; right: 16px;
+    position: absolute; bottom: 14px; left: 44px;
     font-size: 10px; color: #2a3d50; letter-spacing: 2px;
     font-family: 'Share Tech Mono', monospace;
   }
