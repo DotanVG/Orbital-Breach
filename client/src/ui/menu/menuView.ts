@@ -273,8 +273,8 @@ const CSS = `
 
   /* ── MATCH GRID ── */
   .ob-match-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr);
-    gap: 14px; width: 100%; max-width: 720px;
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 14px; width: 100%; max-width: 880px;
   }
   .ob-match-card {
     position: relative; padding: 20px 12px 18px;
@@ -349,7 +349,7 @@ const CSS = `
 
   /* ── RESPONSIVE ── */
   @media (max-width: 640px) {
-    .ob-match-grid   { grid-template-columns: repeat(2, 1fr); }
+    .ob-match-grid   { grid-template-columns: repeat(3, 1fr); }
     .ob-launch-row   { flex-direction: column; }
     .ob-callsign-box { min-width: 0; width: 90vw; }
     .menu-root       { cursor: auto; }
@@ -367,6 +367,9 @@ const CSS = `
   @media (prefers-reduced-motion: reduce) {
     .ob-ring, .ob-stars i, .ob-pulse, .menu-root { animation: none !important; }
     .ob-title-waves { display: none; }
+  }
+  @media (hover: none) {
+    .ob-title-waves { display: none !important; }
   }
 `;
 
@@ -401,7 +404,7 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
   injectDesignTokens();
 
   // Map matchSize to the nearest visible card (1,5,10,20 — no 2v2 card shown)
-  const cardSizes = [1, 5, 10, 20] as const;
+  const cardSizes = [1, 2, 5, 10, 20] as const;
   const matchCardSize: number =
     (cardSizes as readonly number[]).includes(matchSize) ? matchSize : 1;
 
@@ -533,6 +536,7 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
 
         <div class="ob-match-grid" id="ob-match-grid">
           ${cardHtml(1,  "Skirmish",   "Bots off")}
+          ${cardHtml(2,  "Duos",       "Bots off")}
           ${cardHtml(5,  "Squad Clash","8 bots")}
           ${cardHtml(10, "Arena Rush", "18 bots")}
           ${cardHtml(20, "Zero-G War", "38 bots")}
@@ -681,7 +685,7 @@ function initMenuFx(container: HTMLElement): void {
         wavesCvs.height = H * DPR;
         ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       };
-      resizeWave();
+      requestAnimationFrame(() => requestAnimationFrame(resizeWave));
       const ro = new ResizeObserver(resizeWave);
       ro.observe(titleEl);
 

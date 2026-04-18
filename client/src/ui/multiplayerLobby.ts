@@ -41,7 +41,7 @@ const CSS = `
     max-height: calc(100vh - 32px);
     overflow: auto;
     border: 1px solid var(--mp-border);
-    border-radius: 28px;
+    border-radius: 0;
     background:
       radial-gradient(circle at top left, rgba(127, 252, 255, 0.11), rgba(127, 252, 255, 0) 24%),
       radial-gradient(circle at bottom right, rgba(255, 125, 248, 0.12), rgba(255, 125, 248, 0) 28%),
@@ -64,7 +64,7 @@ const CSS = `
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 18px;
     padding: 22px 24px 18px;
-    border-radius: 28px 28px 0 0;
+    border-radius: 0;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)),
       var(--mp-panel-strong);
@@ -120,7 +120,7 @@ const CSS = `
     align-items: center;
     min-height: 32px;
     padding: 0 12px;
-    border-radius: 999px;
+    border-radius: 2px;
     color: #defdff;
     background: rgba(127, 252, 255, 0.12);
     border: 1px solid rgba(127, 252, 255, 0.2);
@@ -149,7 +149,7 @@ const CSS = `
 
   .ob-mp-status {
     padding: 13px 15px;
-    border-radius: 18px;
+    border-radius: 0;
     font-size: 14px;
     line-height: 1.5;
   }
@@ -160,7 +160,7 @@ const CSS = `
     gap: 10px;
     margin-top: 16px;
     padding: 14px;
-    border-radius: 20px;
+    border-radius: 0;
   }
 
   .ob-mp-select-wrap {
@@ -181,7 +181,7 @@ const CSS = `
   .ob-mp-select,
   .ob-mp-button {
     min-height: 44px;
-    border-radius: 14px;
+    border-radius: 0;
     border: 1px solid rgba(255, 255, 255, 0.12);
     background: rgba(255, 255, 255, 0.04);
     color: #effcff;
@@ -257,7 +257,7 @@ const CSS = `
 
   .ob-mp-summary-card {
     padding: 14px 16px;
-    border-radius: 18px;
+    border-radius: 0;
   }
 
   .ob-mp-card-label {
@@ -291,7 +291,7 @@ const CSS = `
 
   .ob-mp-team {
     padding: 16px;
-    border-radius: 22px;
+    border-radius: 0;
   }
 
   .ob-mp-team--cyan {
@@ -312,9 +312,10 @@ const CSS = `
   }
 
   .ob-mp-team-title {
-    font-size: 22px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
+    font-family: "Cormorant Garamond", serif;
+    font-size: 26px;
+    font-weight: 300;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
   }
 
@@ -348,7 +349,7 @@ const CSS = `
     gap: 12px;
     align-items: center;
     padding: 12px 13px;
-    border-radius: 18px;
+    border-radius: 0;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
@@ -382,7 +383,7 @@ const CSS = `
     align-items: center;
     min-height: 22px;
     padding: 0 8px;
-    border-radius: 999px;
+    border-radius: 2px;
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.1em;
@@ -420,7 +421,7 @@ const CSS = `
 
   .ob-mp-empty {
     padding: 18px 14px;
-    border-radius: 16px;
+    border-radius: 0;
     color: var(--mp-muted);
     background: rgba(255, 255, 255, 0.03);
     border: 1px dashed rgba(255, 255, 255, 0.1);
