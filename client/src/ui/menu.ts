@@ -1,6 +1,7 @@
 import { createMenuView, injectMenuStyle, type MenuElements } from './menu/menuView';
 import { isTouchDevice } from '../platform';
 import { isMatchTeamSize, type MatchTeamSize } from '../../../shared/match';
+import { validateCallSign } from '../../../shared/profanity';
 
 const STORAGE_KEY = 'orbital_player_name';
 const MATCH_SIZE_STORAGE_KEY = 'orbital_match_size';
@@ -10,11 +11,6 @@ export interface PlaySelection {
   teamSize: MatchTeamSize;
 }
 
-/**
- * MainMenu controller: injects the style once, mounts/unmounts the view
- * element, wires up the play button + name-input persistence, and drives
- * the fade-out transition before handing off to the game.
- */
 export class MainMenu {
   private menu: MenuElements | null = null;
   private styleEl: HTMLStyleElement | null = null;
@@ -36,23 +32,26 @@ export class MainMenu {
     );
     this.menu = elements;
 
+    // Validate name on every keystroke
     elements.nameInput.addEventListener('input', () => {
       const v = elements.nameInput.value.trim();
       if (v) localStorage.setItem(STORAGE_KEY, v);
+      this.validateName(elements);
     });
     elements.matchSizeSelect.addEventListener('change', () => {
       localStorage.setItem(MATCH_SIZE_STORAGE_KEY, elements.matchSizeSelect.value);
     });
-    // Skip auto-focus on mobile to avoid unwanted virtual keyboard on load
     if (!isTouchDevice()) {
       elements.nameInput.focus();
     }
 
     elements.playSoloButton.addEventListener('click', () => {
+      if (!this.checkNameBeforePlay(elements)) return;
       const selection = this.saveSelection();
       this.fadeOut(() => this.onPlaySolo?.(selection));
     });
     elements.playOnlineButton.addEventListener('click', () => {
+      if (!this.checkNameBeforePlay(elements)) return;
       const selection = this.saveSelection();
       this.fadeOut(() => this.onPlayOnline?.(selection));
     });
@@ -81,6 +80,36 @@ export class MainMenu {
     this.hide();
     this.styleEl?.remove();
     this.styleEl = null;
+  }
+
+  private validateName(elements: MenuElements): string | null {
+    const raw = elements.nameInput.value;
+    // Empty field is fine until the player tries to submit
+    if (raw.trim().length === 0) {
+      elements.nameError.textContent = '';
+      elements.nameInput.classList.remove('menu-input--error');
+      return null;
+    }
+    const err = validateCallSign(raw);
+    elements.nameError.textContent = err ?? '';
+    elements.nameInput.classList.toggle('menu-input--error', err !== null);
+    return err;
+  }
+
+  /** Returns true when the name is acceptable and play can proceed. */
+  private checkNameBeforePlay(elements: MenuElements): boolean {
+    const raw = elements.nameInput.value.trim();
+    const nameForValidation = raw.length === 0 ? 'Pilot' : raw;
+    const err = validateCallSign(nameForValidation);
+    if (err) {
+      elements.nameError.textContent = err;
+      elements.nameInput.classList.add('menu-input--error');
+      elements.nameInput.focus();
+      return false;
+    }
+    elements.nameError.textContent = '';
+    elements.nameInput.classList.remove('menu-input--error');
+    return true;
   }
 
   private saveSelection(): PlaySelection {
