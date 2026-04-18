@@ -12,6 +12,7 @@ import { isTouchDevice } from "../platform";
 import { LocalPlayer } from "../player";
 import { GunViewModel } from "../render/gun";
 import { HUD } from "../render/hud";
+import { FirstTimeTutorial } from "../render/hud/tutorial";
 import { SceneManager } from "../render/scene";
 import { KillFeed } from "../ui/kill-feed";
 import { MainMenu } from "../ui/menu";
@@ -59,6 +60,7 @@ export class App {
   private round = new RoundController();
   private sceneMgr: SceneManager;
   private thirdPerson = false;
+  private tutorial = new FirstTimeTutorial();
 
   public constructor() {
     this.sceneMgr = new SceneManager();
@@ -335,6 +337,7 @@ export class App {
 
     this.projectiles.spawn(shot.origin, shot.direction, this.player.team, "local-player");
     this.player.triggerArmRecoil();
+    this.tutorial.noteShotFired();
   }
 
   private handleOnlineProjectileHit(hit: ProjectileHitEvent): void {
@@ -375,7 +378,6 @@ export class App {
     this.player.currentBreachTeam = enemyTeam;
     this.player.phase = "BREACH";
     this.player.phys.vel.y = 0;
-    this.player.kills += 1;
 
     this.net.sendBreachReport({
       scorerTeam: this.player.team,
@@ -410,6 +412,7 @@ export class App {
   private startOnlineGame(snapshot: MultiplayerRoomSnapshot): void {
     this.onlineGameActive = true;
     this.playerUpdateTimer = 0;
+    this.tutorial.beginRun();
 
     this.multiplayer.hide();
     this.hud.setVisible(true);
@@ -488,9 +491,18 @@ export class App {
       maxLaunchPower: this.player.maxLaunchPower(),
       nearBar,
       damage: this.player.damage,
+      showPing: false,
       tabHeld: this.input.isTabHeld(),
       ownTeam: rosters.ownTeam,
       enemyTeam: rosters.enemyTeam,
+      tutorialPrompt: this.tutorial.update({
+        currentBreachTeam: this.player.currentBreachTeam,
+        frozen: this.player.damage.frozen,
+        inRound: this.round.getPhase() === "COUNTDOWN" || this.round.getPhase() === "PLAYING",
+        mobile: this.mobile,
+        phase: this.player.phase,
+        team: this.player.team,
+      }),
       dt,
       team: this.player.team,
     });
@@ -537,9 +549,18 @@ export class App {
       maxLaunchPower: this.player.maxLaunchPower(),
       nearBar,
       damage: this.player.damage,
+      showPing: true,
       tabHeld: this.input.isTabHeld(),
       ownTeam: rosters.ownTeam,
       enemyTeam: rosters.enemyTeam,
+      tutorialPrompt: this.tutorial.update({
+        currentBreachTeam: this.player.currentBreachTeam,
+        frozen: this.player.damage.frozen,
+        inRound: true,
+        mobile: this.mobile,
+        phase: this.player.phase,
+        team: this.player.team,
+      }),
       dt,
       team: this.player.team,
     });
@@ -615,6 +636,7 @@ export class App {
   private startSoloMatch(selection: PlaySelection): void {
     this.appMode = "solo";
     this.matchOver = false;
+    this.tutorial.beginRun();
     if (this.matchEndHandle) {
       clearTimeout(this.matchEndHandle);
       this.matchEndHandle = null;
@@ -704,6 +726,7 @@ export class App {
 
     this.projectiles.spawn(shot.origin, shot.direction, this.player.team, "local-player");
     this.player.triggerArmRecoil();
+    this.tutorial.noteShotFired();
   }
 
   // ── Gun tuning overlays ─────────────────────────────────────────────────────

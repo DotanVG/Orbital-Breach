@@ -45,11 +45,11 @@ Acceptance: `tsc` clean, `npm test` green, manual golden path + each bullet veri
 
 ## Group C — Frontend sweep + Tab scoreboard + tutorial
 
-Branch: `feature/polish-sweep-c` → `staging`
+Branch: `polish-sweep-c` → `staging`
 
-- [ ] Full visual pass on menu + HUD typography / spacing / colour tokens
-- [ ] Tab scoreboard rework: per-team columns, K/D/freezes, ping column (online only)
-- [ ] First-time tutorial mode — lightweight prompts for grab/launch/fire/breach
+- [x] Full visual pass on menu + HUD typography / spacing / colour tokens
+- [x] Tab scoreboard rework: per-team columns, K/D/freezes, ping column (online only)
+- [x] First-time tutorial mode — lightweight prompts for grab/launch/fire/breach
 
 ---
 

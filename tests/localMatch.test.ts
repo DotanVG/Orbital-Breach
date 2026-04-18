@@ -91,6 +91,7 @@ describe("LocalMatch", () => {
         reason: "fullFreeze",
       },
     ]);
+    expect(player.kills).toBe(1);
     expect(match.getScore()).toEqual({ team0: 1, team1: 0 });
   });
 
@@ -158,6 +159,34 @@ describe("LocalMatch", () => {
       },
     ]);
     expect(match.getScore()).toEqual({ team0: 1, team1: 0 });
+  });
+
+  it("does not count breach scores as kills", () => {
+    const player = createFakePlayer();
+    player.phase = "FLOATING";
+    player.getPosition = () => new THREE.Vector3(18, 0, 0);
+
+    const arena = {
+      isGoalDoorOpen: () => true,
+      isDeepInBreachRoom: () => true,
+    };
+
+    (match as unknown as { checkForBreachScore: (arenaArg: unknown, playerArg: unknown) => void })
+      .checkForBreachScore(arena, player);
+
+    expect(player.kills).toBe(0);
+    expect(events).toEqual([
+      {
+        type: "score",
+        scorerName: "Pilot",
+        scorerTeam: 0,
+      },
+      {
+        type: "roundWin",
+        winningTeam: 0,
+        reason: "breach",
+      },
+    ]);
   });
 
   it("emits a tie without awarding points on timeout", () => {

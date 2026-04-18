@@ -255,6 +255,7 @@ export class LocalMatch {
       const frozen = player.applyHit(zone, impulse);
       if (frozen) {
         if (owner) {
+          this.recordFreezeKill(event.ownerId, player);
           this.emitEvent({
             type: "freeze",
             killerName: owner.name,
@@ -287,6 +288,7 @@ export class LocalMatch {
     }
     if (frozen) {
       if (owner) {
+        this.recordFreezeKill(event.ownerId, player);
         this.emitEvent({
           type: "freeze",
           killerName: owner.name,
@@ -381,14 +383,12 @@ export class LocalMatch {
         player.currentBreachTeam = enemyTeam;
         player.phase = "BREACH";
         player.phys.vel.y = 0;
-        player.kills += 1;
       } else {
         const bot = this.getBot(actor.id);
         if (!bot) continue;
         bot.currentBreachTeam = enemyTeam;
         bot.phase = "BREACH";
         bot.phys.vel.y = 0;
-        bot.kills += 1;
       }
 
       this.awardRoundPoint(actor.team, actor.name, "breach");
@@ -439,6 +439,18 @@ export class LocalMatch {
       winningTeam: winner,
       finalScore: { ...this.score },
     });
+  }
+
+  private recordFreezeKill(actorId: string, player: LocalPlayer): void {
+    if (actorId === LOCAL_PLAYER_ID) {
+      player.kills += 1;
+      return;
+    }
+
+    const bot = this.getBot(actorId);
+    if (bot) {
+      bot.kills += 1;
+    }
   }
 
   private emitEvent(event: LocalMatchEvent): void {
