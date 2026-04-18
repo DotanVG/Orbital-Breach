@@ -91,6 +91,7 @@ describe("LocalMatch", () => {
         reason: "fullFreeze",
       },
     ]);
+    expect(player.kills).toBe(1);
     expect(match.getScore()).toEqual({ team0: 1, team1: 0 });
   });
 
@@ -144,6 +145,63 @@ describe("LocalMatch", () => {
   it("emits a score event for breach wins", () => {
     (match as unknown as { awardRoundPoint: (team: 0 | 1, scorerName: string, reason: "breach" | "fullFreeze") => void })
       .awardRoundPoint(0, "Pilot", "breach");
+
+    expect(events).toEqual([
+      {
+        type: "score",
+        scorerName: "Pilot",
+        scorerTeam: 0,
+      },
+      {
+        type: "roundWin",
+        winningTeam: 0,
+        reason: "breach",
+      },
+    ]);
+    expect(match.getScore()).toEqual({ team0: 1, team1: 0 });
+  });
+
+  it("does not count breach scores as kills", () => {
+    const player = createFakePlayer();
+    player.phase = "FLOATING";
+    player.getPosition = () => new THREE.Vector3(18, 0, 0);
+
+    const arena = {
+      isGoalDoorOpen: () => true,
+      isDeepInBreachRoom: () => true,
+    };
+
+    (match as unknown as { checkForBreachScore: (arenaArg: unknown, playerArg: unknown) => void })
+      .checkForBreachScore(arena, player);
+
+    expect(player.kills).toBe(0);
+    expect(events).toEqual([
+      {
+        type: "score",
+        scorerName: "Pilot",
+        scorerTeam: 0,
+      },
+      {
+        type: "roundWin",
+        winningTeam: 0,
+        reason: "breach",
+      },
+    ]);
+  });
+
+  it("still awards a breach score after the scorer snaps back into breach gravity", () => {
+    const player = createFakePlayer();
+    player.currentBreachTeam = 1;
+    player.phase = "BREACH";
+    player.getPosition = () => new THREE.Vector3(18, 0, 0);
+
+    const arena = {
+      isGoalDoorOpen: () => true,
+      isDeepInBreachRoom: () => true,
+    };
+
+    (match as unknown as { checkForBreachScore: (arenaArg: unknown, playerArg: unknown) => void })
+      .checkForBreachScore(arena, player);
 
     expect(events).toEqual([
       {

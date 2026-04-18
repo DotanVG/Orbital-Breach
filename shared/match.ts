@@ -1,4 +1,4 @@
-export const MATCH_TEAM_SIZES = [1, 5, 10, 20] as const;
+export const MATCH_TEAM_SIZES = [1, 2, 5, 10, 20] as const;
 
 export type MatchTeamSize = (typeof MATCH_TEAM_SIZES)[number];
 

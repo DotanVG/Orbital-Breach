@@ -45,7 +45,7 @@ export interface PlayerNetState {
   phase:     PlayerPhase;
   damage:    DamageState;
   ping:      number;
-  kills:     number;   // breaches scored
+  kills:     number;   // freezes landed
   deaths:    number;   // times frozen
   connected: boolean;  // false = ghost body (disconnected player still floating)
   isBot?:    boolean;

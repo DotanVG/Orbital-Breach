@@ -14,9 +14,10 @@ import {
   type MultiplayerRoomSnapshot,
   type OnlineActorSnapshot,
   type PlayerUpdateMessage,
-  type RoundWinEventMessage,
+  type RoundResultEventMessage,
   type SetReadyMessage,
   type SetTeamSizeMessage,
+  type ShotEventMessage,
   type SwitchTeamMessage,
 } from "../../../shared/multiplayer";
 
@@ -44,7 +45,8 @@ export class NetClient {
   public onLobbyEvent: ((event: LobbyEventMessage) => void) | null = null;
   public onLeave: (() => void) | null = null;
   public onFreezeEvent: ((event: FreezeEventMessage) => void) | null = null;
-  public onRoundWinEvent: ((event: RoundWinEventMessage) => void) | null = null;
+  public onRoundResultEvent: ((event: RoundResultEventMessage) => void) | null = null;
+  public onShotEvent: ((event: ShotEventMessage) => void) | null = null;
 
   public async connect(options: MultiplayerJoinOptions): Promise<MultiplayerRoomSnapshot> {
     await this.disconnect(false);
@@ -63,8 +65,11 @@ export class NetClient {
     room.onMessage("freeze_event", (event: FreezeEventMessage) => {
       this.onFreezeEvent?.(event);
     });
-    room.onMessage("round_win_event", (event: RoundWinEventMessage) => {
-      this.onRoundWinEvent?.(event);
+    room.onMessage("round_result_event", (event: RoundResultEventMessage) => {
+      this.onRoundResultEvent?.(event);
+    });
+    room.onMessage("shot_event", (event: ShotEventMessage) => {
+      this.onShotEvent?.(event);
     });
     room.onLeave(() => {
       this.room = null;
@@ -108,6 +113,10 @@ export class NetClient {
 
   public sendHitReport(message: HitReportMessage): void {
     this.send<HitReportMessage>("hit_report", message);
+  }
+
+  public sendShot(message: ShotEventMessage): void {
+    this.send<ShotEventMessage>("shot_event", message);
   }
 
   public sendBreachReport(message: BreachReportMessage): void {
@@ -212,6 +221,9 @@ function toActorSnapshot(value: Record<string, unknown>): OnlineActorSnapshot {
     posX: Number(value.posX ?? 0),
     posY: Number(value.posY ?? 0),
     posZ: Number(value.posZ ?? 0),
+    velX: Number(value.velX ?? 0),
+    velY: Number(value.velY ?? 0),
+    velZ: Number(value.velZ ?? 0),
     yaw: Number(value.yaw ?? 0),
     phase: String(value.phase ?? "BREACH"),
     frozen: Boolean(value.frozen),

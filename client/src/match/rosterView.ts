@@ -23,9 +23,15 @@ export function buildHudRosters(
   actors: RosterActor[],
 ): HudRosters {
   const sorted = [...actors].sort((a, b) => {
-    if (a.id === localActorId) return -1;
-    if (b.id === localActorId) return 1;
     if (a.team !== b.team) return a.team - b.team;
+
+    const aIsLocal = a.id === localActorId;
+    const bIsLocal = b.id === localActorId;
+    if (aIsLocal !== bIsLocal) return aIsLocal ? -1 : 1;
+
+    if (a.isBot !== b.isBot) return a.isBot ? 1 : -1;
+    if (a.kills !== b.kills) return b.kills - a.kills;
+    if (a.deaths !== b.deaths) return a.deaths - b.deaths;
     return a.name.localeCompare(b.name);
   });
 

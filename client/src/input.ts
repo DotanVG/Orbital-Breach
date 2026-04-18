@@ -13,6 +13,7 @@ export class InputManager {
   private gunTuneTogglePressed = false;
   private gunTuneResetPressed = false;
   private gunTunePrintPressed = false;
+  private menuTogglePressed = false;
 
   // Mobile touch input state
   private touchLookDx = 0;
@@ -20,6 +21,7 @@ export class InputManager {
   private mobileMoveX = 0;
   private mobileMoveZ = 0;
   private mobileControlsActive = false;
+  private uiBlocked = false;
 
   public mouseSensitivity = 0.002;
 
@@ -30,6 +32,7 @@ export class InputManager {
       if (e.code === 'KeyV' && !e.repeat) this.thirdPersonTogglePressed = true;
       if (e.code === 'KeyP' && !e.repeat) this.gunTuneTogglePressed = true;
       if (e.code === 'Enter' && !e.repeat) this.gunTunePrintPressed = true;
+      if (e.code === 'Escape' && !e.repeat) this.menuTogglePressed = true;
       // Only intercept navigation/delete keys when focus is NOT in a text field,
       // so the Call Sign input and other fields retain normal keyboard behaviour.
       const tag = (document.activeElement as HTMLElement | null)?.tagName ?? '';
@@ -129,13 +132,28 @@ export class InputManager {
     this.mobileControlsActive = active;
   }
 
+  public setUiBlocked(active: boolean): void {
+    if (this.uiBlocked === active) return;
+    this.uiBlocked = active;
+    if (active) {
+      this.clearState();
+    }
+  }
+
   /** Returns true when the player can control the game (pointer locked on desktop, or mobile controls active). */
   public canControlGame(): boolean {
-    return this.mobileControlsActive || this.isLocked();
+    return !this.uiBlocked && (this.mobileControlsActive || this.isLocked());
   }
 
   // ── Mouse delta ───────────────────────────────────────────────────
   public consumeMouseDelta(): { dx: number; dy: number } {
+    if (this.uiBlocked) {
+      this.mouseDx = 0;
+      this.mouseDy = 0;
+      this.touchLookDx = 0;
+      this.touchLookDy = 0;
+      return { dx: 0, dy: 0 };
+    }
     const dx = this.mouseDx + this.touchLookDx;
     const dy = this.mouseDy + this.touchLookDy;
     this.mouseDx = 0;
@@ -147,6 +165,10 @@ export class InputManager {
 
   /** Power aim delta (mouse Y when in aiming mode). Positive = mouse moved down = more power. */
   public consumeAimDelta(): { dy: number } {
+    if (this.uiBlocked) {
+      this.aimDy = 0;
+      return { dy: 0 };
+    }
     const dy = this.aimDy;
     this.aimDy = 0;
     return { dy };
@@ -155,6 +177,9 @@ export class InputManager {
   // ── Movement ──────────────────────────────────────────────────────
   /** WASD walk axes (XZ only). Used in breach room. Merges keyboard + mobile joystick. */
   public getWalkAxes(): { x: number; z: number } {
+    if (this.uiBlocked) {
+      return { x: 0, z: 0 };
+    }
     const kx = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
     const kz = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
     return mergeWalkAxes(kx, kz, this.mobileMoveX, this.mobileMoveZ);
@@ -171,10 +196,14 @@ export class InputManager {
 
   // ── Actions ───────────────────────────────────────────────────────
   /** Jump — only active in breach room. Space key. */
-  public isJumping(): boolean { return this.keys.has('Space'); }
+  public isJumping(): boolean { return !this.uiBlocked && this.keys.has('Space'); }
 
   /** Grab bar — KeyE. Distinct from jump. Returns true only on the first frame E is pressed. */
   public consumeGrab(): boolean {
+    if (this.uiBlocked) {
+      this.grabPressed = false;
+      return false;
+    }
     const v = this.grabPressed;
     this.grabPressed = false;
     return v;
@@ -185,16 +214,24 @@ export class InputManager {
 
   /** Toggle Third Person — KeyV. Returns true only on the first frame V is pressed. */
   public consumeThirdPersonToggle(): boolean {
+    if (this.uiBlocked) {
+      this.thirdPersonTogglePressed = false;
+      return false;
+    }
     const v = this.thirdPersonTogglePressed;
     this.thirdPersonTogglePressed = false;
     return v;
   }
 
   /** Selfie view held — KeyB. */
-  public isSelfieHeld(): boolean { return this.keys.has('KeyB'); }
+  public isSelfieHeld(): boolean { return !this.uiBlocked && this.keys.has('KeyB'); }
 
   /** Toggle third-person gun tuning — KeyP. */
   public consumeGunTuneToggle(): boolean {
+    if (this.uiBlocked) {
+      this.gunTuneTogglePressed = false;
+      return false;
+    }
     const v = this.gunTuneTogglePressed;
     this.gunTuneTogglePressed = false;
     return v;
@@ -202,6 +239,10 @@ export class InputManager {
 
   /** Reset third-person gun tuning to defaults — Backspace. */
   public consumeGunTuneReset(): boolean {
+    if (this.uiBlocked) {
+      this.gunTuneResetPressed = false;
+      return false;
+    }
     const v = this.gunTuneResetPressed;
     this.gunTuneResetPressed = false;
     return v;
@@ -209,8 +250,18 @@ export class InputManager {
 
   /** Print the current third-person gun constants — Enter. */
   public consumeGunTunePrint(): boolean {
+    if (this.uiBlocked) {
+      this.gunTunePrintPressed = false;
+      return false;
+    }
     const v = this.gunTunePrintPressed;
     this.gunTunePrintPressed = false;
+    return v;
+  }
+
+  public consumeMenuToggle(): boolean {
+    const v = this.menuTogglePressed;
+    this.menuTogglePressed = false;
     return v;
   }
 
@@ -219,6 +270,13 @@ export class InputManager {
     rotation: { x: number; y: number; z: number };
     fine: boolean;
   } {
+    if (this.uiBlocked) {
+      return {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        fine: false,
+      };
+    }
     return {
       position: {
         x: (this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('ArrowLeft') ? 1 : 0),
@@ -238,7 +296,7 @@ export class InputManager {
    * Aim / launch charge — Space held while GRABBING.
    * Same key as jump; context determined by player state.
    */
-  public isAiming(): boolean { return this.keys.has('Space'); }
+  public isAiming(): boolean { return !this.uiBlocked && this.keys.has('Space'); }
 
   /** Fire (LMB). Respects fire rate cooldown. Returns true once per allowed shot. */
   public updateFireCooldown(dt: number): void { this.fireCooldown -= dt; }
@@ -249,15 +307,17 @@ export class InputManager {
   }
   /** True if LMB is held AND fire rate allows a shot this frame. */
   public consumeFire(): boolean {
+    if (this.uiBlocked) return false;
     if (!this.keys.has('MouseLeft')) return false;
     return this.canFire();
   }
 
   /** Tab key — show scoreboard overlay */
-  public isTabHeld(): boolean { return this.keys.has('Tab'); }
+  public isTabHeld(): boolean { return !this.uiBlocked && this.keys.has('Tab'); }
 
   // ── Pointer lock ──────────────────────────────────────────────────
   public lockPointer(canvas: HTMLCanvasElement): void {
+    if (this.uiBlocked) return;
     void canvas.requestPointerLock();
   }
 
@@ -285,6 +345,7 @@ export class InputManager {
     this.gunTuneTogglePressed = false;
     this.gunTuneResetPressed = false;
     this.gunTunePrintPressed = false;
+    this.menuTogglePressed = false;
     // mobileControlsActive is intentionally preserved across blur/visibility changes
   }
 }

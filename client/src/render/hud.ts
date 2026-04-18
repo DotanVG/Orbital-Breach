@@ -3,6 +3,7 @@ import type { DamageState, EnemyPlayerInfo, FullPlayerInfo } from '../../../shar
 import { isTouchDevice } from '../platform';
 import { createHudView, type HudElements } from './hud/hudView';
 import { buildScoreboardHtml } from './hud/scoreboard';
+import type { TutorialPrompt } from './hud/tutorial';
 
 const IS_MOBILE = isTouchDevice();
 
@@ -18,9 +19,11 @@ export interface HudState {
   maxLaunchPower: number;
   nearBar: boolean;
   damage: DamageState;
+  showPing: boolean;
   tabHeld: boolean;
   ownTeam: FullPlayerInfo[];
   enemyTeam: EnemyPlayerInfo[];
+  tutorialPrompt: TutorialPrompt | null;
   dt: number;
   team: 0 | 1;
 }
@@ -74,7 +77,8 @@ export class HUD {
     this.renderGrabPrompt(state.playerPhase, state.nearBar, state.damage);
     this.renderPowerBar(state.playerPhase, state.launchPower, state.maxLaunchPower);
     this.renderDamage(state.damage);
-    this.renderScoreboard(state.tabHeld, state.ownTeam, state.enemyTeam);
+    this.renderTutorial(state.phase, state.tutorialPrompt, state.team);
+    this.renderScoreboard(state.tabHeld, state.ownTeam, state.enemyTeam, state.showPing, state.team);
   }
 
   private renderScore(
@@ -229,28 +233,53 @@ export class HUD {
   }
 
   private renderDamage(damage: DamageState): void {
-    const parts: string[] = [];
-    if (damage.frozen) parts.push('FROZEN');
-    if (damage.leftArm) parts.push('LEFT ARM - NO GRAB');
-    if (damage.rightArm) parts.push('RIGHT ARM - NO FIRE');
+    const parts: Array<{ label: string; tone: "danger" | "warn" | "info" }> = [];
+    if (damage.frozen) parts.push({ label: "FROZEN", tone: "danger" });
+    if (damage.leftArm) parts.push({ label: "LEFT ARM OFFLINE", tone: "warn" });
+    if (damage.rightArm) parts.push({ label: "RIGHT ARM OFFLINE", tone: "warn" });
     if (damage.leftLeg && damage.rightLeg) {
-      parts.push('BOTH LEGS - 50% LAUNCH');
+      parts.push({ label: "BOTH LEGS 50% LAUNCH", tone: "info" });
     } else if (damage.leftLeg) {
-      parts.push('LEFT LEG - 75% LAUNCH');
+      parts.push({ label: "LEFT LEG 75% LAUNCH", tone: "info" });
     } else if (damage.rightLeg) {
-      parts.push('RIGHT LEG - 75% LAUNCH');
+      parts.push({ label: "RIGHT LEG 75% LAUNCH", tone: "info" });
     }
-    this.view.damage.innerHTML = parts.join('<br>');
+
+    this.view.damage.style.display = parts.length > 0 ? "flex" : "none";
+    this.view.damage.innerHTML = parts
+      .map((part) => `<span class="ob-damage-pill ob-damage-pill--${part.tone}">${part.label}</span>`)
+      .join("");
   }
 
   private renderScoreboard(
     tabHeld: boolean,
     ownTeam: FullPlayerInfo[],
     enemyTeam: EnemyPlayerInfo[],
+    showPing: boolean,
+    team: 0 | 1,
   ): void {
     this.view.tab.style.display = tabHeld ? 'block' : 'none';
     if (tabHeld) {
-      this.view.tab.innerHTML = buildScoreboardHtml(ownTeam, enemyTeam);
+      this.view.tab.innerHTML = buildScoreboardHtml(ownTeam, enemyTeam, {
+        ownTeamId: team,
+        showPing,
+      });
     }
+  }
+
+  private renderTutorial(
+    phase: GamePhase,
+    prompt: TutorialPrompt | null,
+    team: 0 | 1,
+  ): void {
+    const show = prompt !== null && (phase === "COUNTDOWN" || phase === "PLAYING");
+    this.view.tutorial.style.display = show ? "block" : "none";
+    if (!show || !prompt) return;
+
+    this.view.tutorial.classList.toggle("ob-tutorial--cyan", team === 0);
+    this.view.tutorial.classList.toggle("ob-tutorial--magenta", team === 1);
+    this.view.tutorialStep.textContent = prompt.progress;
+    this.view.tutorialTitle.textContent = prompt.title;
+    this.view.tutorialBody.textContent = prompt.body;
   }
 }
