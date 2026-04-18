@@ -345,6 +345,7 @@ export class App {
           this.player.getPosition(),
           this.cam.getForward(),
           HITBOX_OFFSET_Y,
+          HITBOX_RADIUS,
         );
         // Zero impulse — shots freeze but do not push. See localMatch.ts.
         this.player.applyHit(zone, hit.direction.clone().normalize().multiplyScalar(0));

@@ -6,6 +6,9 @@ export const PLAYER_RADIUS          = 0.8;
 // top of the head).
 export const HITBOX_RADIUS          = 0.42;
 export const HITBOX_OFFSET_Y        = -0.35;
+// Actor-vs-actor separation radius. Tighter than PLAYER_RADIUS so alien
+// models can brush shoulders without a visible gap between them.
+export const ACTOR_COLLISION_RADIUS = 0.5;
 export const TICK_RATE              = 20;
 export const FREEZE_TIME            = 2.0;    // kept for server compat
 export const RESPAWN_TIME           = 2.0;

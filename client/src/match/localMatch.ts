@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { BOT_NAMES, GRAB_RADIUS, HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_POINT_TARGET, PLAYER_RADIUS } from "../../../shared/constants";
+import { ACTOR_COLLISION_RADIUS, BOT_NAMES, GRAB_RADIUS, HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_POINT_TARGET, PLAYER_RADIUS } from "../../../shared/constants";
 import { findMatchWinner } from "../../../shared/match-flow";
 import { getSoloBotFill, type SoloMatchConfig } from "../../../shared/match";
 import {
@@ -250,6 +250,7 @@ export class LocalMatch {
         player.getPosition(),
         camera.getForward(),
         HITBOX_OFFSET_Y,
+        HITBOX_RADIUS,
       );
       const frozen = player.applyHit(zone, impulse);
       if (frozen) {
@@ -275,6 +276,7 @@ export class LocalMatch {
       toVec3(bot.phys.pos),
       yawForward(bot.rot.yaw),
       HITBOX_OFFSET_Y,
+      HITBOX_RADIUS,
     );
     const frozen = applyHitToBot(bot, zone, impulse);
     if (event.ownerId === LOCAL_PLAYER_ID) {
@@ -516,13 +518,13 @@ export class LocalMatch {
         active: player.phase !== "RESPAWNING",
         anchored: isAnchored(player.phase),
         pos: player.getPosition(),
-        radius: PLAYER_RADIUS,
+        radius: ACTOR_COLLISION_RADIUS,
       },
       ...this.bots.map((bot) => ({
         active: bot.phase !== "RESPAWNING",
         anchored: isAnchored(bot.phase),
         pos: bot.phys.pos,
-        radius: PLAYER_RADIUS,
+        radius: ACTOR_COLLISION_RADIUS,
       })),
     ]);
   }

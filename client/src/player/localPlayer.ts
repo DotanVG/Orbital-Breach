@@ -510,8 +510,9 @@ export class LocalPlayer {
     playerPos: THREE.Vector3,
     playerFacing: THREE.Vector3,
     hitOffsetY = 0,
+    hitRadius?: number,
   ): HitZone {
-    return classifyHitZone(impactPoint, playerPos, playerFacing, hitOffsetY);
+    return classifyHitZone(impactPoint, playerPos, playerFacing, hitOffsetY, hitRadius);
   }
 
   public resetForNewRound(arena: Arena, spawnOverride?: { x: number; y: number; z: number }): void {
