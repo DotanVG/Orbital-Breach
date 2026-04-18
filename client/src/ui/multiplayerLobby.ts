@@ -476,6 +476,129 @@ const CSS = `
       justify-content: flex-start;
     }
   }
+
+  /* ===== BRIEFING 3-COLUMN LAYOUT ===== */
+  .ob-mp-briefing-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr 280px;
+    gap: 14px;
+    margin-top: 14px;
+  }
+
+  .ob-mp-brief-panel {
+    border: 1px solid var(--mp-border);
+    background: rgba(7, 10, 18, 0.55);
+    backdrop-filter: blur(10px);
+    padding: 16px;
+  }
+  .ob-mp-brief-panel--cyan  { box-shadow: inset 0 0 0 1px rgba(127, 252, 255, 0.06); }
+  .ob-mp-brief-panel--magenta { box-shadow: inset 0 0 0 1px rgba(255, 125, 248, 0.06); }
+
+  .ob-mp-panel-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 4px;
+    color: var(--mp-muted); text-transform: uppercase;
+    padding-bottom: 10px; margin-bottom: 12px;
+    border-bottom: 1px solid rgba(210, 220, 240, 0.06);
+  }
+  .ob-mp-panel-title {
+    margin: 0; font-family: "JetBrains Mono", monospace; font-weight: 400;
+    color: var(--mp-muted); font-size: 9px; letter-spacing: 4px;
+  }
+  .ob-mp-panel-idx { color: var(--mp-cyan); }
+
+  .ob-mp-brief-team-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .ob-mp-brief-team-name {
+    font-family: "Cormorant Garamond", serif;
+    font-size: 20px; font-weight: 300; letter-spacing: 0.1em;
+  }
+  .ob-mp-brief-team-count {
+    font-family: "JetBrains Mono", monospace; font-size: 10px;
+    color: var(--mp-muted); letter-spacing: 3px;
+  }
+
+  .ob-mp-brief-roster {
+    display: flex; flex-direction: column; gap: 1px;
+  }
+  .ob-mp-brief-row {
+    display: grid;
+    grid-template-columns: 18px 1fr auto auto;
+    gap: 10px; align-items: center;
+    padding: 8px 8px; border: 1px solid transparent;
+    font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: 2px;
+    color: var(--mp-muted);
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+  }
+  .ob-mp-brief-row:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--mp-border);
+    color: #e8ecf4;
+  }
+  .ob-mp-brief-row--self-cyan    { background: rgba(100, 190, 255, 0.06); border-color: var(--mp-cyan); color: #e8ecf4; }
+  .ob-mp-brief-row--self-magenta { background: oklch(0.72 0.25 330 / 0.08); border-color: var(--mp-magenta); color: #e8ecf4; }
+  .ob-mp-brief-row--pending      { opacity: 0.5; }
+  .ob-mp-brief-slot { font-size: 9px; color: var(--mp-muted); opacity: 0.7; }
+  .ob-mp-brief-kd   { font-size: 9px; color: var(--mp-muted); opacity: 0.7; }
+  .ob-mp-brief-ready-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    background: var(--mp-cyan); box-shadow: 0 0 6px var(--mp-cyan);
+  }
+  .ob-mp-brief-ready-dot--magenta { background: var(--mp-magenta); box-shadow: 0 0 6px var(--mp-magenta); }
+  .ob-mp-brief-ready-dot--pending { background: var(--mp-muted); box-shadow: none; opacity: 0.3; }
+
+  /* Stage preview (center) */
+  .ob-mp-stage-preview {
+    border: 1px solid var(--mp-border);
+    background: rgba(7, 10, 18, 0.55);
+    backdrop-filter: blur(10px);
+    padding: 18px;
+    display: grid; grid-template-rows: auto 1fr auto;
+    gap: 10px; overflow: hidden;
+  }
+  .ob-mp-stage-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .ob-mp-stage-title {
+    margin: 0;
+    font-family: "Cormorant Garamond", serif;
+    font-weight: 300; font-size: 26px; letter-spacing: 0.06em;
+    color: #e8ecf4;
+  }
+  .ob-mp-stage-meta {
+    font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 3px;
+    color: var(--mp-muted); text-transform: uppercase;
+  }
+  .ob-mp-map { display: grid; place-items: center; padding: 8px 0; }
+  .ob-mp-map-inner { width: 100%; max-width: 280px; aspect-ratio: 1; }
+  .ob-mp-arena-svg { width: 100%; height: 100%; overflow: visible; }
+
+  .ob-mp-loadout-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .ob-mp-loadout-item {
+    border: 1px solid rgba(210, 220, 240, 0.06); padding: 10px 10px;
+    font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 2px;
+    text-transform: uppercase; display: grid; gap: 3px;
+    transition: border-color 0.2s;
+  }
+  .ob-mp-loadout-item:hover { border-color: rgba(210, 220, 240, 0.12); }
+  .ob-mp-loadout-key { color: var(--mp-muted); font-size: 8px; letter-spacing: 2px; }
+  .ob-mp-loadout-val {
+    color: #e8ecf4; font-family: "Cormorant Garamond", serif;
+    font-size: 13px; letter-spacing: 0.05em; text-transform: none;
+  }
+
+  /* Mission briefing (right panel bottom) */
+  .ob-mp-rule { height: 1px; background: rgba(210, 220, 240, 0.06); margin: 12px 0; }
+  .ob-mp-mission-brief {
+    font-family: "Cormorant Garamond", serif; font-size: 13px; line-height: 1.7;
+    color: var(--mp-muted);
+  }
+  .ob-mp-mission-brief p { margin: 0; }
+  .ob-mp-mission-brief strong { color: #e8ecf4; font-weight: 400; }
+
+  @media (max-width: 1100px) {
+    .ob-mp-briefing-layout { grid-template-columns: 1fr; }
+  }
 `;
 
 let styleInjected = false;
@@ -693,7 +816,7 @@ function buildMarkup(): string {
       <div class="ob-mp-header">
         <div>
           <div class="ob-mp-kicker">Online queue</div>
-          <div class="ob-mp-title">Orbital Breach Matchmaking</div>
+          <div class="ob-mp-title">Orbital Breach</div>
           <div class="ob-mp-subtitle">
             Balance the squads, ready the room, and deploy straight into the live round cycle.
           </div>
@@ -723,34 +846,97 @@ function buildMarkup(): string {
           <button id="mp-leave" class="ob-mp-button ob-mp-button--leave">Main Menu</button>
         </div>
 
-        <div class="ob-mp-summary">
-          <div id="mp-playlist-card" class="ob-mp-summary-card"></div>
-          <div id="mp-queue-card" class="ob-mp-summary-card"></div>
-          <div id="mp-team-card" class="ob-mp-summary-card"></div>
+        <div style="display:none">
+          <div id="mp-playlist-card"></div>
+          <div id="mp-queue-card"></div>
+          <div id="mp-team-card"></div>
         </div>
 
-        <div class="ob-mp-rosters">
-          <section class="ob-mp-team ob-mp-team--cyan">
-            <div class="ob-mp-team-header">
-              <div>
-                <div id="mp-team0-title" class="ob-mp-team-title" style="color:${CYAN};">Cyan squad</div>
-                <div class="ob-mp-team-meta">Freeze-first entry team</div>
-              </div>
-              <div id="mp-team0-count" class="ob-mp-team-count"></div>
-            </div>
-            <div id="mp-team0-roster" class="ob-mp-roster"></div>
-          </section>
+        <div class="ob-mp-briefing-layout">
 
-          <section class="ob-mp-team ob-mp-team--magenta">
-            <div class="ob-mp-team-header">
-              <div>
-                <div id="mp-team1-title" class="ob-mp-team-title" style="color:${MAGENTA};">Magenta squad</div>
-                <div class="ob-mp-team-meta">Counter-breach response team</div>
-              </div>
-              <div id="mp-team1-count" class="ob-mp-team-count"></div>
+          <div class="ob-mp-brief-panel ob-mp-brief-panel--cyan">
+            <div class="ob-mp-panel-head">
+              <h3 class="ob-mp-panel-title">Team Cyan <span class="ob-mp-panel-idx">// 01</span></h3>
+              <span>Friendly</span>
             </div>
-            <div id="mp-team1-roster" class="ob-mp-roster"></div>
-          </section>
+            <div class="ob-mp-brief-team-head">
+              <span id="mp-team0-title" class="ob-mp-brief-team-name" style="color:${CYAN}">Cyan</span>
+              <span id="mp-team0-count" class="ob-mp-brief-team-count"></span>
+            </div>
+            <div id="mp-team0-roster" class="ob-mp-brief-roster"></div>
+          </div>
+
+          <div class="ob-mp-stage-preview">
+            <div class="ob-mp-stage-head">
+              <h2 class="ob-mp-stage-title">Zero-G Arena</h2>
+              <div class="ob-mp-stage-meta">Orbital Station</div>
+            </div>
+            <div class="ob-mp-map">
+              <div class="ob-mp-map-inner">
+                <svg class="ob-mp-arena-svg" viewBox="-200 -200 400 400">
+                  <rect x="-190" y="-190" width="380" height="380" fill="none" stroke="rgba(210,220,240,0.1)"/>
+                  <line x1="0" y1="-190" x2="0" y2="190" stroke="rgba(210,220,240,0.05)" stroke-dasharray="2 4"/>
+                  <line x1="-190" y1="0" x2="190" y2="0" stroke="rgba(210,220,240,0.05)" stroke-dasharray="2 4"/>
+                  <g stroke="rgba(210,220,240,0.25)" fill="none">
+                    <path d="M -170 -130 L -80 -130 L -80 -60 L -170 -60 Z"/>
+                    <path d="M 170 130 L 80 130 L 80 60 L 170 60 Z"/>
+                  </g>
+                  <text x="-125" y="-142" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="oklch(0.82 0.15 210)" letter-spacing="2">CYAN BREACH</text>
+                  <text x="125" y="150" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="oklch(0.72 0.25 330)" letter-spacing="2">MAGENTA BREACH</text>
+                  <circle cx="-80" cy="-95" r="10" fill="none" stroke="oklch(0.82 0.15 210)" stroke-opacity="0.7"/>
+                  <circle cx="-80" cy="-95" r="3" fill="oklch(0.82 0.15 210)"/>
+                  <circle cx="80" cy="95" r="10" fill="none" stroke="oklch(0.72 0.25 330)" stroke-opacity="0.7"/>
+                  <circle cx="80" cy="95" r="3" fill="oklch(0.72 0.25 330)"/>
+                  <g stroke="rgba(210,220,240,0.18)">
+                    <line x1="-40" y1="-40" x2="40" y2="40"/>
+                    <line x1="40" y1="-40" x2="-40" y2="40"/>
+                    <line x1="-60" y1="0" x2="60" y2="0"/>
+                    <line x1="0" y1="-60" x2="0" y2="60"/>
+                  </g>
+                  <circle cx="0" cy="0" r="4" fill="rgba(210,220,240,0.3)"/>
+                  <circle cx="0" cy="0" r="18" fill="none" stroke="rgba(210,220,240,0.1)"/>
+                  <circle cx="0" cy="0" r="45" fill="none" stroke="rgba(210,220,240,0.05)"/>
+                  <path d="M -80 -95 Q -20 0 80 95" fill="none" stroke="oklch(0.82 0.15 210)" stroke-opacity="0.35" stroke-dasharray="3 4"/>
+                  <text x="-185" y="185" font-family="JetBrains Mono" font-size="7" fill="rgba(87,99,122,1)">400m</text>
+                  <text x="148" y="-178" font-family="JetBrains Mono" font-size="7" fill="rgba(87,99,122,1)">&#8593; ZENITH</text>
+                </svg>
+              </div>
+            </div>
+            <div class="ob-mp-loadout-row">
+              <div class="ob-mp-loadout-item">
+                <span class="ob-mp-loadout-key">Weapon</span>
+                <span class="ob-mp-loadout-val">Freeze Pistol</span>
+              </div>
+              <div class="ob-mp-loadout-item">
+                <span class="ob-mp-loadout-key">Module</span>
+                <span class="ob-mp-loadout-val">Grip Glove</span>
+              </div>
+              <div class="ob-mp-loadout-item">
+                <span class="ob-mp-loadout-key">Mode</span>
+                <span class="ob-mp-loadout-val">Freeze &amp; Breach</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ob-mp-brief-panel ob-mp-brief-panel--magenta">
+            <div class="ob-mp-panel-head">
+              <h3 class="ob-mp-panel-title">Team Magenta <span class="ob-mp-panel-idx" style="color:oklch(0.72 0.25 330)">// 02</span></h3>
+              <span>Hostile</span>
+            </div>
+            <div class="ob-mp-brief-team-head">
+              <span id="mp-team1-title" class="ob-mp-brief-team-name" style="color:${MAGENTA}">Magenta</span>
+              <span id="mp-team1-count" class="ob-mp-brief-team-count"></span>
+            </div>
+            <div id="mp-team1-roster" class="ob-mp-brief-roster"></div>
+
+            <div class="ob-mp-rule"></div>
+
+            <div class="ob-mp-mission-brief">
+              <p><strong>Objective.</strong> Slip a pilot through the opposing portal. Freeze shots disable movement for the remainder of the round.</p>
+              <p><strong>Scoring.</strong> Each successful breach scores one point. First team to fill their round quota wins the match.</p>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
@@ -774,25 +960,25 @@ function renderRoster(
     return `<div class="ob-mp-empty">Open lane</div>`;
   }
 
-  return members.map((member) => {
+  const isMagentaTeam = accent === MAGENTA;
+  return members.map((member, i) => {
     const isSelf = member.id === sessionId;
+    const selfCls = isSelf
+      ? (isMagentaTeam ? "ob-mp-brief-row--self-magenta" : "ob-mp-brief-row--self-cyan")
+      : "";
+    const pendingCls = !member.ready ? "ob-mp-brief-row--pending" : "";
+    const dotCls = !member.ready
+      ? "ob-mp-brief-ready-dot--pending"
+      : isMagentaTeam ? "ob-mp-brief-ready-dot--magenta" : "";
+    const slot = String(i + 1).padStart(2, "0");
+    const nameLabel = escapeHtml(member.name)
+      + (member.isBot ? `<small style="opacity:.4;font-size:8px;letter-spacing:1px"> [bot]</small>` : "");
     return `
-      <div class="ob-mp-roster-card ${isSelf ? "ob-mp-roster-card--self" : ""}">
-        <div>
-          <div class="ob-mp-roster-name" style="color:${accent};text-shadow:0 0 10px ${accent}33;">
-            ${escapeHtml(member.name)}
-          </div>
-          <div class="ob-mp-roster-meta">${member.connected ? "Connected" : "Disconnected"}</div>
-        </div>
-        <div class="ob-mp-roster-badges">
-          ${isSelf ? `<span class="ob-mp-badge ob-mp-badge--self">You</span>` : ""}
-          <span class="ob-mp-badge ${member.isBot ? "ob-mp-badge--bot" : "ob-mp-badge--human"}">
-            ${member.isBot ? "Bot" : "Human"}
-          </span>
-          <span class="ob-mp-badge ${member.ready ? "ob-mp-badge--ready" : "ob-mp-badge--waiting"}">
-            ${member.ready ? "Ready" : "Waiting"}
-          </span>
-        </div>
+      <div class="ob-mp-brief-row ${selfCls} ${pendingCls}">
+        <span class="ob-mp-brief-slot">${slot}</span>
+        <span>${nameLabel}</span>
+        <span class="ob-mp-brief-kd">${member.connected ? "—" : "dc"}</span>
+        <span class="ob-mp-brief-ready-dot ${dotCls}"></span>
       </div>
     `;
   }).join("");
