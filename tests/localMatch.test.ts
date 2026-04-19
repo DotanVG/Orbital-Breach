@@ -169,6 +169,7 @@ describe("LocalMatch", () => {
     const arena = {
       isGoalDoorOpen: () => true,
       isDeepInBreachRoom: () => true,
+      isInBreachRoom: () => true,
     };
 
     (match as unknown as { checkForBreachScore: (arenaArg: unknown, playerArg: unknown) => void })
@@ -198,6 +199,7 @@ describe("LocalMatch", () => {
     const arena = {
       isGoalDoorOpen: () => true,
       isDeepInBreachRoom: () => true,
+      isInBreachRoom: () => true,
     };
 
     (match as unknown as { checkForBreachScore: (arenaArg: unknown, playerArg: unknown) => void })

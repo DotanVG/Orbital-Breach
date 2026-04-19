@@ -82,6 +82,7 @@ export function integrateBreachRoom(
   yawRight: THREE.Vector3,
   jumping: boolean,
   onGround: boolean,
+  carryVelocity: THREE.Vector3,
   dt: number,
 ): void {
   // Horizontal: WASD always responsive
@@ -90,8 +91,8 @@ export function integrateBreachRoom(
     .multiplyScalar(walkAxes.x)
     .add(yawFwd.clone().multiplyScalar(walkAxes.z));
   if (h.length() > 0) h.normalize();
-  state.vel.x = h.x * BREACH_WALK_SPEED;
-  state.vel.z = h.z * BREACH_WALK_SPEED;
+  state.vel.x = h.x * BREACH_WALK_SPEED + carryVelocity.x;
+  state.vel.z = h.z * BREACH_WALK_SPEED + carryVelocity.z;
 
   // Vertical: pure upward jump — no forward force
   if (jumping && onGround) {
