@@ -162,9 +162,57 @@ const CSS = `
   .ob-debrief-btn--primary { border-color: oklch(0.82 0.15 210 / 0.28); }
   .ob-debrief-btn--primary:hover { border-color: oklch(0.82 0.15 210); color: oklch(0.9 0.1 210); }
 
+  /* ── Tablet: collapse grid to 1-col ── */
   @media (max-width: 900px) {
     .ob-debrief-grid { grid-template-columns: 1fr; }
     .ob-debrief-head { grid-template-columns: 1fr; gap: 12px; text-align: center; }
+  }
+
+  /* ── Mobile portrait ── */
+  @media (max-width: 640px) {
+    .ob-debrief-root {
+      padding: 12px 10px;
+      padding-bottom: max(80px, calc(60px + env(safe-area-inset-bottom, 0px)));
+      align-items: flex-start;
+    }
+    .ob-debrief-wrap {
+      width: 100%;
+      max-height: calc(100dvh - 104px);
+      gap: 14px;
+    }
+    .ob-debrief-head { gap: 8px; padding-bottom: 14px; }
+    .ob-debrief-team-score .ob-ds-num { font-size: 60px; }
+    .ob-debrief-verdict { font-size: 26px; }
+    .ob-debrief-panel { padding: 14px 14px; }
+    .ob-stats-table th, .ob-stats-table td { padding: 8px 8px; }
+    .ob-debrief-actions { flex-direction: column; gap: 8px; }
+    .ob-debrief-btn { padding: 14px 16px; font-size: 9px; letter-spacing: 4px; }
+
+    /* Reorder: awards+actions above scoreboard */
+    .ob-debrief-grid { display: flex; flex-direction: column; }
+    .ob-debrief-grid > .ob-debrief-panel { order: 2; }
+    .ob-debrief-grid > div:not(.ob-debrief-panel) { order: 1; }
+  }
+
+  /* ── Mobile landscape ── */
+  @media (max-height: 500px) and (max-width: 900px) {
+    .ob-debrief-root {
+      padding: 8px 10px;
+      padding-bottom: max(60px, calc(44px + env(safe-area-inset-bottom, 0px)));
+      align-items: flex-start;
+    }
+    .ob-debrief-wrap {
+      width: 100%;
+      max-height: calc(100dvh - 76px);
+      gap: 10px;
+    }
+    .ob-debrief-head { padding-bottom: 10px; gap: 8px; }
+    .ob-debrief-team-score .ob-ds-num { font-size: 44px; }
+    .ob-debrief-verdict { font-size: 20px; }
+    .ob-debrief-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .ob-debrief-panel { padding: 10px 12px; }
+    .ob-debrief-actions { margin-top: 8px; }
+    .ob-debrief-btn { padding: 10px 14px; font-size: 9px; }
   }
 `;
 

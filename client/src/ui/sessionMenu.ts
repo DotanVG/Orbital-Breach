@@ -274,6 +274,45 @@ const CSS = `
       min-height: 32px;
       padding: 0 12px;
     }
+
+    .ob-session-root {
+      padding: 10px;
+      padding-bottom: max(70px, calc(54px + env(safe-area-inset-bottom, 0px)));
+      align-items: flex-start;
+    }
+
+    .ob-session-panel {
+      width: 100%;
+      max-height: calc(100dvh - 80px);
+    }
+
+    .ob-session-header,
+    .ob-session-actions,
+    .ob-session-settings {
+      padding: 14px 16px;
+    }
+  }
+
+  @media (max-height: 500px) {
+    .ob-session-root {
+      padding: 8px;
+      padding-bottom: max(54px, calc(44px + env(safe-area-inset-bottom, 0px)));
+      align-items: flex-start;
+    }
+
+    .ob-session-panel {
+      max-height: calc(100dvh - 62px);
+    }
+
+    .ob-session-title {
+      font-size: clamp(20px, 4vw, 30px);
+    }
+
+    .ob-session-header,
+    .ob-session-actions,
+    .ob-session-settings {
+      padding: 10px 14px;
+    }
   }
 `;
 

@@ -904,6 +904,7 @@ export class App {
     this.input.setUiBlocked(false);
     this.sessionMenu.setLauncherVisible(true);
 
+    this.player.team = 0;
     this.match.startNewGame({
       humanName: selection.name,
       humanTeam: 0,
