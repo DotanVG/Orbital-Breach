@@ -114,6 +114,17 @@ npm test
 | Local bot rendering and scoreboards | Done |
 | WebSocket multiplayer transport | Placeholder |
 | Colyseus lobby multiplayer | In progress (staging) |
+| Sound system (music + SFX + positional audio) | Done |
+
+---
+
+## Audio Credits
+
+Music and sound effects by **Noam Ouzana** — https://soundcloud.com/ouzana
+
+- Orbital Breach — Main Theme (Sketch #1)
+- Laser #1, Laser #2
+- Countdown
 
 ---
 
