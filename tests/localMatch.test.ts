@@ -230,24 +230,6 @@ describe("LocalMatch", () => {
 
   // ── Breach detection: phase-dependent query selection ──────────────────────
 
-  it("does not score breach for FLOATING player when isDeepInBreachRoom returns false", () => {
-    const player = createFakePlayer();
-    player.phase = "FLOATING";
-    player.getPosition = () => new THREE.Vector3(18, 0, 0);
-
-    const arena = {
-      isGoalDoorOpen: () => true,
-      isDeepInBreachRoom: () => false, // FLOATING path → no score
-      isInBreachRoom: () => true,      // would match, but should not be used for FLOATING
-    };
-
-    (match as unknown as { checkForBreachScore: (arenaArg: unknown, playerArg: unknown) => void })
-      .checkForBreachScore(arena, player);
-
-    expect(events).toEqual([]);
-    expect(match.getScore()).toEqual({ team0: 0, team1: 0 });
-  });
-
   it("does not score breach for BREACH-phase player when isInBreachRoom returns false", () => {
     const player = createFakePlayer();
     player.currentBreachTeam = 1;

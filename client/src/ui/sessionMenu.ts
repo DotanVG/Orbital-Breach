@@ -2,6 +2,7 @@ export interface SessionSettings {
   mouseSensitivity: number;
   musicVolume: number;
   soundtrackEnabled: boolean;
+  sfxVolume: number;
 }
 
 export interface SessionMenuConfig {
@@ -15,12 +16,14 @@ const STORAGE_KEYS = {
   mouseSensitivity: "orbital_mouse_sensitivity",
   musicVolume: "orbital_music_volume",
   soundtrackEnabled: "orbital_soundtrack_enabled",
+  sfxVolume: "orbital_sfx_volume",
 } as const;
 
 const DEFAULT_SETTINGS: SessionSettings = {
   mouseSensitivity: 0.002,
   soundtrackEnabled: true,
-  musicVolume: 70,
+  musicVolume: 60,
+  sfxVolume: 50,
 };
 
 const CSS = `
@@ -346,6 +349,8 @@ export class SessionMenu {
   private readonly soundtrackValue: HTMLSpanElement;
   private readonly musicInput: HTMLInputElement;
   private readonly musicValue: HTMLSpanElement;
+  private readonly sfxInput: HTMLInputElement;
+  private readonly sfxValue: HTMLSpanElement;
   private settings = loadSettings();
 
   public onLauncherRequest: (() => void) | null = null;
@@ -382,7 +387,7 @@ export class SessionMenu {
         <div class="ob-session-settings">
           <section class="ob-session-settings-card">
             <div class="ob-session-settings-title">Flight Settings</div>
-            <div class="ob-session-note">Mouse look applies immediately. Soundtrack controls are staged for the later music pass.</div>
+            <div class="ob-session-note">Changes apply immediately. Soundtrack toggle mutes music while preserving the level setting.</div>
 
             <div class="ob-session-field">
               <div class="ob-session-field-head">
@@ -410,6 +415,14 @@ export class SessionMenu {
               </div>
               <input id="session-menu-music" class="ob-session-range" type="range" min="0" max="100" step="1" />
             </div>
+
+            <div class="ob-session-field">
+              <div class="ob-session-field-head">
+                <span class="ob-session-field-label">SFX Level</span>
+                <span id="session-menu-sfx-value" class="ob-session-value"></span>
+              </div>
+              <input id="session-menu-sfx" class="ob-session-range" type="range" min="0" max="100" step="1" />
+            </div>
           </section>
         </div>
       </div>
@@ -426,6 +439,8 @@ export class SessionMenu {
     this.soundtrackValue = this.query("#session-menu-soundtrack-value");
     this.musicInput = this.query("#session-menu-music");
     this.musicValue = this.query("#session-menu-music-value");
+    this.sfxInput = this.query("#session-menu-sfx");
+    this.sfxValue = this.query("#session-menu-sfx-value");
 
     this.resumeButton.addEventListener("click", () => this.onResume?.());
     this.mainMenuButton.addEventListener("click", () => this.onMainMenu?.());
@@ -444,6 +459,12 @@ export class SessionMenu {
     });
     this.musicInput.addEventListener("input", () => {
       this.settings.musicVolume = Number(this.musicInput.value);
+      this.persistSettings();
+      this.renderSettings();
+      this.onSettingsChange?.(this.getSettings());
+    });
+    this.sfxInput.addEventListener("input", () => {
+      this.settings.sfxVolume = Number(this.sfxInput.value);
       this.persistSettings();
       this.renderSettings();
       this.onSettingsChange?.(this.getSettings());
@@ -487,6 +508,7 @@ export class SessionMenu {
     localStorage.setItem(STORAGE_KEYS.mouseSensitivity, String(this.settings.mouseSensitivity));
     localStorage.setItem(STORAGE_KEYS.soundtrackEnabled, this.settings.soundtrackEnabled ? "1" : "0");
     localStorage.setItem(STORAGE_KEYS.musicVolume, String(this.settings.musicVolume));
+    localStorage.setItem(STORAGE_KEYS.sfxVolume, String(this.settings.sfxVolume));
   }
 
   private renderSettings(): void {
@@ -496,6 +518,8 @@ export class SessionMenu {
     this.soundtrackValue.textContent = this.settings.soundtrackEnabled ? "On" : "Off";
     this.musicInput.value = String(this.settings.musicVolume);
     this.musicValue.textContent = `${Math.round(this.settings.musicVolume)}%`;
+    this.sfxInput.value = String(this.settings.sfxVolume);
+    this.sfxValue.textContent = `${Math.round(this.settings.sfxVolume)}%`;
   }
 
   private query<T extends HTMLElement>(selector: string): T {
@@ -507,11 +531,13 @@ function loadSettings(): SessionSettings {
   const sensitivity = Number(localStorage.getItem(STORAGE_KEYS.mouseSensitivity) ?? DEFAULT_SETTINGS.mouseSensitivity);
   const soundtrackEnabled = localStorage.getItem(STORAGE_KEYS.soundtrackEnabled);
   const musicVolume = Number(localStorage.getItem(STORAGE_KEYS.musicVolume) ?? DEFAULT_SETTINGS.musicVolume);
+  const sfxVolume = Number(localStorage.getItem(STORAGE_KEYS.sfxVolume) ?? DEFAULT_SETTINGS.sfxVolume);
 
   return {
     mouseSensitivity: Number.isFinite(sensitivity) ? clamp(sensitivity, 0.0005, 0.004) : DEFAULT_SETTINGS.mouseSensitivity,
     soundtrackEnabled: soundtrackEnabled === null ? DEFAULT_SETTINGS.soundtrackEnabled : soundtrackEnabled === "1",
     musicVolume: Number.isFinite(musicVolume) ? clamp(musicVolume, 0, 100) : DEFAULT_SETTINGS.musicVolume,
+    sfxVolume: Number.isFinite(sfxVolume) ? clamp(sfxVolume, 0, 100) : DEFAULT_SETTINGS.sfxVolume,
   };
 }
 

@@ -19,6 +19,7 @@ import { KillFeed } from "../ui/kill-feed";
 import { MainMenu } from "../ui/menu";
 import { MobileControls } from "../ui/mobileControls";
 import { SessionMenu, type SessionSettings } from "../ui/sessionMenu";
+import { SoundEngine } from "../audio/SoundEngine";
 import { cameraYawFacingBreachOpening } from "./cameraYawFromBreach";
 import { FloatArmTuneOverlay } from "./floatArmTuneOverlay";
 import { ProjectileSystem } from "./projectileSystem";
@@ -67,11 +68,13 @@ export class App {
   private round = new RoundController();
   private sceneMgr: SceneManager;
   private sessionMenu = new SessionMenu();
+  private sound!: SoundEngine;
   private thirdPerson = false;
   private tutorial = new FirstTimeTutorial();
 
   public constructor() {
     this.sceneMgr = new SceneManager();
+    this.sound = new SoundEngine(this.sceneMgr.getCamera(), this.sceneMgr.getScene());
     this.input = new InputManager();
     this.cam = new CameraController(this.sceneMgr.getCamera());
     this.arena = new Arena(this.sceneMgr.getScene());
@@ -155,6 +158,9 @@ export class App {
 
       if (shouldBeginOnlineRound || joinedLiveRound) {
         this.beginOnlineRound(snapshot);
+        if (shouldBeginOnlineRound) {
+          this.sound.playCountdown();
+        }
       }
 
       if (snapshot.phase === "LOBBY") {
@@ -222,6 +228,7 @@ export class App {
         event.ownerId,
       );
       this.onlineMatch.triggerRemoteShot(event.ownerId);
+      this.sound.playRemoteShot(new THREE.Vector3(event.originX, event.originY, event.originZ));
     };
 
     this.net.onLeave = () => {
@@ -278,6 +285,14 @@ export class App {
       this.startTutorialMatch(selection);
     };
 
+    const unlockAudio = (): void => {
+      void this.sound.unlock().then(() => { this.sound.startMusic(); });
+      document.removeEventListener('pointerdown', unlockAudio);
+      document.removeEventListener('keydown', unlockAudio);
+    };
+    document.addEventListener('pointerdown', unlockAudio);
+    document.addEventListener('keydown', unlockAudio);
+
     requestAnimationFrame((timestamp) => this.loop(timestamp));
   }
 
@@ -328,6 +343,7 @@ export class App {
     const botShots = this.match.tick(dt, this.arena, this.player, this.round.isPlaying());
     for (const shot of botShots) {
       this.projectiles.spawn(shot.origin, shot.direction, shot.team, shot.ownerId);
+      this.sound.playRemoteShot(shot.origin);
     }
 
     this.tickWeaponFire();
@@ -419,6 +435,7 @@ export class App {
 
     const localActorId = this.getOnlineLocalActorId();
     this.projectiles.spawn(shot.origin, shot.direction, this.player.team, localActorId);
+    this.sound.playLocalShot();
     this.net.sendShot({
       ownerId: localActorId,
       team: this.player.team,
@@ -570,6 +587,7 @@ export class App {
   }
 
   private endOnlineGame(): void {
+    this.sound.stopCountdown();
     this.closeSessionMenu();
     this.onlineGameActive = false;
     this.onlineBreachReported = false;
@@ -712,6 +730,7 @@ export class App {
 
     this.arena.setPortalDoorsOpen(false);
     this.round.startCountdown();
+    this.sound.playCountdown();
   }
 
   private onRoundWin(team: 0 | 1): void {
@@ -792,6 +811,7 @@ export class App {
   }
 
   private returnToMenuFromSolo(): void {
+    this.sound.stopCountdown();
     this.closeSessionMenu();
     this.debrief.hide();
     this.appMode = "menu";
@@ -875,6 +895,9 @@ export class App {
 
   private applySessionSettings(settings: SessionSettings): void {
     this.input.mouseSensitivity = settings.mouseSensitivity;
+    this.sound.setMusicVolume(settings.musicVolume);
+    this.sound.setSfxVolume(settings.sfxVolume);
+    this.sound.setMusicEnabled(settings.soundtrackEnabled);
   }
 
   private getOnlineLocalActorId(): string {
@@ -999,6 +1022,7 @@ export class App {
     if (!shot) return;
 
     this.projectiles.spawn(shot.origin, shot.direction, this.player.team, "local-player");
+    this.sound.playLocalShot();
     this.player.triggerArmRecoil();
     this.tutorial.noteShotFired();
   }
