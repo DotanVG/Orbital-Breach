@@ -615,8 +615,7 @@ const CSS = `
 
     .ob-mp-briefing-layout { gap: 10px; margin-top: 10px; }
     .ob-mp-brief-panel { padding: 12px; }
-    .ob-mp-stage-preview { padding: 12px; }
-    .ob-mp-arena-svg { display: none; }
+    .ob-mp-stage-preview { display: none; }
     .ob-mp-brief-row { font-size: 9px; padding: 6px 6px; }
   }
 
