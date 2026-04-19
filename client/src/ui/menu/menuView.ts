@@ -901,6 +901,31 @@ function initMenuFx(container: HTMLElement): void {
   };
   rafMain = requestAnimationFrame(mainLoop);
 
+  // ── 5b. Touch/Windows orbit: auto-animation (no gyro) ──
+  if (touch && orbitEl) {
+    let autoT = 0;
+    let rafMobile = 0;
+
+    const applyOrbit = (nx: number, ny: number) => {
+      orbitEl!.style.transform = `rotateX(${62 + ny * 5}deg) rotateZ(${-nx * 13}deg)`;
+    };
+
+    const mobileOrbitLoop = () => {
+      if (!root.isConnected) return;
+      autoT += 0.008;
+      applyOrbit(Math.sin(autoT * 0.7), Math.sin(autoT * 0.4) * 0.4);
+      rafMobile = requestAnimationFrame(mobileOrbitLoop);
+    };
+    rafMobile = requestAnimationFrame(mobileOrbitLoop);
+
+    const mobMo = new MutationObserver(() => {
+      if (!root.isConnected) {
+        cancelAnimationFrame(rafMobile);
+        mobMo.disconnect();
+      }
+    });
+    mobMo.observe(document.body, { childList: true });
+  }
 
   // Cleanup once container leaves the DOM
   const mo = new MutationObserver(() => {
