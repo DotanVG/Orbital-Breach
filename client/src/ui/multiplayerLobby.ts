@@ -610,7 +610,11 @@ const CSS = `
 
     .ob-mp-shell {
       width: 100%;
-      max-height: calc(100dvh - 80px);
+      max-height: calc(
+        100dvh
+        - (10px + env(safe-area-inset-top, 0px))
+        - max(70px, calc(54px + env(safe-area-inset-bottom, 0px)))
+      );
     }
 
     .ob-mp-briefing-layout { gap: 10px; margin-top: 10px; }
@@ -627,7 +631,7 @@ const CSS = `
       align-items: flex-start;
     }
 
-    .ob-mp-shell { max-height: calc(100dvh - 62px); }
+    .ob-mp-shell { max-height: calc(100dvh - (8px + env(safe-area-inset-top, 0px)) - max(54px, calc(44px + env(safe-area-inset-bottom, 0px)))); }
   }
 `;
 

@@ -916,11 +916,20 @@ function initMenuFx(container: HTMLElement): void {
       applyOrbit(Math.sin(autoT * 0.7), Math.sin(autoT * 0.4) * 0.4);
       rafMobile = requestAnimationFrame(mobileOrbitLoop);
     };
-    rafMobile = requestAnimationFrame(mobileOrbitLoop);
+
+    const reducedMotionMq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+
+    const startLoop = () => { if (!rafMobile) rafMobile = requestAnimationFrame(mobileOrbitLoop); };
+    const stopLoop  = () => { cancelAnimationFrame(rafMobile); rafMobile = 0; };
+
+    if (!reducedMotionMq?.matches) startLoop();
+
+    reducedMotionMq?.addEventListener("change", (e) => { e.matches ? stopLoop() : startLoop(); });
 
     const mobMo = new MutationObserver(() => {
       if (!root.isConnected) {
-        cancelAnimationFrame(rafMobile);
+        stopLoop();
+        reducedMotionMq?.removeEventListener("change", stopLoop);
         mobMo.disconnect();
       }
     });

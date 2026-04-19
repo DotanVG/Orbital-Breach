@@ -178,7 +178,11 @@ const CSS = `
     }
     .ob-debrief-wrap {
       width: 100%;
-      max-height: calc(100dvh - 104px);
+      max-height: calc(
+        100dvh
+        - (12px + env(safe-area-inset-top, 0px))
+        - max(80px, calc(60px + env(safe-area-inset-bottom, 0px)))
+      );
       gap: 14px;
     }
     .ob-debrief-head { gap: 8px; padding-bottom: 14px; }
@@ -220,7 +224,11 @@ const CSS = `
     }
     .ob-debrief-wrap {
       width: 100%;
-      max-height: calc(100dvh - 76px);
+      max-height: calc(
+        100dvh
+        - (8px + env(safe-area-inset-top, 0px))
+        - max(60px, calc(44px + env(safe-area-inset-bottom, 0px)))
+      );
       gap: 10px;
     }
     .ob-debrief-head { padding-bottom: 10px; gap: 8px; }
