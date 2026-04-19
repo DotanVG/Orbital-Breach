@@ -127,7 +127,7 @@ const CSS = `
   .ob-topbar {
     position: fixed; top: 0; left: 0; right: 0; z-index: 10;
     display: flex; justify-content: space-between; align-items: center;
-    padding: 22px 40px 0;
+    padding: calc(22px + env(safe-area-inset-top, 0px)) 40px 0;
     font-family: var(--ob-mono); font-size: 10px; letter-spacing: 3px;
     color: var(--ob-fg-dim); text-transform: uppercase;
     pointer-events: none;
@@ -150,7 +150,7 @@ const CSS = `
   .ob-bottombar {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
     display: flex; justify-content: space-between; align-items: flex-end;
-    padding: 0 40px 18px;
+    padding: 0 40px max(18px, calc(18px + env(safe-area-inset-bottom, 0px)));
     font-family: var(--ob-mono); font-size: 9px; letter-spacing: 3px;
     color: var(--ob-fg-faint); text-transform: uppercase;
     pointer-events: none;
@@ -412,28 +412,73 @@ const CSS = `
   .ob-match-select-hidden { display: none; }
 
   /* ── RESPONSIVE ── */
+  @media (max-width: 920px) {
+    .ob-topbar-right .ob-clock { display: none; }
+  }
   @media (max-width: 640px) {
     .ob-match-grid   { grid-template-columns: repeat(3, 1fr); }
     .ob-launch-row   { flex-direction: column; }
     .ob-callsign-box { min-width: 0; width: 90vw; }
-    .menu-root       { cursor: auto; }
+    .menu-root       { cursor: auto; overflow-y: auto; align-items: start; }
     .ob-cursor       { display: none; }
-    .ob-topbar, .ob-bottombar { padding-left: 20px; padding-right: 20px; }
-    .ob-main-wrap    { gap: 22px; }
+    .ob-topbar  { padding-left: 16px; padding-right: 16px; padding-top: calc(14px + env(safe-area-inset-top, 0px)); }
+    .ob-bottombar { padding-left: 16px; padding-right: 16px;
+                    padding-bottom: max(14px, env(safe-area-inset-bottom, 14px)); }
+    .ob-hud-corner { display: none; }
+    .ob-main-wrap {
+      gap: 18px;
+      padding: 0 0 max(70px, calc(50px + env(safe-area-inset-bottom, 0px)));
+      padding-top: calc(64px + env(safe-area-inset-top, 0px));
+      width: min(640px, 96vw);
+    }
+    .ob-title { font-size: clamp(36px, 10vw, 64px); }
+    .ob-match-card { padding: 14px 8px 12px; }
+    .ob-card-size  { font-size: 22px; }
+    .ob-tutorial-btn { padding: 12px 18px; }
+    .ob-tutorial-btn-sub { display: none; }
+    .ob-btn { padding: 16px 24px; }
   }
-  @media (max-width: 920px) {
-    .ob-topbar-right .ob-clock { display: none; }
+  @media (max-width: 420px) {
+    .ob-match-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .ob-title      { font-size: clamp(30px, 9vw, 48px); white-space: normal; text-align: center; }
+    .ob-subtitle   { font-size: 9px; letter-spacing: 4px; }
+    .ob-tag        { font-size: 8px; letter-spacing: 5px; }
+    .ob-topbar-brand { font-size: 11px; letter-spacing: 4px; }
+    .ob-topbar-brand em { display: none; }
   }
-  @media (max-height: 700px) {
+
+  /* ── Mobile landscape (short viewport) ── */
+  @media (max-height: 500px) {
+    .ob-main-wrap {
+      gap: 12px;
+      padding: 52px 0 max(60px, calc(44px + env(safe-area-inset-bottom, 0px)));
+      padding-top: calc(52px + env(safe-area-inset-top, 0px));
+    }
+    .menu-root { overflow-y: auto; }
+    .ob-title  { font-size: clamp(28px, 6vw, 56px); }
+    .ob-subtitle, .ob-tag { display: none; }
+    .ob-callsign-label { display: none; }
+    .ob-match-grid { gap: 8px; }
+    .ob-match-card { padding: 10px 8px; }
+    .ob-card-size  { font-size: 18px; }
+    .ob-card-bots  { display: none; }
+    .ob-tutorial-btn { padding: 10px 14px; }
+    .ob-tutorial-btn-sub { display: none; }
+    .ob-btn { padding: 12px 20px; }
+  }
+  @media (max-height: 700px) and (min-height: 501px) {
     .ob-main-wrap { gap: 18px; padding: 60px 0 40px; }
     .ob-title { font-size: clamp(34px, 7vw, 80px); }
+  }
+
+  /* ── Touch: no-hover transition tweak for orbit ── */
+  @media (hover: none) {
+    .ob-title-waves { display: none !important; }
+    .ob-orbit-tilt  { transition: none; }
   }
   @media (prefers-reduced-motion: reduce) {
     .ob-ring, .ob-stars i, .ob-pulse, .menu-root { animation: none !important; }
     .ob-title-waves { display: none; }
-  }
-  @media (hover: none) {
-    .ob-title-waves { display: none !important; }
   }
 `;
 
@@ -684,6 +729,8 @@ function initMenuFx(container: HTMLElement): void {
   const root = container.querySelector<HTMLElement>("#menu-root");
   if (!root) return;
 
+  const touch = isTouchDevice();
+
   // ── 1. Starfield ──
   const starsEl = root.querySelector<HTMLElement>("#ob-stars");
   if (starsEl) {
@@ -835,12 +882,12 @@ function initMenuFx(container: HTMLElement): void {
     cx += (mx - cx) * 0.25;
     cy += (my - cy) * 0.25;
     if (cursorEl) cursorEl.style.transform = `translate(${cx}px,${cy}px) translate(-50%,-50%)`;
-    if (orbitEl) {
+    if (orbitEl && !touch) {
       const nx = (mx / window.innerWidth  - 0.5) * 2;
       const ny = (my / window.innerHeight - 0.5) * 2;
       orbitEl.style.transform = `rotateX(${62 + ny * 5}deg) rotateZ(${-nx * 13}deg)`;
     }
-    if (titleEl) {
+    if (titleEl && !touch) {
       titleEl.querySelectorAll<HTMLElement>(".ob-letter").forEach((l) => {
         const r = l.getBoundingClientRect();
         const dx = mx - (r.left + r.width  / 2);
@@ -853,6 +900,41 @@ function initMenuFx(container: HTMLElement): void {
     rafMain = requestAnimationFrame(mainLoop);
   };
   rafMain = requestAnimationFrame(mainLoop);
+
+  // ── 5b. Touch/Windows orbit: auto-animation (no gyro) ──
+  if (touch && orbitEl) {
+    let autoT = 0;
+    let rafMobile = 0;
+
+    const applyOrbit = (nx: number, ny: number) => {
+      orbitEl!.style.transform = `rotateX(${62 + ny * 5}deg) rotateZ(${-nx * 13}deg)`;
+    };
+
+    const mobileOrbitLoop = () => {
+      if (!root.isConnected) return;
+      autoT += 0.008;
+      applyOrbit(Math.sin(autoT * 0.7), Math.sin(autoT * 0.4) * 0.4);
+      rafMobile = requestAnimationFrame(mobileOrbitLoop);
+    };
+
+    const reducedMotionMq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+
+    const startLoop = () => { if (!rafMobile) rafMobile = requestAnimationFrame(mobileOrbitLoop); };
+    const stopLoop  = () => { cancelAnimationFrame(rafMobile); rafMobile = 0; };
+
+    if (!reducedMotionMq?.matches) startLoop();
+
+    reducedMotionMq?.addEventListener("change", (e) => { e.matches ? stopLoop() : startLoop(); });
+
+    const mobMo = new MutationObserver(() => {
+      if (!root.isConnected) {
+        stopLoop();
+        reducedMotionMq?.removeEventListener("change", stopLoop);
+        mobMo.disconnect();
+      }
+    });
+    mobMo.observe(document.body, { childList: true });
+  }
 
   // Cleanup once container leaves the DOM
   const mo = new MutationObserver(() => {

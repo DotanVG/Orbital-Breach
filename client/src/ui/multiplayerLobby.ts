@@ -38,7 +38,7 @@ const CSS = `
 
   .ob-mp-shell {
     width: min(1120px, calc(100vw - 32px));
-    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
     overflow: auto;
     border: 1px solid var(--mp-border);
     border-radius: 0;
@@ -598,6 +598,40 @@ const CSS = `
 
   @media (max-width: 1100px) {
     .ob-mp-briefing-layout { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 640px) {
+    .ob-mp-root {
+      padding: 10px;
+      padding-top: calc(10px + env(safe-area-inset-top, 0px));
+      padding-bottom: max(70px, calc(54px + env(safe-area-inset-bottom, 0px)));
+      align-items: flex-start;
+    }
+
+    .ob-mp-shell {
+      width: 100%;
+      max-height: calc(
+        100dvh
+        - (10px + env(safe-area-inset-top, 0px))
+        - max(70px, calc(54px + env(safe-area-inset-bottom, 0px)))
+      );
+    }
+
+    .ob-mp-briefing-layout { gap: 10px; margin-top: 10px; }
+    .ob-mp-brief-panel { padding: 12px; }
+    .ob-mp-stage-preview { display: none; }
+    .ob-mp-brief-row { font-size: 9px; padding: 6px 6px; }
+  }
+
+  @media (max-height: 500px) {
+    .ob-mp-root {
+      padding: 8px;
+      padding-top: calc(8px + env(safe-area-inset-top, 0px));
+      padding-bottom: max(54px, calc(44px + env(safe-area-inset-bottom, 0px)));
+      align-items: flex-start;
+    }
+
+    .ob-mp-shell { max-height: calc(100dvh - (8px + env(safe-area-inset-top, 0px)) - max(54px, calc(44px + env(safe-area-inset-bottom, 0px)))); }
   }
 `;
 

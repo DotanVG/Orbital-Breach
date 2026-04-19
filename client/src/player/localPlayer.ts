@@ -58,6 +58,9 @@ import { ThirdPersonGun, type ThirdPersonGunTuningState } from './playerThirdPer
 const GRAB_ROTATION_SMOOTHING = 0.0008;
 const FLOAT_ARM_TUNING_STEP = Math.PI / 180;
 const FLOAT_ARM_FINE_TUNING_STEP = Math.PI / 900;
+const BREACH_ENTRY_CARRY_TIME = 0.55;
+const BREACH_ENTRY_CARRY_DAMPING_PER_60HZ = 0.9;
+const ZERO_CARRY = new THREE.Vector3();
 
 export class LocalPlayer {
   public phys: PhysicsState = {
@@ -85,6 +88,8 @@ export class LocalPlayer {
   private respawnTimer = 0;
   private onGround = false;
   private breachJumpAnimationActive = false;
+  private breachEntryCarry = new THREE.Vector3();
+  private breachEntryCarryTimer = 0;
 
   private mesh: THREE.Group;
   private leftHandGripLocal = DEFAULT_LEFT_HAND_GRIP_LOCAL.clone();
@@ -216,11 +221,21 @@ export class LocalPlayer {
       cam.getYawRight(),
       input.isJumping(),
       this.onGround,
+      this.breachEntryCarryTimer > 0 ? this.breachEntryCarry : ZERO_CARRY,
       dt,
     );
 
     clampBreachRoom(this.phys, center, openAxis, openSign, arena.isGoalDoorOpen(this.currentBreachTeam));
     this.onGround = this.phys.pos.y <= floorY + 0.02;
+    if (this.onGround) {
+      this.breachEntryCarry.set(0, 0, 0);
+      this.breachEntryCarryTimer = 0;
+    } else if (this.breachEntryCarryTimer > 0) {
+      this.breachEntryCarryTimer = Math.max(0, this.breachEntryCarryTimer - dt);
+      const damp = Math.pow(BREACH_ENTRY_CARRY_DAMPING_PER_60HZ, dt * 60);
+      this.breachEntryCarry.multiplyScalar(damp);
+      this.breachEntryCarry.y = 0;
+    }
 
     if (jumpStarted) {
       this.breachJumpAnimationActive = true;
@@ -373,7 +388,9 @@ export class LocalPlayer {
     this.damage.rightArm = false;
     this.damage.leftLeg = false;
     this.damage.rightLeg = false;
-    this.phys.vel.y = 0;
+    this.breachEntryCarry.copy(this.phys.vel);
+    this.breachEntryCarry.y = 0;
+    this.breachEntryCarryTimer = BREACH_ENTRY_CARRY_TIME;
   }
 
   private updateAnimation(input: InputManager, cam: CameraController, dt: number): void {
@@ -577,6 +594,8 @@ export class LocalPlayer {
     this.grabHandGripLocal = null;
     this.grabPoseLocked = false;
     this.breachJumpAnimationActive = false;
+    this.breachEntryCarry.set(0, 0, 0);
+    this.breachEntryCarryTimer = 0;
     this.currentBreachTeam = this.team;
     this.phys.vel.set(0, 0, 0);
 

@@ -483,11 +483,13 @@ export class App {
 
     const enemyTeam = (1 - this.player.team) as 0 | 1;
     if (!this.arena.isGoalDoorOpen(enemyTeam)) return;
-    if (!this.arena.isDeepInBreachRoom(this.player.getPosition(), enemyTeam, 1.0)) return;
+    const reachedEnemyBreach = this.player.phase === "BREACH"
+      ? this.arena.isInBreachRoom(this.player.getPosition(), enemyTeam)
+      : this.arena.isDeepInBreachRoom(this.player.getPosition(), enemyTeam, 1.0);
+    if (!reachedEnemyBreach) return;
 
     this.player.currentBreachTeam = enemyTeam;
     this.player.phase = "BREACH";
-    this.player.phys.vel.y = 0;
     this.onlineBreachReported = true;
 
     this.net.sendBreachReport({
@@ -904,6 +906,7 @@ export class App {
     this.input.setUiBlocked(false);
     this.sessionMenu.setLauncherVisible(true);
 
+    this.player.team = 0;
     this.match.startNewGame({
       humanName: selection.name,
       humanTeam: 0,

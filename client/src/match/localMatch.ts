@@ -33,6 +33,9 @@ import { buildHudRosters } from "./rosterView";
 import { SimulatedPlayerAvatar } from "./simulatedPlayerAvatar";
 
 const LOCAL_PLAYER_ID = "local-player";
+const BREACH_ENTRY_CARRY_TIME = 0.55;
+const BREACH_ENTRY_CARRY_DAMPING_PER_60HZ = 0.9;
+const ZERO_CARRY = new THREE.Vector3();
 
 export interface ProjectileActorTarget {
   active: boolean;
@@ -101,6 +104,8 @@ interface BotState {
   name: string;
   phase: PlayerPhase;
   phys: PhysicsState;
+  breachEntryCarry: THREE.Vector3;
+  breachEntryCarryTimer: number;
   rot: { yaw: number; pitch: number };
   team: 0 | 1;
 }
@@ -377,18 +382,19 @@ export class LocalMatch {
 
       const enemyTeam = (1 - actor.team) as 0 | 1;
       if (!arena.isGoalDoorOpen(enemyTeam)) continue;
-      if (!arena.isDeepInBreachRoom(actor.pos, enemyTeam, 1.0)) continue;
+      const reachedEnemyBreach = actor.phase === "BREACH"
+        ? arena.isInBreachRoom(actor.pos, enemyTeam)
+        : arena.isDeepInBreachRoom(actor.pos, enemyTeam, 1.0);
+      if (!reachedEnemyBreach) continue;
 
       if (actor.id === LOCAL_PLAYER_ID) {
         player.currentBreachTeam = enemyTeam;
         player.phase = "BREACH";
-        player.phys.vel.y = 0;
       } else {
         const bot = this.getBot(actor.id);
         if (!bot) continue;
         bot.currentBreachTeam = enemyTeam;
         bot.phase = "BREACH";
-        bot.phys.vel.y = 0;
       }
 
       this.awardRoundPoint(actor.team, actor.name, "breach");
@@ -678,8 +684,10 @@ export class LocalMatch {
       yawRightVec,
       false,
       isOnBreachGround(bot, center.y),
+      bot.breachEntryCarryTimer > 0 ? bot.breachEntryCarry : ZERO_CARRY,
       dt,
     );
+    decayBreachEntryCarry(bot, isOnBreachGround(bot, center.y), dt);
     clampBreachRoom(bot.phys, center, openAxis, openSign, arena.isGoalDoorOpen(bot.currentBreachTeam));
 
     if (command.grab && !bot.damage.leftArm && arena.isGoalDoorOpen(bot.currentBreachTeam)) {
@@ -733,8 +741,10 @@ export class LocalMatch {
       yawRightVec,
       false,
       isOnBreachGround(bot, center.y),
+      bot.breachEntryCarryTimer > 0 ? bot.breachEntryCarry : ZERO_CARRY,
       dt,
     );
+    decayBreachEntryCarry(bot, isOnBreachGround(bot, center.y), dt);
     clampBreachRoom(bot.phys, center, openAxis, openSign, arena.isGoalDoorOpen(bot.currentBreachTeam));
   }
 }
@@ -765,6 +775,8 @@ function createBotState(scene: THREE.Scene, id: string, name: string, team: 0 | 
     name,
     phase: "BREACH",
     phys: { pos: new THREE.Vector3(), vel: new THREE.Vector3() },
+    breachEntryCarry: new THREE.Vector3(),
+    breachEntryCarryTimer: 0,
     rot: { yaw: 0, pitch: 0 },
     team,
   };
@@ -864,6 +876,8 @@ function launchBot(bot: BotState): void {
   const forward = directionFromRotation(bot.rot.yaw, bot.rot.pitch);
   bot.phys.pos.addScaledVector(forward, PLAYER_RADIUS + 0.8);
   bot.phys.vel.copy(forward).multiplyScalar(bot.launchPower);
+  bot.breachEntryCarry.set(0, 0, 0);
+  bot.breachEntryCarryTimer = 0;
   bot.grabbedBarPos = null;
   bot.launchPower = 0;
   bot.phase = "FLOATING";
@@ -893,6 +907,8 @@ function resetBotsForRound(
     bot.phase = "BREACH";
     bot.phys.pos.set(spawn.x, spawn.y, spawn.z);
     bot.phys.vel.set(0, 0, 0);
+    bot.breachEntryCarry.set(0, 0, 0);
+    bot.breachEntryCarryTimer = 0;
     bot.rot = exitRotation(query, bot.team);
     bot.brain.resetForRound(roundSeed * 37 + i * 13 + bot.team);
     bot.avatar.update(bot.phys.pos, bot.damage, bot.phase, bot.rot.yaw, 0, 0);
@@ -914,7 +930,9 @@ function enterBotBreachRoom(bot: BotState, team: 0 | 1): void {
   bot.damage.leftLeg = false;
   bot.damage.rightLeg = false;
   bot.phase = "BREACH";
-  bot.phys.vel.y = 0;
+  bot.breachEntryCarry.copy(bot.phys.vel);
+  bot.breachEntryCarry.y = 0;
+  bot.breachEntryCarryTimer = BREACH_ENTRY_CARRY_TIME;
 }
 
 function settleSpawnOnFloor(
@@ -951,6 +969,19 @@ function toVec3(vec: THREE.Vector3): Vec3 {
 
 function toThree(vec: Vec3): THREE.Vector3 {
   return new THREE.Vector3(vec.x, vec.y, vec.z);
+}
+
+function decayBreachEntryCarry(bot: BotState, onGround: boolean, dt: number): void {
+  if (onGround) {
+    bot.breachEntryCarry.set(0, 0, 0);
+    bot.breachEntryCarryTimer = 0;
+    return;
+  }
+  if (bot.breachEntryCarryTimer <= 0) return;
+  bot.breachEntryCarryTimer = Math.max(0, bot.breachEntryCarryTimer - dt);
+  const damp = Math.pow(BREACH_ENTRY_CARRY_DAMPING_PER_60HZ, dt * 60);
+  bot.breachEntryCarry.multiplyScalar(damp);
+  bot.breachEntryCarry.y = 0;
 }
 
 function yawForward(yaw: number): Vec3 {

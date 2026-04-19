@@ -32,7 +32,7 @@ const CSS = `
 
   .ob-debrief-wrap {
     width: min(1100px, 94vw);
-    max-height: calc(100vh - 36px);
+    max-height: calc(100dvh - 36px);
     overflow: auto;
     display: grid;
     gap: 22px;
@@ -162,9 +162,84 @@ const CSS = `
   .ob-debrief-btn--primary { border-color: oklch(0.82 0.15 210 / 0.28); }
   .ob-debrief-btn--primary:hover { border-color: oklch(0.82 0.15 210); color: oklch(0.9 0.1 210); }
 
+  /* ── Tablet: collapse grid to 1-col ── */
   @media (max-width: 900px) {
     .ob-debrief-grid { grid-template-columns: 1fr; }
     .ob-debrief-head { grid-template-columns: 1fr; gap: 12px; text-align: center; }
+  }
+
+  /* ── Mobile portrait ── */
+  @media (max-width: 640px) and (orientation: portrait) {
+    .ob-debrief-root {
+      padding: 12px 10px;
+      padding-top: calc(12px + env(safe-area-inset-top, 0px));
+      padding-bottom: max(80px, calc(60px + env(safe-area-inset-bottom, 0px)));
+      align-items: flex-start;
+    }
+    .ob-debrief-wrap {
+      width: 100%;
+      max-height: calc(
+        100dvh
+        - (12px + env(safe-area-inset-top, 0px))
+        - max(80px, calc(60px + env(safe-area-inset-bottom, 0px)))
+      );
+      gap: 14px;
+    }
+    .ob-debrief-head { gap: 8px; padding-bottom: 14px; }
+    .ob-debrief-team-score .ob-ds-num { font-size: 60px; }
+    .ob-debrief-verdict { font-size: 26px; }
+    .ob-debrief-panel { padding: 14px 14px; }
+    .ob-stats-table th, .ob-stats-table td { padding: 8px 8px; }
+    .ob-debrief-actions { flex-direction: column; gap: 8px; }
+    .ob-debrief-btn { padding: 14px 16px; font-size: 9px; letter-spacing: 4px; }
+
+    /* Reorder: actions, awards, then scoreboard */
+    .ob-debrief-grid { display: flex; flex-direction: column; }
+    .ob-debrief-side {
+      display: flex;
+      flex-direction: column;
+      order: 0;
+      width: 100%;
+    }
+    .ob-debrief-actions {
+      order: -1;
+      margin-top: 0;
+      margin-bottom: 8px;
+      width: 100%;
+    }
+    .ob-debrief-btn { width: 100%; justify-content: center; }
+    .ob-awards { order: 0; width: 100%; }
+    .ob-award { width: 100%; }
+    .ob-debrief-grid > .ob-debrief-panel { order: 1; }
+    #debrief-play-again { order: -1; }
+  }
+
+  /* ── Mobile landscape ── */
+  @media (max-height: 500px) and (max-width: 900px) {
+    .ob-debrief-root {
+      padding: 8px 10px;
+      padding-top: calc(8px + env(safe-area-inset-top, 0px));
+      padding-bottom: max(60px, calc(44px + env(safe-area-inset-bottom, 0px)));
+      align-items: flex-start;
+    }
+    .ob-debrief-wrap {
+      width: 100%;
+      max-height: calc(
+        100dvh
+        - (8px + env(safe-area-inset-top, 0px))
+        - max(60px, calc(44px + env(safe-area-inset-bottom, 0px)))
+      );
+      gap: 10px;
+    }
+    .ob-debrief-head { padding-bottom: 10px; gap: 8px; }
+    .ob-debrief-team-score .ob-ds-num { font-size: 44px; }
+    .ob-debrief-verdict { font-size: 20px; }
+    .ob-debrief-grid { display: flex; flex-direction: column; gap: 10px; }
+    .ob-debrief-side { order: 0; width: 100%; }
+    .ob-debrief-grid > .ob-debrief-panel { order: 1; width: 100%; }
+    .ob-debrief-panel { padding: 10px 12px; }
+    .ob-debrief-actions { margin-top: 8px; }
+    .ob-debrief-btn { padding: 10px 14px; font-size: 9px; }
   }
 `;
 
@@ -287,7 +362,7 @@ export class DebriefScreen {
             </table>
           </div>
 
-          <div>
+          <div class="ob-debrief-side">
             <div class="ob-awards">${awards}</div>
             <div class="ob-debrief-actions">
               <button class="ob-debrief-btn" id="debrief-main-menu">Main Menu →</button>
