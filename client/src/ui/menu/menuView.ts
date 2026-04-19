@@ -419,7 +419,7 @@ const CSS = `
     .ob-match-grid   { grid-template-columns: repeat(3, 1fr); }
     .ob-launch-row   { flex-direction: column; }
     .ob-callsign-box { min-width: 0; width: 90vw; }
-    .menu-root       { cursor: auto; overflow-y: auto; place-items: start; }
+    .menu-root       { cursor: auto; overflow-y: auto; align-items: start; }
     .ob-cursor       { display: none; }
     .ob-topbar  { padding-left: 16px; padding-right: 16px; padding-top: calc(14px + env(safe-area-inset-top, 0px)); }
     .ob-bottombar { padding-left: 16px; padding-right: 16px;
@@ -429,7 +429,6 @@ const CSS = `
       gap: 18px;
       padding: 0 0 max(70px, calc(50px + env(safe-area-inset-bottom, 0px)));
       padding-top: calc(64px + env(safe-area-inset-top, 0px));
-      padding-left: 4vw;
       width: min(640px, 96vw);
     }
     .ob-title { font-size: clamp(36px, 10vw, 64px); }
