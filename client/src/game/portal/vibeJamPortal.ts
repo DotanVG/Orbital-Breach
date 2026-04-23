@@ -1,11 +1,12 @@
 import * as THREE from "three";
-import { BREACH_ROOM_D, BREACH_ROOM_H, BREACH_ROOM_W, PLAYER_RADIUS } from "../../../../shared/constants";
+import { BREACH_ROOM_D, BREACH_ROOM_W, PLAYER_RADIUS } from "../../../../shared/constants";
 import { computeBreachSpawnPosition } from "../../player/playerSpawn";
 import { parsePortalParams, type PortalParams } from "./parsePortalParams";
 
 const OUTBOUND_URL = "https://vibej.am/portal/2026";
-const PORTAL_SIZE = { width: 2, height: 3, depth: 0.35 };
+const PORTAL_RADIUS = 1.3;
 const TRIGGER_DEPTH = 1.2;
+const JUMP_VEL_THRESHOLD = 0.2;
 const DEFAULT_ARRIVAL_CENTER = new THREE.Vector3(0, 0, -23);
 
 export const PORTAL_ARRIVAL_SPAWN = new THREE.Vector3(
@@ -19,7 +20,59 @@ interface PortalTrigger {
   group: THREE.Group;
   targetUrl: string;
   type: "return" | "outbound";
+  shaderMat: THREE.ShaderMaterial;
 }
+
+// ── Shaders ──────────────────────────────────────────────────────────────────
+
+const PORTAL_VERT = /* glsl */`
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const PORTAL_FRAG = /* glsl */`
+uniform float time;
+uniform vec3 col;
+varying vec2 vUv;
+#define TAU 6.28318530718
+
+void main() {
+  vec2 p = vUv * 2.0 - 1.0;
+  float r = length(p);
+  if (r >= 1.0) discard;
+  float a = atan(p.y, p.x);
+
+  // Spinning spiral arms
+  float swirl = fract(a / TAU + r * 2.5 - time * 0.45);
+  float arms  = pow(abs(sin(swirl * TAU * 4.5)), 2.0);
+
+  // Concentric energy rings
+  float rings = smoothstep(0.3, 0.7, sin(r * 20.0 - time * 5.0) * 0.5 + 0.5);
+
+  // Outer neon glow rim
+  float glowRim = exp(-pow((r - 0.82) / 0.09, 2.0));
+
+  // Inner core brightening
+  float core = exp(-r * r * 6.0) * 0.5;
+
+  // Masks
+  float edgeFade = 1.0 - smoothstep(0.80, 1.0, r);
+  float voidFade = smoothstep(0.0, 0.25, r);
+
+  float intensity = (arms * rings * 0.6 + glowRim * 1.5 + core) * voidFade;
+  intensity = clamp(intensity, 0.0, 1.5);
+
+  vec3 color = col * intensity;
+  color += vec3(1.0) * (glowRim + core) * 0.35;
+
+  float alpha = edgeFade * clamp(intensity * 0.8 + 0.35 * voidFade * edgeFade, 0.0, 1.0);
+
+  gl_FragColor = vec4(color, alpha);
+}`;
+
+// ── Module state ─────────────────────────────────────────────────────────────
 
 let cachedParams: PortalParams | null = null;
 let sceneRef: THREE.Scene | null = null;
@@ -32,6 +85,8 @@ let outboundTransform:
   | { center: THREE.Vector3; openAxis: "x" | "y" | "z"; openSign: 1 | -1 }
   | null = null;
 const triggers: PortalTrigger[] = [];
+
+// ── Public API ────────────────────────────────────────────────────────────────
 
 export function getPortalParams(): PortalParams {
   cachedParams ??= parsePortalParams();
@@ -106,8 +161,9 @@ export function addOutboundVibeJamPortal(scene: THREE.Scene, params: PortalParam
   triggers.push(trigger);
 }
 
-export function checkPortalCollisions(playerPos: THREE.Vector3): void {
+export function checkPortalCollisions(playerPos: THREE.Vector3, velY: number): void {
   if (redirected) return;
+  if (velY < JUMP_VEL_THRESHOLD) return;
 
   for (const trigger of triggers) {
     if (!trigger.box.containsPoint(playerPos)) continue;
@@ -121,9 +177,17 @@ export function checkPortalCollisions(playerPos: THREE.Vector3): void {
   }
 }
 
+export function updateVibeJamPortals(dt: number): void {
+  for (const trigger of triggers) {
+    trigger.shaderMat.uniforms["time"].value += dt;
+  }
+}
+
 export function clearVibeJamPortals(): void {
   clearTriggers();
 }
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
 
 function clearTriggers(type?: PortalTrigger["type"]): void {
   for (let i = triggers.length - 1; i >= 0; i--) {
@@ -186,63 +250,60 @@ function createPortal(
   const group = new THREE.Group();
   group.position.copy(options.position);
   group.quaternion.copy(
-    new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), options.normal.clone().normalize()),
+    new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 0, 1),
+      options.normal.clone().normalize(),
+    ),
   );
 
-  const material = new THREE.MeshBasicMaterial({
+  // Animated shader disc
+  const shaderMat = new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0 },
+      col: { value: new THREE.Color(options.color) },
+    },
+    vertexShader: PORTAL_VERT,
+    fragmentShader: PORTAL_FRAG,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(PORTAL_RADIUS, 64), shaderMat);
+  group.add(disc);
+
+  // Soft additive glow halo behind the disc
+  const haloMat = new THREE.MeshBasicMaterial({
     color: options.color,
     transparent: true,
-    opacity: 0.88,
+    opacity: 0.12,
+    blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
+    depthWrite: false,
   });
-  const panelMaterial = new THREE.MeshBasicMaterial({
-    color: options.color,
-    transparent: true,
-    opacity: 0.18,
-    side: THREE.DoubleSide,
-  });
+  const halo = new THREE.Mesh(new THREE.CircleGeometry(PORTAL_RADIUS * 1.35, 32), haloMat);
+  halo.position.z = -0.02;
+  group.add(halo);
 
-  const thickness = 0.12;
-  const halfW = PORTAL_SIZE.width / 2;
-  const halfH = PORTAL_SIZE.height / 2;
-  const bars = [
-    { size: [PORTAL_SIZE.width + thickness * 2, thickness, thickness], pos: [0, halfH, 0] },
-    { size: [PORTAL_SIZE.width + thickness * 2, thickness, thickness], pos: [0, -halfH, 0] },
-    { size: [thickness, PORTAL_SIZE.height, thickness], pos: [-halfW, 0, 0] },
-    { size: [thickness, PORTAL_SIZE.height, thickness], pos: [halfW, 0, 0] },
-  ] as const;
-
-  for (const bar of bars) {
-    const [width, height, depth] = bar.size;
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
-    const [x, y, z] = bar.pos;
-    mesh.position.set(x, y, z);
-    group.add(mesh);
-  }
-
-  const panel = new THREE.Mesh(new THREE.PlaneGeometry(PORTAL_SIZE.width, PORTAL_SIZE.height), panelMaterial);
-  group.add(panel);
-
-  const label = createLabelSprite(options.label, options.color);
-  label.position.set(0, PORTAL_SIZE.height / 2 + 0.55, 0.03);
+  // Wall-parallel label (Mesh, not Sprite — stays flat on wall, no camera tilt)
+  const label = createLabelMesh(options.label, options.color);
+  label.position.set(0, PORTAL_RADIUS + 0.65, 0.02);
   group.add(label);
 
   scene.add(group);
 
-  const triggerCenter = options.position.clone().addScaledVector(options.normal, PLAYER_RADIUS * 0.4);
+  // Box collider sized to the disc
+  const triggerCenter = options.position
+    .clone()
+    .addScaledVector(options.normal, PLAYER_RADIUS * 0.4);
   const halfSize = new THREE.Vector3(
-    PORTAL_SIZE.width / 2 + PLAYER_RADIUS,
-    PORTAL_SIZE.height / 2 + PLAYER_RADIUS,
+    PORTAL_RADIUS + PLAYER_RADIUS,
+    PORTAL_RADIUS + PLAYER_RADIUS,
     TRIGGER_DEPTH / 2,
   );
   const box = boxFromOrientedPortal(triggerCenter, options.normal, halfSize);
 
-  return {
-    box,
-    group,
-    targetUrl: options.targetUrl,
-    type: options.type,
-  };
+  return { box, group, targetUrl: options.targetUrl, type: options.type, shaderMat };
 }
 
 function boxFromOrientedPortal(
@@ -274,17 +335,18 @@ function dominantAxis(v: THREE.Vector3): "x" | "y" | "z" {
   return "z";
 }
 
-function createLabelSprite(text: string, color: number): THREE.Sprite {
+function createLabelMesh(text: string, color: number): THREE.Mesh {
   const canvas = document.createElement("canvas");
   canvas.width = 768;
   canvas.height = 192;
   const ctx = canvas.getContext("2d");
   if (ctx) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.78)";
     roundRect(ctx, 20, 34, canvas.width - 40, 104, 18);
     ctx.fill();
-    ctx.strokeStyle = `#${color.toString(16).padStart(6, "0")}`;
+    const hex = `#${color.toString(16).padStart(6, "0")}`;
+    ctx.strokeStyle = hex;
     ctx.lineWidth = 6;
     ctx.stroke();
     ctx.fillStyle = "#ffffff";
@@ -296,10 +358,14 @@ function createLabelSprite(text: string, color: number): THREE.Sprite {
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
-  const sprite = new THREE.Sprite(material);
-  sprite.scale.set(3.8, 0.95, 1);
-  return sprite;
+  const mat = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 0.95), mat);
+  return mesh;
 }
 
 function roundRect(
@@ -356,16 +422,14 @@ function appendNumber(url: URL, key: string, value: number | undefined): void {
 
 function disposeObject(root: THREE.Object3D): void {
   root.traverse((object) => {
-    if (!(object instanceof THREE.Mesh) && !(object instanceof THREE.Sprite)) return;
+    if (!(object instanceof THREE.Mesh)) return;
     const material = object.material;
     if (Array.isArray(material)) {
       for (const mat of material) disposeMaterial(mat);
     } else {
       disposeMaterial(material);
     }
-    if (object instanceof THREE.Mesh) {
-      object.geometry.dispose();
-    }
+    object.geometry.dispose();
   });
 }
 

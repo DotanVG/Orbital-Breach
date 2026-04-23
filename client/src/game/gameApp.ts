@@ -39,6 +39,7 @@ import {
   getPortalParams,
   initVibeJamPortal,
   isPortalArrival,
+  updateVibeJamPortals,
 } from "./portal/vibeJamPortal";
 import type { PortalParams } from "./portal/parsePortalParams";
 
@@ -397,7 +398,8 @@ export class App {
     );
     this.tickGunTuning();
 
-    checkPortalCollisions(this.player.getPosition());
+    checkPortalCollisions(this.player.getPosition(), this.player.phys.vel.y);
+    updateVibeJamPortals(dt);
 
     if (FEATURE_FLAGS.thirdPersonLookBehind && this.input.consumeThirdPersonToggle()) {
       this.thirdPerson = !this.thirdPerson;
