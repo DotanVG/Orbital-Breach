@@ -39,6 +39,7 @@ import {
   getPortalParams,
   initVibeJamPortal,
   isPortalArrival,
+  updateVibeJamPortals,
 } from "./portal/vibeJamPortal";
 import type { PortalParams } from "./portal/parsePortalParams";
 
@@ -359,6 +360,8 @@ export class App {
     } else if (this.appMode === "online" && this.onlineGameActive) {
       this.tickOnlineGame(dt);
     }
+
+    updateVibeJamPortals(dt, timestamp / 1000);
 
     this.sceneMgr.render();
     requestAnimationFrame((nextTimestamp) => this.loop(nextTimestamp));

@@ -19,6 +19,15 @@ interface PortalTrigger {
   group: THREE.Group;
   targetUrl: string;
   type: "return" | "outbound";
+  animation: PortalAnimationState;
+}
+
+interface PortalAnimationState {
+  swirl: THREE.Mesh;
+  glow: THREE.Mesh;
+  sparks: THREE.Points;
+  basePositions: Float32Array;
+  phase: number;
 }
 
 let cachedParams: PortalParams | null = null;
@@ -118,6 +127,15 @@ export function checkPortalCollisions(playerPos: THREE.Vector3): void {
     }
     window.location.href = trigger.targetUrl;
     return;
+  }
+}
+
+export function updateVibeJamPortals(dt: number, elapsedSeconds: number): void {
+  if (triggers.length === 0) return;
+
+  for (let i = 0; i < triggers.length; i += 1) {
+    const trigger = triggers[i];
+    animatePortal(trigger.animation, dt, elapsedSeconds + i * 0.27);
   }
 }
 
@@ -221,7 +239,21 @@ function createPortal(
   }
 
   const panel = new THREE.Mesh(new THREE.PlaneGeometry(PORTAL_SIZE.width, PORTAL_SIZE.height), panelMaterial);
+  panel.renderOrder = 1;
   group.add(panel);
+
+  const swirl = createSwirlMesh(options.color);
+  swirl.renderOrder = 2;
+  group.add(swirl);
+
+  const glow = createGlowMesh(options.color);
+  glow.position.z = 0.03;
+  glow.renderOrder = 3;
+  group.add(glow);
+
+  const sparks = createSparkPoints();
+  sparks.renderOrder = 4;
+  group.add(sparks);
 
   const label = createLabelSprite(options.label, options.color);
   label.position.set(0, PORTAL_SIZE.height / 2 + 0.55, 0.03);
@@ -242,7 +274,95 @@ function createPortal(
     group,
     targetUrl: options.targetUrl,
     type: options.type,
+    animation: {
+      swirl,
+      glow,
+      sparks,
+      basePositions: (sparks.geometry.getAttribute("position").array as Float32Array).slice(),
+      phase: Math.random() * Math.PI * 2,
+    },
   };
+}
+
+function createSwirlMesh(color: number): THREE.Mesh {
+  const geometry = new THREE.PlaneGeometry(PORTAL_SIZE.width * 0.96, PORTAL_SIZE.height * 0.96, 32, 32);
+  const material = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.52,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  return new THREE.Mesh(geometry, material);
+}
+
+function createGlowMesh(color: number): THREE.Mesh {
+  const geometry = new THREE.RingGeometry(PORTAL_SIZE.width * 0.45, PORTAL_SIZE.width * 0.57, 64);
+  const material = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.36,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  return new THREE.Mesh(geometry, material);
+}
+
+function createSparkPoints(): THREE.Points {
+  const particleCount = 120;
+  const geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(particleCount * 3);
+
+  for (let i = 0; i < particleCount; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.sqrt(Math.random());
+    const x = Math.cos(angle) * radius * (PORTAL_SIZE.width * 0.47);
+    const y = Math.sin(angle) * radius * (PORTAL_SIZE.height * 0.45);
+    const z = (Math.random() - 0.5) * 0.08;
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = y;
+    positions[i * 3 + 2] = z;
+  }
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+
+  const material = new THREE.PointsMaterial({
+    color: 0x9bff6e,
+    size: 0.06,
+    transparent: true,
+    opacity: 0.9,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+
+  return new THREE.Points(geometry, material);
+}
+
+function animatePortal(animation: PortalAnimationState, dt: number, elapsedSeconds: number): void {
+  animation.phase += dt;
+  const wobble = Math.sin(elapsedSeconds * 3.2 + animation.phase) * 0.06;
+
+  animation.swirl.scale.set(1 + wobble, 1 - wobble * 0.6, 1);
+  animation.swirl.rotation.z += dt * 0.9;
+  const swirlMaterial = animation.swirl.material as THREE.MeshBasicMaterial;
+  swirlMaterial.opacity = 0.44 + Math.sin(elapsedSeconds * 4.7 + animation.phase * 0.5) * 0.1;
+
+  animation.glow.rotation.z -= dt * 1.8;
+  const glowMaterial = animation.glow.material as THREE.MeshBasicMaterial;
+  glowMaterial.opacity = 0.25 + Math.sin(elapsedSeconds * 5.1 + animation.phase) * 0.09;
+
+  const positions = animation.sparks.geometry.getAttribute("position") as THREE.BufferAttribute;
+  const array = positions.array as Float32Array;
+  const base = animation.basePositions;
+  for (let i = 0; i < array.length; i += 3) {
+    const px = base[i];
+    const py = base[i + 1];
+    const dist = Math.hypot(px / PORTAL_SIZE.width, py / PORTAL_SIZE.height);
+    const drift = elapsedSeconds * (1.9 + dist * 2.7) + i * 0.021 + animation.phase;
+    array[i] = px + Math.cos(drift) * 0.03;
+    array[i + 1] = py + Math.sin(drift * 1.3) * 0.03;
+    array[i + 2] = base[i + 2] + Math.sin(drift * 2.1) * 0.05;
+  }
+  positions.needsUpdate = true;
 }
 
 function boxFromOrientedPortal(
@@ -356,14 +476,14 @@ function appendNumber(url: URL, key: string, value: number | undefined): void {
 
 function disposeObject(root: THREE.Object3D): void {
   root.traverse((object) => {
-    if (!(object instanceof THREE.Mesh) && !(object instanceof THREE.Sprite)) return;
+    if (!(object instanceof THREE.Mesh) && !(object instanceof THREE.Sprite) && !(object instanceof THREE.Points)) return;
     const material = object.material;
     if (Array.isArray(material)) {
       for (const mat of material) disposeMaterial(mat);
     } else {
       disposeMaterial(material);
     }
-    if (object instanceof THREE.Mesh) {
+    if (object instanceof THREE.Mesh || object instanceof THREE.Points) {
       object.geometry.dispose();
     }
   });
