@@ -954,8 +954,8 @@ export class App {
       score: finalScore,
       players: [...ownPlayers, ...enemyPlayers],
       playerTeam,
-      primaryActionLabel: "Return To Room",
-      secondaryActionLabel: "Main Menu",
+      primaryActionLabel: "Play Again",
+      showSecondaryAction: false,
       matchLabel: `${sizeLabelMap[teamSize] ?? "Solo"} · ${finalScore.team0} – ${finalScore.team1}`,
     };
 
@@ -1321,6 +1321,8 @@ export class App {
       score: finalScore,
       players,
       playerTeam,
+      primaryActionLabel: "Return To Lobby",
+      showSecondaryAction: false,
       matchLabel: `${sizeLabelMap[teamSize] ?? `${teamSize}v${teamSize}`} Online · ${finalScore.team0} – ${finalScore.team1}`,
     };
   }
