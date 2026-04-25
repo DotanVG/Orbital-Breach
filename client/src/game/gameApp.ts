@@ -641,7 +641,7 @@ export class App {
     this.arena.loadLayout(layout);
     this.projectiles.clear();
 
-    this.player.team = snapshot.selfTeam;
+    this.player.setTeam(snapshot.selfTeam);
     const selfActor = snapshot.actors.find((actor) => actor.id === snapshot.sessionId);
     this.player.kills = selfActor?.kills ?? 0;
     this.player.deaths = selfActor?.deaths ?? 0;
@@ -1098,7 +1098,7 @@ export class App {
     this.input.setUiBlocked(false);
     this.sessionMenu.setLauncherVisible(true);
 
-    this.player.team = 0;
+    this.player.setTeam(0);
     this.portalParams = {
       ...this.portalParams,
       color: this.portalParams.color ?? "cyan",
@@ -1201,6 +1201,7 @@ export class App {
     this.sessionMenu.setLauncherVisible(false);
     this.gun.setVisible(false);
     this.gun.setFrozenTint(null);
+    this.player.setWorldModelVisible(false);
     this.player.setThirdPersonGunVisible(false);
     this.player.setThirdPersonGunFrozenTint(null);
 
@@ -1423,6 +1424,7 @@ export class App {
     const phase = this.round.getPhase();
     const playerAlive = this.player.phase !== "RESPAWNING";
     const roundActive = this.appMode === "online" ? this.onlineGameActive : phase !== "LOBBY";
+    this.player.setWorldModelVisible(playerAlive && (this.thirdPerson || isSelfie));
 
     this.player.setThirdPersonGunVisible(
       roundActive && playerAlive && (this.thirdPerson || isSelfie),
