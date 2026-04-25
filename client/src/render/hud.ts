@@ -10,22 +10,34 @@ const IS_MOBILE = isTouchDevice();
 export type GamePhase = 'LOBBY' | 'COUNTDOWN' | 'PLAYING' | 'ROUND_END';
 
 export function buildRoundEndHtml(
-  result: "tie" | { team: 0 | 1; matchScore?: { team0: number; team1: number } },
+  result:
+    | "tie"
+    | { team: 0 | 1; kind?: "breach"; matchScore?: { team0: number; team1: number } }
+    | { team: 0 | 1; kind: "freeze"; enemyTeam: 0 | 1; matchScore?: { team0: number; team1: number } },
 ): string {
   if (result === "tie") {
-    return `<span class="ob-round-end__text">TIE</span>`;
+    return `<span class="ob-round-end__line"><span class="ob-round-end__text">TIE</span></span>`;
   }
 
-  const teamLabel = result.team === 0 ? "CYAN" : "MAGENTA";
-  const teamClass = result.team === 0
-    ? "ob-round-end__team ob-round-end__team--cyan"
-    : "ob-round-end__team ob-round-end__team--magenta";
+  const teamHtml = buildRoundEndTeamSpan(result.team);
 
   if (result.matchScore) {
-    return `<span class="${teamClass}">${teamLabel}</span> <span class="ob-round-end__text">BREACHED THE MATCH</span> <span class="ob-round-end__score">${result.matchScore.team0} - ${result.matchScore.team1}</span>`;
+    return `<span class="ob-round-end__line">${teamHtml}<span class="ob-round-end__text">BREACHED THE MATCH</span><span class="ob-round-end__score">${result.matchScore.team0} - ${result.matchScore.team1}</span></span>`;
   }
 
-  return `<span class="${teamClass}">${teamLabel}</span> <span class="ob-round-end__text">BREACHED</span>`;
+  if (result.kind === "freeze") {
+    return `<span class="ob-round-end__line">${teamHtml}<span class="ob-round-end__text">FROZE</span>${buildRoundEndTeamSpan(result.enemyTeam)}</span>`;
+  }
+
+  return `<span class="ob-round-end__line">${teamHtml}<span class="ob-round-end__text">BREACHED</span></span>`;
+}
+
+function buildRoundEndTeamSpan(team: 0 | 1): string {
+  const teamLabel = team === 0 ? "CYAN" : "MAGENTA";
+  const teamClass = team === 0
+    ? "ob-round-end__team ob-round-end__team--cyan"
+    : "ob-round-end__team ob-round-end__team--magenta";
+  return `<span class="${teamClass}">${teamLabel}</span>`;
 }
 
 export interface HudState {

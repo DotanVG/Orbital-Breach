@@ -72,12 +72,19 @@ describe("player-relative team UI helpers", () => {
 
   it("formats round-end banners with a colored team name and breached wording", () => {
     const roundHtml = buildRoundEndHtml({ team: 1 });
+    const freezeHtml = buildRoundEndHtml({ team: 1, kind: "freeze", enemyTeam: 0 });
     const matchHtml = buildRoundEndHtml({ team: 0, matchScore: { team0: 5, team1: 3 } });
     const tieHtml = buildRoundEndHtml("tie");
 
+    expect(roundHtml).toContain("ob-round-end__line");
     expect(roundHtml).toContain("ob-round-end__team--magenta");
     expect(roundHtml).toContain("MAGENTA");
     expect(roundHtml).toContain("BREACHED");
+    expect(freezeHtml).toContain("FROZE");
+    expect(freezeHtml).toContain("ob-round-end__team--magenta");
+    expect(freezeHtml).toContain("ob-round-end__team--cyan");
+    expect(freezeHtml).toContain("MAGENTA");
+    expect(freezeHtml).toContain("CYAN");
     expect(matchHtml).toContain("ob-round-end__team--cyan");
     expect(matchHtml).toContain("BREACHED THE MATCH");
     expect(matchHtml).toContain("5 - 3");

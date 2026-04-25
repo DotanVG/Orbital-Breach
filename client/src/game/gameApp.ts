@@ -132,7 +132,7 @@ export class App {
           this.killFeed.addScore(event.scorerName, event.scorerTeam);
           break;
         case "roundWin":
-          this.onRoundWin(event.winningTeam);
+          this.onRoundWin(event.winningTeam, event.reason);
           break;
         case "roundTie":
           this.onRoundTie();
@@ -279,7 +279,15 @@ export class App {
       }
 
       if (event.winningTeam !== null) {
-        this.hud.showRoundEnd(buildRoundEndHtml({ team: event.winningTeam }));
+        this.hud.showRoundEnd(
+          event.reason === "fullFreeze"
+            ? buildRoundEndHtml({
+              team: event.winningTeam,
+              kind: "freeze",
+              enemyTeam: (1 - event.winningTeam) as 0 | 1,
+            })
+            : buildRoundEndHtml({ team: event.winningTeam }),
+        );
       }
     };
 
@@ -854,10 +862,14 @@ export class App {
     }
   }
 
-  private onRoundWin(team: 0 | 1): void {
+  private onRoundWin(team: 0 | 1, reason: "breach" | "fullFreeze"): void {
     if (!this.round.isPlaying()) return;
     this.projectiles.clear();
-    this.hud.showRoundEnd(buildRoundEndHtml({ team }));
+    this.hud.showRoundEnd(
+      reason === "fullFreeze"
+        ? buildRoundEndHtml({ team, kind: "freeze", enemyTeam: (1 - team) as 0 | 1 })
+        : buildRoundEndHtml({ team }),
+    );
     this.round.endRound();
   }
 
