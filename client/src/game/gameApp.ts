@@ -679,6 +679,7 @@ export class App {
     this.playerUpdateTimer = 0;
     this.tutorial.beginRun();
     this.cursor.hide();
+    this.thirdPerson = this.sessionMenu.getSettings().defaultCameraMode === "third";
 
     if (!this.mobile) {
       this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
@@ -1151,6 +1152,8 @@ export class App {
     this.onlineBreachReported = false;
     this.helpVisible = false;
     this.tutorial.beginRun();
+    this.killFeed.setLocalPlayerName(selection.name);
+    this.thirdPerson = this.sessionMenu.getSettings().defaultCameraMode === "third";
     if (this.matchEndHandle) {
       clearTimeout(this.matchEndHandle);
       this.matchEndHandle = null;
@@ -1190,6 +1193,7 @@ export class App {
   private async startOnlineLobby(selection: PlaySelection): Promise<void> {
     this.appMode = "online";
     this.onlinePlayerName = selection.name;
+    this.killFeed.setLocalPlayerName(selection.name);
     this.onlineGameActive = false;
     this.onlineRoundActive = false;
     this.onlineBreachReported = false;
