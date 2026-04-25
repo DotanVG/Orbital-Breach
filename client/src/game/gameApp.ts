@@ -245,7 +245,11 @@ export class App {
       if (this.isUserExitingOnline || this.appMode !== "online") return;
       if (!this.onlineGameActive) return;
 
-      this.onlineRoundActive = false;
+      if (event.reason === "breach") {
+        this.disableOnlineProjectiles();
+      } else {
+        this.onlineRoundActive = false;
+      }
       this.projectiles.clear();
       this.onlineBreachReported = false;
 
@@ -303,7 +307,7 @@ export class App {
 
     this.net.onShotEvent = (event) => {
       if (this.isUserExitingOnline || this.appMode !== "online") return;
-      if (!this.onlineGameActive) return;
+      if (!this.onlineGameActive || !this.onlineRoundActive) return;
       if (event.ownerId === this.getOnlineLocalActorId()) return;
 
       this.projectiles.spawn(
@@ -626,11 +630,17 @@ export class App {
     this.player.currentBreachTeam = enemyTeam;
     this.player.phase = "BREACH";
     this.onlineBreachReported = true;
+    this.disableOnlineProjectiles();
 
     this.net.sendBreachReport({
       scorerTeam: this.player.team,
       scorerName: this.onlinePlayerName,
     });
+  }
+
+  private disableOnlineProjectiles(): void {
+    this.onlineRoundActive = false;
+    this.projectiles.clear();
   }
 
   private sendOnlinePlayerUpdate(): void {
@@ -960,8 +970,8 @@ export class App {
       score: finalScore,
       players: [...ownPlayers, ...enemyPlayers],
       playerTeam,
+      secondaryActionLabel: "Main Menu",
       primaryActionLabel: "Play Again",
-      showSecondaryAction: false,
       matchLabel: `${sizeLabelMap[teamSize] ?? "Solo"} · ${finalScore.team0} – ${finalScore.team1}`,
     };
 
@@ -1329,8 +1339,8 @@ export class App {
       score: finalScore,
       players,
       playerTeam,
+      secondaryActionLabel: "Main Menu",
       primaryActionLabel: "Return To Lobby",
-      showSecondaryAction: false,
       matchLabel: `${sizeLabelMap[teamSize] ?? `${teamSize}v${teamSize}`} Online · ${finalScore.team0} – ${finalScore.team1}`,
     };
   }
