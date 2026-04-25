@@ -67,6 +67,7 @@ export class App {
   private previousOnlinePhase: MultiplayerRoomSnapshot["phase"] | null = null;
   private onlinePlayerName = "Pilot";
   private onlineBreachReported = false;
+  private combatPresentationActive = false;
   private portalArrivalPending = false;
   private portalUrlCleaned = false;
 
@@ -411,6 +412,7 @@ export class App {
   private loop(timestamp: number): void {
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.033);
     this.lastTime = timestamp;
+    const gameplayActive = this.isGameplaySceneActive();
 
     if (this.input.consumeMenuToggle()) {
       if (this.sessionMenu.isOpen()) {
@@ -424,12 +426,13 @@ export class App {
       this.helpVisible = !this.helpVisible;
     }
 
-    if (this.appMode === "solo") {
+    if (gameplayActive && this.appMode === "solo") {
       this.tickSoloGame(dt);
-    } else if (this.appMode === "online" && this.onlineGameActive) {
+    } else if (gameplayActive && this.appMode === "online" && this.onlineGameActive) {
       this.tickOnlineGame(dt);
     }
 
+    this.syncCombatPresentation(gameplayActive);
     this.sceneMgr.render();
     requestAnimationFrame((nextTimestamp) => this.loop(nextTimestamp));
   }
@@ -1519,5 +1522,30 @@ export class App {
     const selfActor = snapshot.actors.find((actor) => actor.id === snapshot.sessionId);
     if (!selfActor) return;
     this.player.applyAuthoritativeOnlineState(selfActor);
+  }
+
+  private isGameplaySceneActive(): boolean {
+    return !this.debrief.isVisible()
+      && (
+        this.appMode === "solo"
+        || (this.appMode === "online" && this.onlineGameActive)
+      );
+  }
+
+  private syncCombatPresentation(gameplayActive: boolean): void {
+    if (!gameplayActive) {
+      if (this.combatPresentationActive) {
+        this.projectiles.clear();
+        clearVibeJamPortals();
+        this.arena.setPortalDoorsOpen(false);
+      }
+      this.gun.setVisible(false);
+      this.gun.setFrozenTint(null);
+      this.player.setWorldModelVisible(false);
+      this.player.setThirdPersonGunVisible(false);
+      this.player.setThirdPersonGunFrozenTint(null);
+    }
+
+    this.combatPresentationActive = gameplayActive;
   }
 }
