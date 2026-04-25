@@ -1340,6 +1340,8 @@ export class App {
     this.onlineGameActive = false;
     this.onlineRoundActive = false;
     this.input.setUiBlocked(false);
+    this.onlineMatch.dispose();
+    this.projectiles.clear();
     this.sessionMenu.setLauncherVisible(true);
     this.hud.hideRoundEnd();
 
