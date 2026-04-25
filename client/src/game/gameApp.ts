@@ -480,7 +480,10 @@ export class App {
     }
     const isSelfie = FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld();
 
-    this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie);
+    const cameraCollisionBoxes = this.thirdPerson
+      ? this.arena.getThirdPersonCameraCollisionAABBs()
+      : [];
+    this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
     this.updateGunVisibility(isSelfie);
     this.updateSoloHud(dt);
     this.renderDebugTuningOverlay();
@@ -537,7 +540,10 @@ export class App {
       this.thirdPerson = !this.thirdPerson;
     }
     const isSelfie = FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld();
-    this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie);
+    const cameraCollisionBoxes = this.thirdPerson
+      ? this.arena.getThirdPersonCameraCollisionAABBs()
+      : [];
+    this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
     this.updateGunVisibility(isSelfie);
     this.updateOnlineHud(dt);
   }
