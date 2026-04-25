@@ -664,6 +664,10 @@ export class App {
     this.tutorial.beginRun();
     this.cursor.hide();
 
+    if (!this.mobile) {
+      this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
+    }
+
     this.multiplayer.hide();
     this.hud.setVisible(true);
     this.killFeed.setVisible(true);
