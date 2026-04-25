@@ -56,6 +56,7 @@ export class App {
   private lastSoloSelection: PlaySelection | null = null;
   private matchEndHandle: ReturnType<typeof setTimeout> | null = null;
   private pendingOnlineDebrief: DebriefData | null = null;
+  private onlineMatchConcluding = false;
   private playerUpdateTimer = 0;
   private latestOnlineSnapshot: MultiplayerRoomSnapshot | null = null;
   private previousOnlinePhase: MultiplayerRoomSnapshot["phase"] | null = null;
@@ -178,6 +179,13 @@ export class App {
       const prev = this.previousOnlinePhase;
       this.previousOnlinePhase = snapshot.phase;
 
+      if (this.onlineMatchConcluding) {
+        if (!this.debrief.isVisible() && (snapshot.matchComplete || snapshot.phase === "LOBBY")) {
+          this.endOnlineGame();
+        }
+        return;
+      }
+
       if (!this.onlineGameActive || snapshot.phase === "LOBBY") {
         this.multiplayer.render(snapshot);
       }
@@ -239,11 +247,9 @@ export class App {
       }
 
       if (event.matchWinner !== null && event.finalScore) {
-        const label = event.matchWinner === 0 ? "CYAN" : "MAGENTA";
-        this.hud.showRoundEnd(
-          `${label} WINS THE MATCH  ${event.finalScore.team0} - ${event.finalScore.team1}`,
-        );
+        this.onlineMatchConcluding = true;
         this.pendingOnlineDebrief = this.buildOnlineDebrief(event.matchWinner, event.finalScore);
+        this.endOnlineGame();
         return;
       }
 
@@ -589,6 +595,10 @@ export class App {
   // ── Online game lifecycle ───────────────────────────────────────────────────
 
   private beginOnlineRound(snapshot: MultiplayerRoomSnapshot): void {
+    if (this.onlineMatchConcluding || this.debrief.isVisible()) {
+      return;
+    }
+
     this.onlineGameActive = true;
     this.onlineBreachReported = false;
     this.playerUpdateTimer = 0;
@@ -1090,6 +1100,7 @@ export class App {
     this.onlinePlayerName = selection.name;
     this.onlineGameActive = false;
     this.onlineBreachReported = false;
+    this.onlineMatchConcluding = false;
     this.pendingOnlineDebrief = null;
     if (this.matchEndHandle) { clearTimeout(this.matchEndHandle); this.matchEndHandle = null; }
     this.previousOnlinePhase = null;
@@ -1142,6 +1153,7 @@ export class App {
     this.appMode = "menu";
     this.onlineGameActive = false;
     this.onlineBreachReported = false;
+    this.onlineMatchConcluding = false;
     this.pendingOnlineDebrief = null;
     this.latestOnlineSnapshot = null;
     this.previousOnlinePhase = null;
@@ -1240,6 +1252,7 @@ export class App {
   }
 
   private returnToOnlineLobbyFromDebrief(): void {
+    this.onlineMatchConcluding = false;
     this.input.setUiBlocked(false);
     this.sessionMenu.setLauncherVisible(true);
 
