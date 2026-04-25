@@ -1,6 +1,7 @@
 import { Room, type Client } from "@colyseus/core";
 import {
   buildBotName,
+  canJoinMultiplayerRoom,
   canStartLobbyRound,
   getPreferredJoinTeam,
   isMatchTeamSizeValue,
@@ -13,6 +14,7 @@ import {
   type FreezeEventMessage,
   type HitReportMessage,
   type LobbyTeam,
+  type MultiplayerRoomPhase,
   type PlayerUpdateMessage,
   type RoundResultEventMessage,
   type SetReadyMessage,
@@ -92,6 +94,14 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     void this.unlock();
   }
 
+  public onAuth(): true {
+    if (!canJoinMultiplayerRoom(this.state.phase as MultiplayerRoomPhase)) {
+      throw new Error("A match is already in progress. Wait for the lobby before joining.");
+    }
+
+    return true;
+  }
+
   public onJoin(client: RoomClient, options?: { name?: string }): void {
     const member = new LobbyMemberState();
     member.id = client.sessionId;
@@ -127,6 +137,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     if (!this.hasHumanMembers()) {
       this.removeAllBots();
       this.resetScore();
+      this.state.matchComplete = false;
       this.cancelRoundFlow();
       this.resetLobbyReadiness();
       this.state.phase = "LOBBY";
@@ -348,6 +359,10 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
   private startCountdown(): void {
     this.clearTimers();
+    if (this.state.matchComplete) {
+      this.resetScore();
+      this.state.matchComplete = false;
+    }
     this.prepareCountdownRound();
     this.state.phase = "COUNTDOWN";
     this.state.countdownRemaining = MULTIPLAYER_COUNTDOWN_SECONDS;
@@ -442,7 +457,12 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       this.state.countdownRemaining = 0;
       this.state.roundTimeRemaining = 0;
       if (matchWinner !== null) {
-        this.resetScore();
+        this.state.matchComplete = true;
+        this.resetLobbyReadiness();
+        this.broadcast("lobby_event", {
+          type: "info",
+          text: "Match complete. Review the debrief, then ready up to start the next one.",
+        });
       }
       void this.unlock();
       this.syncLobbyFlow();

@@ -49,6 +49,7 @@ export interface MultiplayerRoomSnapshot {
   sessionId: string;
   selfTeam: LobbyTeam;
   phase: MultiplayerRoomPhase;
+  matchComplete: boolean;
   countdownRemaining: number;
   roundTimeRemaining: number;
   score: {
@@ -210,4 +211,8 @@ export function clampLobbyBotFill(memberCount: number, teamSize: MatchTeamSize):
 export function buildBotName(botIndex: number, team: LobbyTeam): string {
   const prefix = team === 0 ? "CY" : "MG";
   return `${prefix}-BOT-${String(botIndex + 1).padStart(2, "0")}`;
+}
+
+export function canJoinMultiplayerRoom(phase: MultiplayerRoomPhase): boolean {
+  return phase === "LOBBY";
 }

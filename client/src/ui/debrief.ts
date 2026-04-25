@@ -16,19 +16,29 @@ export interface DebriefData {
   players: DebriefPlayer[];
   playerTeam: 0 | 1;
   matchLabel: string;
+  primaryActionLabel?: string;
+  secondaryActionLabel?: string;
 }
 
 const CSS = `
   .ob-debrief-root {
     position: fixed; inset: 0; z-index: 450;
-    display: none; align-items: center; justify-content: center; padding: 18px;
+    display: flex; align-items: center; justify-content: center; padding: 18px;
     background:
-      radial-gradient(circle at top, rgba(18, 41, 64, 0.82), rgba(4, 8, 18, 0.96) 55%, rgba(0, 0, 0, 0.99));
+      radial-gradient(circle at top, rgba(18, 41, 64, 0.48), rgba(4, 8, 18, 0.72) 55%, rgba(0, 0, 0, 0.82));
     color: #e8ecf4;
     font-family: "Cormorant Garamond", serif;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 320ms ease, visibility 320ms ease;
   }
   .ob-debrief-root * { box-sizing: border-box; }
-  .ob-debrief-root.ob-debrief-visible { display: flex; }
+  .ob-debrief-root.ob-debrief-visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
 
   .ob-debrief-wrap {
     width: min(1100px, 94vw);
@@ -289,13 +299,19 @@ export class DebriefScreen {
     this.root.innerHTML = this.buildHtml(data);
     this.root.classList.add("ob-debrief-visible");
 
-    this.root.querySelector<HTMLButtonElement>("#debrief-main-menu")
-      ?.addEventListener("click", () => { this.hide(); this.onMainMenu?.(); });
-    this.root.querySelector<HTMLButtonElement>("#debrief-play-again")
-      ?.addEventListener("click", () => { this.hide(); this.onPlayAgain?.(); });
+    const mainMenuButton = this.root.querySelector<HTMLButtonElement>("#debrief-main-menu");
+    if (mainMenuButton && data.secondaryActionLabel) {
+      mainMenuButton.textContent = `${data.secondaryActionLabel} ->`;
+    }
+    const primaryActionButton = this.root.querySelector<HTMLButtonElement>("#debrief-play-again");
+    if (primaryActionButton && data.primaryActionLabel) {
+      primaryActionButton.textContent = `${data.primaryActionLabel} ->`;
+    }
 
-    const focusTarget = this.root.querySelector<HTMLButtonElement>("#debrief-play-again")
-      ?? this.root.querySelector<HTMLButtonElement>("#debrief-main-menu");
+    mainMenuButton?.addEventListener("click", () => { this.hide(); this.onMainMenu?.(); });
+    primaryActionButton?.addEventListener("click", () => { this.hide(); this.onPlayAgain?.(); });
+
+    const focusTarget = primaryActionButton ?? mainMenuButton;
     requestAnimationFrame(() => {
       focusTarget?.focus({ preventScroll: true });
     });
@@ -311,6 +327,8 @@ export class DebriefScreen {
 
   private buildHtml(data: DebriefData): string {
     const { score, winningTeam, players, playerTeam, matchLabel } = data;
+    const mainMenuLabel = data.secondaryActionLabel ?? "Main Menu";
+    const primaryActionLabel = data.primaryActionLabel ?? "Play Again";
 
     const cyan0 = winningTeam === 0 ? "ob-win" : "ob-loss";
     const cyan1 = winningTeam === 1 ? "ob-win" : "ob-loss";

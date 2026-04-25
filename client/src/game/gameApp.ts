@@ -30,6 +30,7 @@ import { NetClient } from "../net/client";
 import { MultiplayerLobby } from "../ui/multiplayerLobby";
 import type { PlaySelection } from "../ui/menu";
 import { DebriefScreen, type DebriefData, type DebriefPlayer } from "../ui/debrief";
+import { showConfirmDialog } from "../ui/confirmDialog";
 import {
   PORTAL_ARRIVAL_SPAWN,
   checkPortalCollisions,
@@ -44,15 +45,19 @@ import {
 import type { PortalParams } from "./portal/parsePortalParams";
 
 const PLAYER_UPDATE_RATE = 0.05; // 20hz
+const ONLINE_MATCH_DEBRIEF_DELAY_MS = 4000;
 
 export class App {
   private appMode: "menu" | "solo" | "online" = "menu";
   private onlineGameActive = false;
+  private onlineSessionToken = 0;
+  private isUserExitingOnline = false;
   private matchOver = false;
   private helpVisible = false;
   private lastSoloSelection: PlaySelection | null = null;
   private matchEndHandle: ReturnType<typeof setTimeout> | null = null;
   private pendingOnlineDebrief: DebriefData | null = null;
+  private onlineMatchConcluding = false;
   private playerUpdateTimer = 0;
   private latestOnlineSnapshot: MultiplayerRoomSnapshot | null = null;
   private previousOnlinePhase: MultiplayerRoomSnapshot["phase"] | null = null;
@@ -151,7 +156,7 @@ export class App {
 
     this.debrief.onMainMenu = () => {
       if (this.appMode === "online") {
-        void this.returnToMenuFromOnline();
+        void this.forceLeaveOnline();
         return;
       }
       this.returnToMenuFromSolo();
@@ -169,10 +174,19 @@ export class App {
     };
 
     this.net.onStateChange = (snapshot) => {
+      if (this.isUserExitingOnline || this.appMode !== "online") return;
       this.latestOnlineSnapshot = snapshot;
 
       const prev = this.previousOnlinePhase;
       this.previousOnlinePhase = snapshot.phase;
+
+      if (this.onlineMatchConcluding) {
+        if (this.onlineGameActive) {
+          this.arena.setPortalDoorsOpen(snapshot.phase === "PLAYING");
+          this.onlineMatch.applySnapshot(snapshot.actors, snapshot.sessionId);
+        }
+        return;
+      }
 
       if (!this.onlineGameActive || snapshot.phase === "LOBBY") {
         this.multiplayer.render(snapshot);
@@ -182,17 +196,14 @@ export class App {
         snapshot.phase === "COUNTDOWN"
         && prev !== "COUNTDOWN"
         && prev !== "PLAYING";
-      const joinedLiveRound = !this.onlineGameActive && snapshot.phase === "PLAYING";
 
-      if (shouldBeginOnlineRound || joinedLiveRound) {
+      if (shouldBeginOnlineRound) {
         this.beginOnlineRound(snapshot);
-        if (shouldBeginOnlineRound) {
-          this.sound.playCountdown();
-        }
+        this.sound.playCountdown();
       }
 
       if (snapshot.phase === "LOBBY") {
-        if (this.onlineGameActive) {
+        if (this.onlineGameActive || this.pendingOnlineDebrief) {
           this.endOnlineGame();
         }
         return;
@@ -205,10 +216,12 @@ export class App {
     };
 
     this.net.onLobbyEvent = (event) => {
+      if (this.isUserExitingOnline || this.appMode !== "online") return;
       this.multiplayer.setStatus(event.text, event.type);
     };
 
     this.net.onFreezeEvent = (event) => {
+      if (this.isUserExitingOnline || this.appMode !== "online") return;
       const sessionId = this.net.getSessionId();
       this.killFeed.addKill(event.killerName, event.killerTeam, event.victimName, event.victimTeam);
 
@@ -220,6 +233,7 @@ export class App {
     };
 
     this.net.onRoundResultEvent = (event) => {
+      if (this.isUserExitingOnline || this.appMode !== "online") return;
       if (!this.onlineGameActive) return;
 
       this.projectiles.clear();
@@ -235,11 +249,30 @@ export class App {
       }
 
       if (event.matchWinner !== null && event.finalScore) {
+        this.onlineMatchConcluding = true;
+        this.pendingOnlineDebrief = this.buildOnlineDebrief(event.matchWinner, event.finalScore);
+        this.sessionMenu.close();
         const label = event.matchWinner === 0 ? "CYAN" : "MAGENTA";
         this.hud.showRoundEnd(
           `${label} WINS THE MATCH  ${event.finalScore.team0} - ${event.finalScore.team1}`,
         );
-        this.pendingOnlineDebrief = this.buildOnlineDebrief(event.matchWinner, event.finalScore);
+        this.input.exitPointerLock();
+        this.input.setUiBlocked(true);
+        this.mobileControls?.hide();
+        this.input.setMobileControlsActive(false);
+        this.sessionMenu.setLauncherVisible(false);
+        if (this.matchEndHandle) {
+          clearTimeout(this.matchEndHandle);
+        }
+        this.matchEndHandle = setTimeout(() => {
+          this.matchEndHandle = null;
+          const debrief = this.pendingOnlineDebrief;
+          this.pendingOnlineDebrief = null;
+          if (!debrief || this.appMode !== "online") {
+            return;
+          }
+          this.showMatchDebrief(debrief);
+        }, ONLINE_MATCH_DEBRIEF_DELAY_MS);
         return;
       }
 
@@ -247,6 +280,7 @@ export class App {
     };
 
     this.net.onShotEvent = (event) => {
+      if (this.isUserExitingOnline || this.appMode !== "online") return;
       if (!this.onlineGameActive) return;
       if (event.ownerId === this.getOnlineLocalActorId()) return;
 
@@ -261,13 +295,13 @@ export class App {
     };
 
     this.net.onLeave = () => {
-      if (this.appMode === "online") {
-        void this.returnToMenuFromOnline();
-      }
+      if (this.isUserExitingOnline) return;
+      if (this.appMode !== "online") return;
+      void this.requestLeaveOnline("server_disconnect");
     };
 
     this.multiplayer.onLeaveLobby = () => {
-      void this.returnToMenuFromOnline();
+      void this.requestLeaveOnline("user_exit");
     };
     this.multiplayer.onReadyChange = (ready) => {
       this.net.setReady(ready);
@@ -584,6 +618,10 @@ export class App {
   // ── Online game lifecycle ───────────────────────────────────────────────────
 
   private beginOnlineRound(snapshot: MultiplayerRoomSnapshot): void {
+    if (this.onlineMatchConcluding || this.debrief.isVisible()) {
+      return;
+    }
+
     this.onlineGameActive = true;
     this.onlineBreachReported = false;
     this.playerUpdateTimer = 0;
@@ -647,19 +685,8 @@ export class App {
     if (snap) {
       this.multiplayer.render(snap);
     }
-
-    if (this.pendingOnlineDebrief) {
-      const debrief = this.pendingOnlineDebrief;
-      this.pendingOnlineDebrief = null;
-      if (this.matchEndHandle) clearTimeout(this.matchEndHandle);
-      this.matchEndHandle = setTimeout(() => {
-        this.matchEndHandle = null;
-        this.showMatchDebrief(debrief);
-      }, 4000);
-    } else {
-      this.hud.setVisible(false);
-      this.hud.hideRoundEnd();
-    }
+    this.hud.setVisible(false);
+    this.hud.hideRoundEnd();
   }
 
   // ── HUD updates ─────────────────────────────────────────────────────────────
@@ -881,6 +908,8 @@ export class App {
       score: finalScore,
       players: [...ownPlayers, ...enemyPlayers],
       playerTeam,
+      primaryActionLabel: "Return To Room",
+      secondaryActionLabel: "Main Menu",
       matchLabel: `${sizeLabelMap[teamSize] ?? "Solo"} · ${finalScore.team0} – ${finalScore.team1}`,
     };
 
@@ -908,7 +937,7 @@ export class App {
   }
 
   private openSessionMenu(): void {
-    if (this.sessionMenu.isOpen() || this.debrief.isVisible()) return;
+    if (this.sessionMenu.isOpen() || this.debrief.isVisible() || this.onlineMatchConcluding) return;
 
     const inMenu = this.appMode === "menu";
     const inLiveMatch = this.appMode === "solo" || this.onlineGameActive;
@@ -958,6 +987,12 @@ export class App {
 
     if (!this.mobile) return;
 
+    if (this.onlineMatchConcluding || this.debrief.isVisible()) {
+      this.input.setMobileControlsActive(false);
+      this.mobileControls?.hide();
+      return;
+    }
+
     if (this.appMode === "solo" || this.onlineGameActive) {
       this.input.setMobileControlsActive(true);
       this.mobileControls?.show();
@@ -975,7 +1010,42 @@ export class App {
       return;
     }
     if (this.appMode === "online") {
+      await this.requestLeaveOnline("user_exit");
+    }
+  }
+
+  private countOtherHumans(): number {
+    const snap = this.latestOnlineSnapshot;
+    if (!snap) return 0;
+    return snap.members.filter((m) => !m.isBot && m.id !== snap.sessionId).length;
+  }
+
+  private async requestLeaveOnline(
+    reason: "user_exit" | "server_disconnect" | "join_failed",
+  ): Promise<void> {
+    if (this.isUserExitingOnline) return;
+
+    if (reason === "user_exit" && this.countOtherHumans() > 0) {
+      const confirmed = await showConfirmDialog({
+        title: "Leave online room?",
+        body: "Other players are still in this room. Are you sure you want to leave?",
+        confirmLabel: "LEAVE",
+        cancelLabel: "CANCEL",
+      });
+      if (!confirmed) return;
+    }
+
+    await this.forceLeaveOnline();
+  }
+
+  private async forceLeaveOnline(): Promise<void> {
+    if (this.isUserExitingOnline) return;
+    this.isUserExitingOnline = true;
+    this.onlineSessionToken += 1;
+    try {
       await this.returnToMenuFromOnline();
+    } finally {
+      this.isUserExitingOnline = false;
     }
   }
 
@@ -1053,9 +1123,11 @@ export class App {
     this.onlinePlayerName = selection.name;
     this.onlineGameActive = false;
     this.onlineBreachReported = false;
+    this.onlineMatchConcluding = false;
     this.pendingOnlineDebrief = null;
     if (this.matchEndHandle) { clearTimeout(this.matchEndHandle); this.matchEndHandle = null; }
     this.previousOnlinePhase = null;
+    this.latestOnlineSnapshot = null;
     this.projectiles.clear();
     this.hud.setVisible(false);
     this.killFeed.setVisible(false);
@@ -1066,18 +1138,35 @@ export class App {
     this.sessionMenu.setLauncherVisible(true);
     this.multiplayer.showConnecting(selection.name);
 
+    this.isUserExitingOnline = false;
+    const myToken = ++this.onlineSessionToken;
+
     try {
       const snapshot = await this.net.connect({ name: selection.name });
+      if (myToken !== this.onlineSessionToken || this.isUserExitingOnline || this.appMode !== "online") {
+        try { await this.net.disconnect(); } catch { /* ignore */ }
+        return;
+      }
       this.latestOnlineSnapshot = snapshot;
       this.previousOnlinePhase = snapshot.phase;
-      if (snapshot.phase === "COUNTDOWN" || snapshot.phase === "PLAYING") {
+      if (snapshot.phase === "COUNTDOWN") {
         this.beginOnlineRound(snapshot);
       } else {
         this.multiplayer.render(snapshot);
       }
     } catch (error) {
       console.error("Failed to connect to the multiplayer room.", error);
-      this.multiplayer.setStatus("Could not reach the Colyseus server. Check that the server is running.", "error");
+      if (myToken !== this.onlineSessionToken || this.isUserExitingOnline || this.appMode !== "online") {
+        return;
+      }
+      const message = error instanceof Error && error.message.trim().length > 0
+        ? error.message
+        : "Could not reach the Colyseus server. Check that the server is running.";
+      this.multiplayer.setStatus(
+        message,
+        "error",
+      );
+      await this.requestLeaveOnline("join_failed");
     }
   }
 
@@ -1087,7 +1176,11 @@ export class App {
     this.appMode = "menu";
     this.onlineGameActive = false;
     this.onlineBreachReported = false;
+    this.onlineMatchConcluding = false;
     this.pendingOnlineDebrief = null;
+    this.latestOnlineSnapshot = null;
+    this.previousOnlinePhase = null;
+    this.helpVisible = false;
     if (this.matchEndHandle) { clearTimeout(this.matchEndHandle); this.matchEndHandle = null; }
     this.onlineMatch.dispose();
     this.multiplayer.hide();
@@ -1100,14 +1193,22 @@ export class App {
     this.input.setUiBlocked(false);
     this.input.exitPointerLock();
     this.sessionMenu.setLauncherVisible(false);
+    this.gun.setVisible(false);
+    this.gun.setFrozenTint(null);
+    this.player.setThirdPersonGunVisible(false);
+    this.player.setThirdPersonGunFrozenTint(null);
 
-    try {
-      await this.net.disconnect();
-    } catch (error) {
-      console.warn("Multiplayer disconnect raised an error.", error);
-    }
-
+    // Show the main menu BEFORE awaiting disconnect. Colyseus's
+    // room.leave(true) waits for server ack and can hang for several
+    // seconds after a fully-joined session, leaving a black canvas
+    // if menu.show() ran after the await.
     this.menu.show();
+
+    const disconnectPromise = this.net.disconnect().catch((error) => {
+      console.warn("Multiplayer disconnect raised an error.", error);
+    });
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));
+    await Promise.race([disconnectPromise, timeout]);
   }
 
   // ── Weapon fire (solo) ──────────────────────────────────────────────────────
@@ -1174,8 +1275,11 @@ export class App {
   }
 
   private returnToOnlineLobbyFromDebrief(): void {
+    this.onlineMatchConcluding = false;
+    this.onlineGameActive = false;
     this.input.setUiBlocked(false);
     this.sessionMenu.setLauncherVisible(true);
+    this.hud.hideRoundEnd();
 
     if (this.latestOnlineSnapshot) {
       this.multiplayer.render(this.latestOnlineSnapshot);
