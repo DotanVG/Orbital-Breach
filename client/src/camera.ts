@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { bulletHitPoint } from './game/bulletCollision';
 import { clamp } from './util/math';
 
 /**
@@ -14,6 +15,12 @@ import { clamp } from './util/math';
  *     when they exited the breach room — own or enemy.
  */
 const TRANSITION_DURATION = 0.6;   // seconds — return-to-breach sweep duration
+
+const THIRD_PERSON_DISTANCE = 3.0;
+const THIRD_PERSON_HEIGHT = 0.5;
+const THIRD_PERSON_CAMERA_RADIUS = 0.2;
+const THIRD_PERSON_CAMERA_PADDING = 0.05;
+const THIRD_PERSON_MIN_DISTANCE = 0.9;
 
 export class CameraController {
   // ── Gravity mode state ────────────────────────────────────────────
@@ -153,13 +160,18 @@ export class CameraController {
 
   // ── Application ───────────────────────────────────────────────────
 
-  public apply(position: THREE.Vector3, isThirdPerson: boolean = false, isSelfie: boolean = false): void {
+  public apply(
+    position: THREE.Vector3,
+    isThirdPerson: boolean = false,
+    isSelfie: boolean = false,
+    collisionBoxes: readonly THREE.Box3[] = [],
+  ): void {
     const quat = this.getQuaternion();
 
     if (isSelfie) {
       // Selfie mode: look backwards at character
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quat);
-      const camPos = position.clone().add(forward.multiplyScalar(3.0));
+      const camPos = position.clone().add(forward.multiplyScalar(THIRD_PERSON_DISTANCE));
       this.camera.position.copy(camPos);
 
       // Rotate camera to look exactly opposite
@@ -170,7 +182,10 @@ export class CameraController {
       // Third person: camera is behind and slightly up
       const backward = new THREE.Vector3(0, 0, 1).applyQuaternion(quat);
       const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quat);
-      const camPos = position.clone().add(backward.multiplyScalar(3.0)).add(up.multiplyScalar(0.5));
+      const desiredCamPos = position.clone()
+        .add(backward.multiplyScalar(THIRD_PERSON_DISTANCE))
+        .add(up.multiplyScalar(THIRD_PERSON_HEIGHT));
+      const camPos = this.resolveThirdPersonCameraPosition(position, desiredCamPos, collisionBoxes);
       this.camera.position.copy(camPos);
       this.camera.quaternion.copy(quat);
 
@@ -216,5 +231,38 @@ export class CameraController {
     const qYaw   = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
     const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), this.pitch);
     return qYaw.multiply(qPitch);
+  }
+
+  private resolveThirdPersonCameraPosition(
+    target: THREE.Vector3,
+    desired: THREE.Vector3,
+    collisionBoxes: readonly THREE.Box3[],
+  ): THREE.Vector3 {
+    if (collisionBoxes.length === 0) return desired;
+
+    const offset = new THREE.Vector3().subVectors(desired, target);
+    const desiredDistance = offset.length();
+    if (desiredDistance < 1e-6) return desired;
+
+    const direction = offset.clone().divideScalar(desiredDistance);
+    let closestHitDistance = Infinity;
+
+    for (const box of collisionBoxes) {
+      const hit = bulletHitPoint(target, desired, box, THIRD_PERSON_CAMERA_RADIUS);
+      if (!hit) continue;
+      const hitDistance = hit.distanceTo(target);
+      if (hitDistance < closestHitDistance) {
+        closestHitDistance = hitDistance;
+      }
+    }
+
+    if (!Number.isFinite(closestHitDistance)) return desired;
+
+    const resolvedDistance = Math.max(
+      THIRD_PERSON_MIN_DISTANCE,
+      Math.min(desiredDistance, closestHitDistance - THIRD_PERSON_CAMERA_PADDING),
+    );
+
+    return target.clone().addScaledVector(direction, resolvedDistance);
   }
 }

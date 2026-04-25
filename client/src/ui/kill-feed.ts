@@ -1,5 +1,10 @@
 export class KillFeed {
   private container: HTMLDivElement;
+  private localPlayerName = "";
+
+  public setLocalPlayerName(name: string): void {
+    this.localPlayerName = name;
+  }
 
   public constructor() {
     this.container = document.createElement("div");
@@ -27,11 +32,17 @@ export class KillFeed {
     const entry = document.createElement("div");
     const killerColor = killerTeam === 0 ? "#00ffff" : "#ff00ff";
     const victimColor = victimTeam === 0 ? "#00ffff" : "#ff00ff";
+    const killerLabel = this.localPlayerName && killerName === this.localPlayerName
+      ? `<span style="color:${killerColor};text-shadow:0 0 6px ${killerColor};font-weight:bold">YOU</span>`
+      : `<span style="color:${killerColor};text-shadow:0 0 6px ${killerColor}">${killerName}</span>`;
+    const victimLabel = this.localPlayerName && victimName === this.localPlayerName
+      ? `<span style="color:${victimColor};text-shadow:0 0 6px ${victimColor};font-weight:bold">YOU</span>`
+      : `<span style="color:${victimColor};text-shadow:0 0 6px ${victimColor}">${victimName}</span>`;
 
     entry.innerHTML =
-      `<span style="color:${killerColor};text-shadow:0 0 6px ${killerColor}">${killerName}</span>`
+      killerLabel
       + `<span style="color:#888;margin:0 6px">froze</span>`
-      + `<span style="color:${victimColor};text-shadow:0 0 6px ${victimColor}">${victimName}</span>`;
+      + victimLabel;
 
     Object.assign(entry.style, {
       background: "rgba(0,0,0,0.55)",
@@ -50,8 +61,9 @@ export class KillFeed {
   public addScore(scorerName: string, scorerTeam: 0 | 1): void {
     const color = scorerTeam === 0 ? "#00ffff" : "#ff00ff";
     const entry = document.createElement("div");
+    const displayName = this.localPlayerName && scorerName === this.localPlayerName ? "YOU" : scorerName;
     entry.innerHTML =
-      `<span style="color:${color};text-shadow:0 0 8px ${color};font-weight:bold">${scorerName} BREACHED!</span>`;
+      `<span style="color:${color};text-shadow:0 0 8px ${color};font-weight:bold">${displayName} BREACHED!</span>`;
 
     Object.assign(entry.style, {
       background: "rgba(0,0,0,0.65)",

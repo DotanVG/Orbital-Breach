@@ -40,6 +40,7 @@ interface BreachRoom {
  *   obstacleCollision   — AABB bounce math
  */
 export class Arena {
+  private static readonly CAMERA_WALL_THICKNESS = 0.25;
   private obstaclesGroup = new THREE.Group();
   private goalPlanes: GoalPlane[] = [];
   private barObjects: BarObject[] = [];
@@ -168,6 +169,15 @@ export class Arena {
     return this.obstaclesGroup.children.map(c => new THREE.Box3().setFromObject(c as THREE.Mesh));
   }
 
+  public getThirdPersonCameraCollisionAABBs(): THREE.Box3[] {
+    return [
+      ...this.getObstacleAABBs(),
+      ...this.getArenaWallAABBs(),
+      ...this.getBreachRoomWallAABBs(),
+      ...this.getClosedPortalBarrierAABBs(),
+    ];
+  }
+
   /**
    * Thin world-space slabs at each breach room portal opening (BREACH_ROOM_W × BREACH_ROOM_H).
    * Include these alongside obstacle AABBs in projectileSystem.update() so bullets are killed
@@ -268,6 +278,144 @@ export class Arena {
   private clearGoalPlanes(): void {
     for (const g of this.goalPlanes) g.dispose();
     this.goalPlanes = [];
+  }
+
+  private getArenaWallAABBs(): THREE.Box3[] {
+    if (!this.currentLayout) return [];
+
+    const half = ARENA_SIZE / 2;
+    const thickness = Arena.CAMERA_WALL_THICKNESS;
+    const hw = BREACH_ROOM_W / 2;
+    const hh = BREACH_ROOM_H / 2;
+    const boxes: THREE.Box3[] = [];
+    const addBox = (min: THREE.Vector3, max: THREE.Vector3): void => {
+      boxes.push(new THREE.Box3(min, max));
+    };
+
+    if (this.currentLayout.goalAxis === 'z') {
+      addBox(new THREE.Vector3(-half - thickness, -half, -half), new THREE.Vector3(-half + thickness, half, half));
+      addBox(new THREE.Vector3(half - thickness, -half, -half), new THREE.Vector3(half + thickness, half, half));
+      addBox(new THREE.Vector3(-half, -half - thickness, -half), new THREE.Vector3(half, -half + thickness, half));
+      addBox(new THREE.Vector3(-half, half - thickness, -half), new THREE.Vector3(half, half + thickness, half));
+
+      for (const sign of [-1, 1] as const) {
+        const face = sign * half;
+        addBox(new THREE.Vector3(-half, hh, face - thickness), new THREE.Vector3(half, half, face + thickness));
+        addBox(new THREE.Vector3(-half, -half, face - thickness), new THREE.Vector3(half, -hh, face + thickness));
+        addBox(new THREE.Vector3(-half, -hh, face - thickness), new THREE.Vector3(-hw, hh, face + thickness));
+        addBox(new THREE.Vector3(hw, -hh, face - thickness), new THREE.Vector3(half, hh, face + thickness));
+      }
+
+      return boxes;
+    }
+
+    addBox(new THREE.Vector3(-half, -half - thickness, -half), new THREE.Vector3(half, -half + thickness, half));
+    addBox(new THREE.Vector3(-half, half - thickness, -half), new THREE.Vector3(half, half + thickness, half));
+    addBox(new THREE.Vector3(-half, -half, -half - thickness), new THREE.Vector3(half, half, -half + thickness));
+    addBox(new THREE.Vector3(-half, -half, half - thickness), new THREE.Vector3(half, half, half + thickness));
+
+    for (const sign of [-1, 1] as const) {
+      const face = sign * half;
+      addBox(new THREE.Vector3(face - thickness, hh, -half), new THREE.Vector3(face + thickness, half, half));
+      addBox(new THREE.Vector3(face - thickness, -half, -half), new THREE.Vector3(face + thickness, -hh, half));
+      addBox(new THREE.Vector3(face - thickness, -hh, -half), new THREE.Vector3(face + thickness, hh, -hw));
+      addBox(new THREE.Vector3(face - thickness, -hh, hw), new THREE.Vector3(face + thickness, hh, half));
+    }
+
+    return boxes;
+  }
+
+  private getBreachRoomWallAABBs(): THREE.Box3[] {
+    const thickness = Arena.CAMERA_WALL_THICKNESS;
+    const hh = BREACH_ROOM_H / 2;
+    const hw = BREACH_ROOM_W / 2;
+    const hd = BREACH_ROOM_D / 2;
+
+    return this.breachRooms.flatMap((room) => {
+      const boxes: THREE.Box3[] = [];
+      const addBox = (min: THREE.Vector3, max: THREE.Vector3): void => {
+        boxes.push(new THREE.Box3(min, max));
+      };
+
+      if (room.openAxis === 'z') {
+        addBox(
+          new THREE.Vector3(room.center.x - hw, room.center.y - hh - thickness, room.center.z - hd),
+          new THREE.Vector3(room.center.x + hw, room.center.y - hh + thickness, room.center.z + hd),
+        );
+        addBox(
+          new THREE.Vector3(room.center.x - hw, room.center.y + hh - thickness, room.center.z - hd),
+          new THREE.Vector3(room.center.x + hw, room.center.y + hh + thickness, room.center.z + hd),
+        );
+        addBox(
+          new THREE.Vector3(room.center.x - hw - thickness, room.center.y - hh, room.center.z - hd),
+          new THREE.Vector3(room.center.x - hw + thickness, room.center.y + hh, room.center.z + hd),
+        );
+        addBox(
+          new THREE.Vector3(room.center.x + hw - thickness, room.center.y - hh, room.center.z - hd),
+          new THREE.Vector3(room.center.x + hw + thickness, room.center.y + hh, room.center.z + hd),
+        );
+        const backZ = room.center.z + room.openSign * -hd;
+        addBox(
+          new THREE.Vector3(room.center.x - hw, room.center.y - hh, backZ - thickness),
+          new THREE.Vector3(room.center.x + hw, room.center.y + hh, backZ + thickness),
+        );
+        return boxes;
+      }
+
+      addBox(
+        new THREE.Vector3(room.center.x - hd, room.center.y - hh - thickness, room.center.z - hw),
+        new THREE.Vector3(room.center.x + hd, room.center.y - hh + thickness, room.center.z + hw),
+      );
+      addBox(
+        new THREE.Vector3(room.center.x - hd, room.center.y + hh - thickness, room.center.z - hw),
+        new THREE.Vector3(room.center.x + hd, room.center.y + hh + thickness, room.center.z + hw),
+      );
+      addBox(
+        new THREE.Vector3(room.center.x - hd, room.center.y - hh, room.center.z - hw - thickness),
+        new THREE.Vector3(room.center.x + hd, room.center.y + hh, room.center.z - hw + thickness),
+      );
+      addBox(
+        new THREE.Vector3(room.center.x - hd, room.center.y - hh, room.center.z + hw - thickness),
+        new THREE.Vector3(room.center.x + hd, room.center.y + hh, room.center.z + hw + thickness),
+      );
+      const backX = room.center.x + room.openSign * -hd;
+      addBox(
+        new THREE.Vector3(backX - thickness, room.center.y - hh, room.center.z - hw),
+        new THREE.Vector3(backX + thickness, room.center.y + hh, room.center.z + hw),
+      );
+      return boxes;
+    });
+  }
+
+  private getClosedPortalBarrierAABBs(): THREE.Box3[] {
+    return this.breachRooms.flatMap((room) => {
+      if (this.isGoalDoorOpen(room.team)) return [];
+
+      const sign = (-room.openSign) as 1 | -1;
+      const faceCoord = sign * (ARENA_SIZE / 2);
+      const slab = 0.15;
+      const hw = BREACH_ROOM_W / 2;
+      const hh = BREACH_ROOM_H / 2;
+      const min = new THREE.Vector3();
+      const max = new THREE.Vector3();
+
+      min.y = -hh;
+      max.y = hh;
+
+      if (room.openAxis === 'x') {
+        min.x = faceCoord - slab;
+        max.x = faceCoord + slab;
+        min.z = -hw;
+        max.z = hw;
+      } else {
+        min.z = faceCoord - slab;
+        max.z = faceCoord + slab;
+        min.x = -hw;
+        max.x = hw;
+      }
+
+      return [new THREE.Box3(min, max)];
+    });
   }
 
   private clearBreachRooms(): void {
