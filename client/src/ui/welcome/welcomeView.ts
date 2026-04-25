@@ -28,12 +28,22 @@ const CSS = `
     transform-origin: center center;
     inset: -6%;
   }
+  /* Portrait: fill screen with art so button has clear space below */
+  @media (orientation: portrait) {
+    .wc-layer {
+      background-size: cover;
+      background-position: center 20%;
+    }
+  }
 
   /* ── Bottom UI bar ── */
   .wc-ui {
     position: fixed; inset: 0; z-index: 10;
     display: flex; align-items: flex-end; justify-content: center;
-    padding-bottom: clamp(48px, 22vh, 160px);
+    /* dvh = dynamic viewport height: excludes browser chrome (Chrome bottom bar, Safari toolbar).
+       vh fallback for browsers that don't support dvh yet. */
+    padding-bottom: clamp(20px, 8vh, 80px);
+    padding-bottom: max(clamp(20px, 8dvh, 80px), env(safe-area-inset-bottom, 0px));
     pointer-events: none;
   }
 
