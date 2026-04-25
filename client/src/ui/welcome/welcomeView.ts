@@ -51,6 +51,7 @@ const CSS = `
     text-transform: uppercase;
     cursor: none;
     overflow: hidden;
+    touch-action: manipulation;
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     transition: border-color .3s, box-shadow .3s, transform .15s;

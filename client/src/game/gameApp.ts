@@ -384,9 +384,11 @@ export class App {
       void this.sound.unlock().then(() => { this.sound.startMusic(); });
       document.removeEventListener('pointerdown', unlockAudio);
       document.removeEventListener('keydown', unlockAudio);
+      document.removeEventListener('touchstart', unlockAudio);
     };
     document.addEventListener('pointerdown', unlockAudio);
     document.addEventListener('keydown', unlockAudio);
+    document.addEventListener('touchstart', unlockAudio, { passive: true });
 
     requestAnimationFrame((timestamp) => this.loop(timestamp));
   }
