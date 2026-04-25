@@ -92,6 +92,13 @@ export class SoundEngine {
     this.musicSource = null;
   }
 
+  public tryResumeMusic(): void {
+    if (!this.ctx || !this.musicEnabled) return;
+    void this.ctx.resume().then(() => {
+      if (!this.musicSource) this.startMusic();
+    });
+  }
+
   public setMusicVolume(pct0to100: number): void {
     this.musicVolumePct = pct0to100;
     this.applyMusicGain();

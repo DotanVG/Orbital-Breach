@@ -390,6 +390,15 @@ export class App {
     document.addEventListener('keydown', unlockAudio);
     document.addEventListener('touchstart', unlockAudio, { passive: true });
 
+    // Resume music when user returns to tab/app (AudioContext suspends on hide)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.sound.tryResumeMusic();
+    });
+    // iOS back/forward cache restore — context is suspended on bfcache restore
+    window.addEventListener('pageshow', (e) => {
+      if (e.persisted) this.sound.tryResumeMusic();
+    });
+
     requestAnimationFrame((timestamp) => this.loop(timestamp));
   }
 
