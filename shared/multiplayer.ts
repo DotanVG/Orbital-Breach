@@ -43,7 +43,6 @@ export interface OnlineActorSnapshot {
   rightLeg: boolean;
   kills: number;
   deaths: number;
-  ping: number;
 }
 
 export interface MultiplayerRoomSnapshot {
@@ -80,7 +79,6 @@ export interface PlayerUpdateMessage {
   rightLeg: boolean;
   kills: number;
   deaths: number;
-  ping: number;
 }
 
 export interface HitReportMessage {

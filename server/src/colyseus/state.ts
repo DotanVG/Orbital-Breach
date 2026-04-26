@@ -30,7 +30,6 @@ export class ActorState extends Schema {
   public rightLeg = false;
   public kills = 0;
   public deaths = 0;
-  public ping = 0;
   public frozenTimer = 0;
 }
 
@@ -77,7 +76,6 @@ defineTypes(ActorState, {
   rightLeg: "boolean",
   kills: "number",
   deaths: "number",
-  ping: "number",
   frozenTimer: "number",
 });
 

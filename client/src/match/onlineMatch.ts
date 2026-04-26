@@ -176,7 +176,6 @@ export class OnlineMatch {
     localDeaths: number,
     localFrozen: boolean,
     localPhase: PlayerPhase,
-    localPing: number,
   ): ReturnType<typeof buildHudRosters> {
     const actors = [
       {
@@ -188,7 +187,7 @@ export class OnlineMatch {
         deaths: localDeaths,
         phase: localPhase,
         frozen: localFrozen,
-        ping: localPing,
+        ping: 0,
       },
       ...Array.from(this.tracks.values()).map((track) => ({
         id: track.snapshot.id,
@@ -199,7 +198,7 @@ export class OnlineMatch {
         deaths: track.snapshot.deaths,
         phase: track.snapshot.phase as PlayerPhase,
         frozen: track.snapshot.frozen,
-        ping: track.snapshot.ping,
+        ping: 0,
       })),
     ];
 
