@@ -8,6 +8,7 @@ import {
   PLAYER_RADIUS,
 } from '../../../shared/constants';
 import { clamp } from '../util/math';
+import type { OnlineActorSnapshot } from '../../../shared/multiplayer';
 import { type DamageState, type PlayerPhase } from '../../../shared/schema';
 import { CameraController } from '../camera';
 import { InputManager } from '../input';
@@ -54,6 +55,7 @@ import {
   type FloatArmTuningState,
   type FloatLimbTuningTarget,
 } from './playerAimPose';
+import { shouldPreserveLocalOnlineGrab } from './onlineGrabSync';
 import { ThirdPersonGun, type ThirdPersonGunTuningState } from './playerThirdPersonGun';
 
 const GRAB_ROTATION_SMOOTHING = 0.0008;
@@ -310,11 +312,9 @@ export class LocalPlayer {
 
     this.phys.vel.set(0, 0, 0);
 
-    if (input.consumeGrab()) {
-      this.phase = 'FLOATING';
-      this.grabbedBarPos = null;
-      return;
-    }
+    // Consume grab presses while attached so desktop E and mobile GRAB cannot
+    // act as a detach shortcut in any game mode.
+    input.consumeGrab();
 
     if (input.isAiming()) {
       this.phase = 'AIMING';
@@ -619,6 +619,40 @@ export class LocalPlayer {
     this.phase = 'BREACH';
   }
 
+  public applyAuthoritativeOnlineState(actor: Pick<
+    OnlineActorSnapshot,
+    'deaths' | 'frozen' | 'kills' | 'leftArm' | 'leftLeg' | 'phase' | 'rightArm' | 'rightLeg'
+  >): void {
+    this.damage.frozen = actor.frozen;
+    this.damage.leftArm = actor.leftArm;
+    this.damage.rightArm = actor.rightArm;
+    this.damage.leftLeg = actor.leftLeg;
+    this.damage.rightLeg = actor.rightLeg;
+    this.kills = actor.kills;
+    this.deaths = actor.deaths;
+    this.launchPower = clamp(this.launchPower, 0, this.maxLaunchPower());
+
+    const authoritativePhase = this.damage.frozen
+      ? 'FROZEN'
+      : this.normalizeOnlinePhase(actor.phase);
+    const preserveLocalGrab = shouldPreserveLocalOnlineGrab({
+      authoritativePhase,
+      frozen: this.damage.frozen,
+      leftArmDisabled: this.damage.leftArm,
+      localHasGrab: this.grabbedBarPos !== null,
+      localPhase: this.phase,
+    });
+    const nextPhase = preserveLocalGrab ? this.phase : authoritativePhase;
+
+    if (!preserveLocalGrab && nextPhase !== 'GRABBING' && nextPhase !== 'AIMING') {
+      this.grabbedBarPos = null;
+      this.grabHandGripLocal = null;
+      this.grabPoseLocked = false;
+    }
+
+    this.phase = nextPhase;
+  }
+
   public getPosition(): THREE.Vector3 {
     return this.phys.pos;
   }
@@ -740,6 +774,27 @@ export class LocalPlayer {
 
   public getFrozenTimer(): number {
     return 0;
+  }
+
+  public isAttachedToBar(): boolean {
+    return this.grabbedBarPos !== null
+      && (this.phase === 'GRABBING' || this.phase === 'AIMING');
+  }
+
+  private normalizeOnlinePhase(phase: string): PlayerPhase {
+    switch (phase) {
+      case 'AIMING':
+      case 'BREACH':
+      case 'FLOATING':
+      case 'FROZEN':
+      case 'GRABBING':
+      case 'RESPAWNING':
+        return this.damage.leftArm && (phase === 'GRABBING' || phase === 'AIMING')
+          ? 'FLOATING'
+          : phase;
+      default:
+        return 'FLOATING';
+    }
   }
 
   private applyTeamVisuals(): void {

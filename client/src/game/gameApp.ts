@@ -67,6 +67,7 @@ export class App {
   private previousOnlinePhase: MultiplayerRoomSnapshot["phase"] | null = null;
   private onlinePlayerName = "Pilot";
   private onlineBreachReported = false;
+  private combatPresentationActive = false;
   private portalArrivalPending = false;
   private portalUrlCleaned = false;
 
@@ -191,6 +192,7 @@ export class App {
       if (this.onlineMatchConcluding) {
         this.onlineRoundActive = false;
         if (this.onlineGameActive) {
+          this.syncLocalOnlineActor(snapshot);
           this.arena.setPortalDoorsOpen(snapshot.phase === "PLAYING");
           this.onlineMatch.applySnapshot(snapshot.actors, snapshot.sessionId);
         }
@@ -220,6 +222,7 @@ export class App {
 
       if (this.onlineGameActive) {
         this.onlineRoundActive = snapshot.phase === "PLAYING";
+        this.syncLocalOnlineActor(snapshot);
         this.arena.setPortalDoorsOpen(snapshot.phase === "PLAYING");
         this.onlineMatch.applySnapshot(snapshot.actors, snapshot.sessionId);
       }
@@ -232,14 +235,7 @@ export class App {
 
     this.net.onFreezeEvent = (event) => {
       if (this.isUserExitingOnline || this.appMode !== "online") return;
-      const sessionId = this.net.getSessionId();
       this.killFeed.addKill(event.killerName, event.killerTeam, event.victimName, event.victimTeam);
-
-      if (this.onlineGameActive && sessionId && event.targetId === sessionId) {
-        this.player.damage.frozen = true;
-        this.player.phase = "FROZEN";
-        this.player.deaths += 1;
-      }
     };
 
     this.net.onRoundResultEvent = (event) => {
@@ -416,6 +412,7 @@ export class App {
   private loop(timestamp: number): void {
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.033);
     this.lastTime = timestamp;
+    const gameplayActive = this.isGameplaySceneActive();
 
     if (this.input.consumeMenuToggle()) {
       if (this.sessionMenu.isOpen()) {
@@ -429,12 +426,13 @@ export class App {
       this.helpVisible = !this.helpVisible;
     }
 
-    if (this.appMode === "solo") {
+    if (gameplayActive && this.appMode === "solo") {
       this.tickSoloGame(dt);
-    } else if (this.appMode === "online" && this.onlineGameActive) {
+    } else if (gameplayActive && this.appMode === "online" && this.onlineGameActive) {
       this.tickOnlineGame(dt);
     }
 
+    this.syncCombatPresentation(gameplayActive);
     this.sceneMgr.render();
     requestAnimationFrame((nextTimestamp) => this.loop(nextTimestamp));
   }
@@ -586,8 +584,11 @@ export class App {
     }
 
     if (hit.ownerId === localActorId) {
+      const zone = this.onlineMatch.classifyHitZone(hit.targetId, hit.impactPoint);
+      if (!zone) return;
       this.net.sendHitReport({
         targetId: hit.targetId,
+        zone,
         impX: 0,
         impY: 0,
         impZ: 0,
@@ -611,15 +612,6 @@ export class App {
       return;
     }
 
-    if (hit.ownerId === "local-player") {
-      this.net.sendHitReport({
-        targetId: hit.targetId,
-        impX: 0,
-        impY: 0,
-        impZ: 0,
-      });
-      this.hud.triggerHitConfirm(this.player.team);
-    }
   }
 
   private checkOnlineBreachScore(): void {
@@ -710,6 +702,9 @@ export class App {
         ? { x: selfActor.posX, y: selfActor.posY, z: selfActor.posZ }
         : undefined,
     );
+    if (selfActor) {
+      this.player.applyAuthoritativeOnlineState(selfActor);
+    }
 
     const openAxis = this.arena.getBreachOpenAxis(this.player.team);
     const openSign = this.arena.getBreachOpenSign(this.player.team);
@@ -1521,5 +1516,36 @@ export class App {
     const tint = incapacitated ? enemyColor : null;
     this.gun.setFrozenTint(tint);
     this.player.setThirdPersonGunFrozenTint(tint);
+  }
+
+  private syncLocalOnlineActor(snapshot: MultiplayerRoomSnapshot): void {
+    const selfActor = snapshot.actors.find((actor) => actor.id === snapshot.sessionId);
+    if (!selfActor) return;
+    this.player.applyAuthoritativeOnlineState(selfActor);
+  }
+
+  private isGameplaySceneActive(): boolean {
+    return !this.debrief.isVisible()
+      && (
+        this.appMode === "solo"
+        || (this.appMode === "online" && this.onlineGameActive)
+      );
+  }
+
+  private syncCombatPresentation(gameplayActive: boolean): void {
+    if (!gameplayActive) {
+      if (this.combatPresentationActive) {
+        this.projectiles.clear();
+        clearVibeJamPortals();
+        this.arena.setPortalDoorsOpen(false);
+      }
+      this.gun.setVisible(false);
+      this.gun.setFrozenTint(null);
+      this.player.setWorldModelVisible(false);
+      this.player.setThirdPersonGunVisible(false);
+      this.player.setThirdPersonGunFrozenTint(null);
+    }
+
+    this.combatPresentationActive = gameplayActive;
   }
 }
