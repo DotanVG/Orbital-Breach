@@ -259,7 +259,14 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     actor.velZ = clampFinite(Number(message.velZ), -VEL_CLAMP, VEL_CLAMP);
     actor.yaw = clampFinite(Number(message.yaw), -Math.PI * 2, Math.PI * 2);
     const rawPhase = String(message.phase ?? "");
+    const prevPhase = actor.phase;
     actor.phase = normalizeAuthoritativePhase(rawPhase, actor);
+    if (actor.phase === "BREACH" && prevPhase !== "BREACH") {
+      actor.leftArm = false;
+      actor.rightArm = false;
+      actor.leftLeg = false;
+      actor.rightLeg = false;
+    }
   }
 
   private handleShotEventMessage(client: RoomClient, message: ShotEventMessage): void {
