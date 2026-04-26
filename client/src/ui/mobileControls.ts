@@ -170,6 +170,7 @@ export class MobileControls {
 
   private styleEl: HTMLStyleElement | null = null;
   private input: InputManager;
+  private phase = '';
 
   constructor(input: InputManager) {
     this.input = input;
@@ -244,8 +245,9 @@ export class MobileControls {
 
   /** Called every frame from gameApp to sync controls to player state. */
   public setPhase(phase: string): void {
+    this.phase = phase;
     const inGravity = phase === 'BREACH';
-    const onBar = phase === 'GRABBING' || phase === 'AIMING';
+    const onBar = isAttachedToBar(phase);
 
     // Joystick: only in gravity (BREACH) walk mode
     this.joystickZone.style.display = inGravity ? '' : 'none';
@@ -259,12 +261,19 @@ export class MobileControls {
     const showJump = inGravity || onBar;
     this.jumpBtn.style.display = showJump ? 'flex' : 'none';
     this.jumpBtn.textContent = onBar ? 'LAUNCH' : 'JUMP';
+    if (onBar) {
+      this.grabBtn.style.display = 'none';
+      this.grabBtn.classList.remove('mob-pressed');
+    }
   }
 
   /** Called every frame — show GRAB button only when the player can grab a nearby bar. */
   public setNearBar(near: boolean, canGrab: boolean): void {
-    const showGrab = near && canGrab;
+    const showGrab = near && canGrab && !isAttachedToBar(this.phase);
     this.grabBtn.style.display = showGrab ? 'flex' : 'none';
+    if (!showGrab) {
+      this.grabBtn.classList.remove('mob-pressed');
+    }
   }
 
   /** Called every frame — updates view toggle label to show the opposite of current mode. */
@@ -482,4 +491,8 @@ export class MobileControls {
     this.grabBtn.addEventListener('pointerup', end);
     this.grabBtn.addEventListener('pointercancel', end);
   }
+}
+
+function isAttachedToBar(phase: string): boolean {
+  return phase === 'GRABBING' || phase === 'AIMING';
 }

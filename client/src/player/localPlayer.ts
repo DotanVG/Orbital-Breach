@@ -312,11 +312,9 @@ export class LocalPlayer {
 
     this.phys.vel.set(0, 0, 0);
 
-    if (input.consumeGrab()) {
-      this.phase = 'FLOATING';
-      this.grabbedBarPos = null;
-      return;
-    }
+    // Consume grab presses while attached so desktop E and mobile GRAB cannot
+    // act as a detach shortcut in any game mode.
+    input.consumeGrab();
 
     if (input.isAiming()) {
       this.phase = 'AIMING';

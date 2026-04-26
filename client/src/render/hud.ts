@@ -215,7 +215,7 @@ export class HUD {
       show = true;
       promptText = IS_MOBILE
         ? 'Hold LAUNCH and drag down to charge'
-        : 'Hold [SPACE] to aim - [E] to release bar';
+        : 'Hold [SPACE] to aim';
       el.style.fontSize = IS_MOBILE ? '13px' : '15px';
       el.style.color = '#aaffff';
       el.style.textShadow = '0 0 8px #00ffff';
