@@ -59,6 +59,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   private roundEndTimer: ReturnType<typeof setTimeout> | null = null;
   private matchTick: ReturnType<typeof setInterval> | null = null;
   private botCounters: Record<LobbyTeam, number> = { 0: 0, 1: 0 };
+  private botSpawnYaw: Record<LobbyTeam, number> = { 0: 0, 1: 0 };
   private countdownPreparedRound = false;
   private roundResolved = false;
   private lastPlayerUpdate = new Map<string, number>();
@@ -542,6 +543,9 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     const team0Center = breachRoomCenter(goalAxis, goalSigns.team0);
     const team1Center = breachRoomCenter(goalAxis, goalSigns.team1);
 
+    this.botSpawnYaw[0] = breachExitYaw(goalAxis, goalSigns.team0);
+    this.botSpawnYaw[1] = breachExitYaw(goalAxis, goalSigns.team1);
+
     let team0Index = 0;
     let team1Index = 0;
 
@@ -559,6 +563,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       actor.rightLeg = false;
       actor.kills = 0;
       actor.deaths = 0;
+      actor.yaw = this.botSpawnYaw[member.team];
 
       const center = member.team === 0 ? team0Center : team1Center;
       const sign = member.team === 0 ? goalSigns.team0 : goalSigns.team1;
@@ -592,11 +597,10 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
           actor.rightArm = false;
           actor.leftLeg = false;
           actor.rightLeg = false;
+          actor.yaw = this.botSpawnYaw[actor.team];
         }
         continue;
       }
-
-      actor.yaw += (Math.random() - 0.5) * 0.08;
     }
   }
 
@@ -806,4 +810,10 @@ function breachSpawnPos(
   const widthAxis: "x" | "z" = goalAxis === "z" ? "x" : "z";
   pos[widthAxis] = center[widthAxis] + (index - 1) * 1.5;
   return pos;
+}
+
+function breachExitYaw(axis: "x" | "y" | "z", sign: 1 | -1): number {
+  const dx = axis === "x" ? sign : 0;
+  const dz = axis === "z" ? sign : 0;
+  return Math.atan2(-dx, -dz);
 }
