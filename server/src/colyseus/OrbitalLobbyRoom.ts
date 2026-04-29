@@ -350,7 +350,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       ? message.scorerTeam
       : actor.team;
 
-    this.awardOnlineRoundPoint(scorerTeam, String(message.scorerName || actor.name), "breach");
+    this.awardOnlineRoundPoint(scorerTeam, actor.id, String(message.scorerName || actor.name), "breach");
   }
 
   // ── Round flow ──────────────────────────────────────────────────────────────
@@ -496,13 +496,18 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     if (team0.length === 0 || team1.length === 0) return;
 
     if (team0.every((a) => a.frozen)) {
-      this.awardOnlineRoundPoint(1, "Magenta Team", "fullFreeze");
+      this.awardOnlineRoundPoint(1, null, "Magenta Team", "fullFreeze");
     } else if (team1.every((a) => a.frozen)) {
-      this.awardOnlineRoundPoint(0, "Cyan Team", "fullFreeze");
+      this.awardOnlineRoundPoint(0, null, "Cyan Team", "fullFreeze");
     }
   }
 
-  private awardOnlineRoundPoint(team: 0 | 1, scorerName: string, reason: "breach" | "fullFreeze"): void {
+  private awardOnlineRoundPoint(
+    team: 0 | 1,
+    scorerId: string | null,
+    scorerName: string,
+    reason: "breach" | "fullFreeze",
+  ): void {
     if (this.roundResolved) return;
     this.roundResolved = true;
 
@@ -525,6 +530,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       winningTeam: team,
       matchWinner,
       reason,
+      scorerId: scorerId ?? undefined,
       scorerName,
     };
     if (matchWinner !== null) {
@@ -668,7 +674,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
         }
 
         if (!this.roundResolved && this.botIsInEnemyBreachRoom(actor)) {
-          this.awardOnlineRoundPoint(actor.team, actor.name, "breach");
+          this.awardOnlineRoundPoint(actor.team, actor.id, actor.name, "breach");
         }
 
         const fireTimer = this.botFireTimers.get(actor.id) ?? p.fireDelay;

@@ -58,9 +58,9 @@ describe("player-relative team UI helpers", () => {
 
   it("sorts debrief players with the local team first and self at the top", () => {
     const players: DebriefPlayer[] = [
-      { id: "cyan-1", name: "Cyan Wing", team: 0, breaches: 5, frozen: 1, isBot: false, isSelf: false },
-      { id: "self", name: "Magenta Self", team: 1, breaches: 1, frozen: 0, isBot: false, isSelf: true },
-      { id: "magenta-2", name: "Magenta Ally", team: 1, breaches: 4, frozen: 2, isBot: false, isSelf: false },
+      { id: "cyan-1", name: "Cyan Wing", team: 0, breaches: 5, freezes: 2, frozen: 1, travelDistance: 42, isBot: false, isSelf: false },
+      { id: "self", name: "Magenta Self", team: 1, breaches: 1, freezes: 3, frozen: 0, travelDistance: 58, isBot: false, isSelf: true },
+      { id: "magenta-2", name: "Magenta Ally", team: 1, breaches: 4, freezes: 1, frozen: 2, travelDistance: 31, isBot: false, isSelf: false },
     ];
 
     const sorted = sortDebriefPlayers(players, 1);

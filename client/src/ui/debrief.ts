@@ -5,15 +5,24 @@ export interface DebriefPlayer {
   name: string;
   team: 0 | 1;
   breaches: number;
+  freezes: number;
   frozen: number;
+  travelDistance: number;
   isBot: boolean;
   isSelf: boolean;
+}
+
+export interface DebriefAward {
+  key: string;
+  value: string;
+  note: string;
 }
 
 export interface DebriefData {
   winningTeam: 0 | 1 | null;
   score: { team0: number; team1: number };
   players: DebriefPlayer[];
+  awards?: DebriefAward[];
   playerTeam: 0 | 1;
   matchLabel: string;
   primaryActionLabel?: string;
@@ -332,6 +341,7 @@ export function sortDebriefPlayers(players: DebriefPlayer[], playerTeam: 0 | 1):
     if (a.team !== b.team) return a.team - b.team;
     if (a.isSelf !== b.isSelf) return a.isSelf ? -1 : 1;
     if (a.breaches !== b.breaches) return b.breaches - a.breaches;
+    if (a.freezes !== b.freezes) return b.freezes - a.freezes;
     return a.name.localeCompare(b.name);
   });
 }
@@ -398,21 +408,24 @@ export class DebriefScreen {
       : winningTeam === null ? "DRAW"
       : "DEFEAT";
 
+    const winnerText = winningTeam === null
+      ? `Winner - Draw / ${matchLabel}`
+      : `Winner - ${winningTeam === 0 ? "Team Cyan" : "Team Magenta"} / ${matchLabel}`;
+
     const sortedPlayers = sortDebriefPlayers(players, playerTeam);
 
-    const tableRows = sortedPlayers.map((p, i) => {
+    const tableRows = sortedPlayers.map((p) => {
       const teamCls = p.team === 0 ? "ob-t-cyan" : "ob-t-magenta";
       const selfCls = p.isSelf ? " ob-self" : "";
-      const r = rating(p.breaches, p.frozen);
       return `<tr class="${teamCls}${selfCls}">
         <td class="ob-pname">${escapeHtml(p.name)}${p.isBot ? " <small style='opacity:.4;font-size:9px;font-family:var(--ob-mono,monospace)'>[BOT]</small>" : ""}</td>
         <td>${p.breaches}</td>
+        <td>${p.freezes}</td>
         <td>${p.frozen}</td>
-        <td>${r}</td>
       </tr>`;
     }).join("");
 
-    const awards = this.buildAwards(players);
+    const awards = this.buildAwards(data.awards);
     const secondaryAction = showSecondaryAction
       ? `<button class="ob-debrief-btn" id="debrief-main-menu">${escapeHtml(mainMenuLabel)}</button>`
       : "";
@@ -429,7 +442,7 @@ export class DebriefScreen {
           </div>
           <div class="ob-debrief-verdict">
             ${verdictText}
-            <span class="ob-dv-sub">${escapeHtml(matchLabel)}</span>
+            <span class="ob-dv-sub">${escapeHtml(winnerText)}</span>
           </div>
           <div class="ob-debrief-team-score ob-debrief-team-score--magenta ${team1StateClass}">
             <div class="ob-ds-name">Team Magenta</div>
@@ -445,7 +458,7 @@ export class DebriefScreen {
             </div>
             <table class="ob-stats-table">
               <thead>
-                <tr><th>Pilot</th><th>Breaches</th><th>Frozen</th><th>Rating</th></tr>
+                <tr><th>Pilot</th><th>Breaches</th><th>Freezes</th><th>Frozen</th></tr>
               </thead>
               <tbody>${tableRows}</tbody>
             </table>
@@ -463,22 +476,7 @@ export class DebriefScreen {
     `;
   }
 
-  private buildAwards(players: DebriefPlayer[]): string {
-    const humans = players.filter((p) => !p.isBot);
-    const all = players;
-
-    const mostBreaches = all.reduce<DebriefPlayer | null>(
-      (best, p) => (!best || p.breaches > best.breaches ? p : best), null,
-    );
-    const ironPilot = humans.find((p) => p.frozen === 0);
-    const topKd = all.reduce<DebriefPlayer | null>(
-      (best, p) => {
-        const scoreA = p.breaches * 3 / (p.frozen + 1);
-        const scoreB = best ? best.breaches * 3 / (best.frozen + 1) : -1;
-        return scoreA > scoreB ? p : best;
-      }, null,
-    );
-
+  private buildAwards(awards: DebriefAward[] | undefined): string {
     const award = (key: string, val: string, note: string) =>
       `<div class="ob-award">
         <span class="ob-award-key">${key}</span>
@@ -486,14 +484,10 @@ export class DebriefScreen {
         <span class="ob-award-note">${escapeHtml(note)}</span>
       </div>`;
 
-    const parts: string[] = [];
-    if (mostBreaches && mostBreaches.breaches > 0) {
-      parts.push(award("Most Breaches", mostBreaches.name, `${mostBreaches.breaches} portal traversals`));
-    }
-    if (ironPilot) {
-      parts.push(award("Iron Pilot", ironPilot.name, "never frozen this match"));
-    }
-    if (topKd) {
+    return (awards ?? [{ key: "Round Complete", value: "-", note: "match concluded" }])
+      .map((entry) => award(entry.key, entry.value, entry.note))
+      .join("");
+    /*
       parts.push(award("Top Rating", topKd.name, `${rating(topKd.breaches, topKd.frozen)} · ${topKd.breaches} breaches / ${topKd.frozen} frozen`));
     }
     if (parts.length === 0) {
@@ -501,5 +495,6 @@ export class DebriefScreen {
     }
 
     return parts.join("");
+    */
   }
 }

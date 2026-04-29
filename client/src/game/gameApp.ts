@@ -36,6 +36,7 @@ import type { PlaySelection } from "../ui/menu";
 import { DebriefScreen, type DebriefData, type DebriefPlayer } from "../ui/debrief";
 import { showConfirmDialog } from "../ui/confirmDialog";
 import { getScoreboardCursorTransition } from "./scoreboardCursor";
+import { MatchStatsTracker, type ObservedMatchPlayer } from "./matchStatsTracker";
 import {
   PORTAL_ARRIVAL_SPAWN,
   checkPortalCollisions,
@@ -86,6 +87,7 @@ export class App {
   private lastTime = 0;
   private match: LocalMatch;
   private menu: MainMenu;
+  private readonly matchStats = new MatchStatsTracker();
   private welcome!: WelcomeScreen;
   private debrief = new DebriefScreen();
   private multiplayer = new MultiplayerLobby();
@@ -144,6 +146,7 @@ export class App {
           );
           break;
         case "score":
+          this.matchStats.recordBreach(event.scorerId);
           this.killFeed.addScore(event.scorerName, event.scorerTeam);
           break;
         case "roundWin":
@@ -201,6 +204,7 @@ export class App {
           this.syncLocalOnlineActor(snapshot);
           this.arena.setPortalDoorsOpen(snapshot.phase === "PLAYING");
           this.onlineMatch.applySnapshot(snapshot.actors, snapshot.sessionId);
+          this.matchStats.observePlayers(this.getOnlineMatchStatsActors(snapshot), { accumulateTravel: false });
         }
         return;
       }
@@ -231,6 +235,9 @@ export class App {
         this.syncLocalOnlineActor(snapshot);
         this.arena.setPortalDoorsOpen(snapshot.phase === "PLAYING");
         this.onlineMatch.applySnapshot(snapshot.actors, snapshot.sessionId);
+        this.matchStats.observePlayers(this.getOnlineMatchStatsActors(snapshot), {
+          accumulateTravel: snapshot.phase === "PLAYING",
+        });
       }
     };
 
@@ -262,6 +269,7 @@ export class App {
       }
 
       if (event.reason === "breach" && event.winningTeam !== null) {
+        this.matchStats.recordBreach(event.scorerId);
         this.killFeed.addScore(event.scorerName, event.winningTeam);
       }
 
@@ -481,6 +489,9 @@ export class App {
       (hit) => this.match.handleProjectileHit(hit, this.player, this.cam),
     );
     this.tickGunTuning();
+    this.matchStats.observePlayers(this.match.getMatchStatsActors(this.player), {
+      accumulateTravel: this.round.isPlaying(),
+    });
 
     checkPortalCollisions(this.player.getPosition(), this.player.phys.vel.y);
     updateVibeJamPortals(this.sceneMgr.getCamera().position, dt);
@@ -684,6 +695,15 @@ export class App {
     }
 
     this.clearCelebrationState();
+    if (
+      snapshot.roundNumber === 1
+      && snapshot.score.team0 === 0
+      && snapshot.score.team1 === 0
+    ) {
+      this.matchStats.reset();
+    }
+
+
     this.onlineGameActive = true;
     this.onlineRoundActive = snapshot.phase === "PLAYING";
     this.onlineBreachReported = false;
@@ -726,6 +746,7 @@ export class App {
     this.arena.setPortalDoorsOpen(snapshot.phase === "PLAYING");
 
     this.onlineMatch.applySnapshot(snapshot.actors, snapshot.sessionId);
+    this.matchStats.observePlayers(this.getOnlineMatchStatsActors(snapshot), { accumulateTravel: false });
 
     if (this.mobile) {
       const menuOpen = this.sessionMenu.isOpen();
@@ -961,28 +982,8 @@ export class App {
     winningTeam: 0 | 1,
     finalScore: { team0: number; team1: number },
   ): void {
-    const rosters = this.match.getHudRosters(this.player);
     const playerTeam = this.player.team;
-    const enemyTeam = (1 - playerTeam) as 0 | 1;
-
-    const ownPlayers: DebriefPlayer[] = rosters.ownTeam.map((p) => ({
-      id: p.id,
-      name: p.name,
-      team: playerTeam,
-      breaches: p.kills,
-      frozen: p.deaths,
-      isBot: p.isBot,
-      isSelf: p.id === "local-player",
-    }));
-    const enemyPlayers: DebriefPlayer[] = rosters.enemyTeam.map((p) => ({
-      id: p.id,
-      name: p.name,
-      team: enemyTeam,
-      breaches: p.kills,
-      frozen: p.deaths,
-      isBot: p.isBot,
-      isSelf: false,
-    }));
+    this.matchStats.observePlayers(this.match.getMatchStatsActors(this.player), { accumulateTravel: false });
 
     const teamSize = this.lastSoloSelection?.teamSize ?? 1;
     const sizeLabelMap: Record<number, string> = {
@@ -992,7 +993,8 @@ export class App {
     const debriefData: DebriefData = {
       winningTeam,
       score: finalScore,
-      players: [...ownPlayers, ...enemyPlayers],
+      players: this.matchStats.buildPlayers(),
+      awards: this.matchStats.buildAwards(),
       playerTeam,
       secondaryActionLabel: "Main Menu",
       primaryActionLabel: "Play Again",
@@ -1173,6 +1175,7 @@ export class App {
     this.matchOver = false;
     this.onlineBreachReported = false;
     this.helpVisible = false;
+    this.matchStats.reset();
     this.tutorial.beginRun();
     this.killFeed.setLocalPlayerName(selection.name);
     this.thirdPerson = this.sessionMenu.getSettings().defaultCameraMode === "third";
@@ -1220,6 +1223,7 @@ export class App {
     this.onlineRoundActive = false;
     this.onlineBreachReported = false;
     this.onlineMatchConcluding = false;
+    this.matchStats.reset();
     this.pendingOnlineDebrief = null;
     if (this.matchEndHandle) { clearTimeout(this.matchEndHandle); this.matchEndHandle = null; }
     this.previousOnlinePhase = null;
@@ -1271,6 +1275,7 @@ export class App {
     this.closeSessionMenu();
     this.debrief.hide();
     this.clearCelebrationState();
+    this.matchStats.reset();
     this.appMode = "menu";
     this.onlineGameActive = false;
     this.onlineRoundActive = false;
@@ -1347,32 +1352,15 @@ export class App {
       1: "1v1 Duel", 2: "2v2 Duos", 5: "5v5 Squads", 10: "10v10 Rush", 20: "20v20 War",
     };
 
-    const players: DebriefPlayer[] = (snapshot?.actors ?? []).map((actor) => ({
-      id: actor.id,
-      name: actor.name,
-      team: actor.team,
-      breaches: actor.kills,
-      frozen: actor.deaths,
-      isBot: actor.isBot,
-      isSelf: actor.id === sessionId,
-    }));
-
-    if (players.length === 0) {
-      players.push({
-        id: sessionId,
-        name: this.onlinePlayerName,
-        team: playerTeam,
-        breaches: this.player.kills,
-        frozen: this.player.deaths,
-        isBot: false,
-        isSelf: true,
-      });
+    if (snapshot) {
+      this.matchStats.observePlayers(this.getOnlineMatchStatsActors(snapshot), { accumulateTravel: false });
     }
 
     return {
       winningTeam,
       score: finalScore,
-      players,
+      players: this.getTrackedOnlineDebriefPlayers(sessionId, playerTeam),
+      awards: this.matchStats.buildAwards(),
       playerTeam,
       secondaryActionLabel: "Main Menu",
       primaryActionLabel: "Return To Lobby",
@@ -1380,11 +1368,48 @@ export class App {
     };
   }
 
+  private getOnlineMatchStatsActors(snapshot: MultiplayerRoomSnapshot): ObservedMatchPlayer[] {
+    return snapshot.actors.map((actor) => ({
+      id: actor.id,
+      name: actor.name,
+      team: actor.team,
+      isBot: actor.isBot,
+      isSelf: actor.id === snapshot.sessionId,
+      freezes: actor.kills,
+      frozen: actor.deaths,
+      position: {
+        x: actor.posX,
+        y: actor.posY,
+        z: actor.posZ,
+      },
+    }));
+  }
+
+  private getTrackedOnlineDebriefPlayers(sessionId: string, playerTeam: 0 | 1): DebriefPlayer[] {
+    const trackedPlayers = this.matchStats.buildPlayers();
+    if (trackedPlayers.length > 0) {
+      return trackedPlayers;
+    }
+
+    return [{
+      id: sessionId,
+      name: this.onlinePlayerName,
+      team: playerTeam,
+      breaches: 0,
+      freezes: this.player.kills,
+      frozen: this.player.deaths,
+      travelDistance: 0,
+      isBot: false,
+      isSelf: true,
+    }];
+  }
+
   private returnToOnlineLobbyFromDebrief(): void {
     this.clearCelebrationState();
     this.onlineMatchConcluding = false;
     this.onlineGameActive = false;
     this.onlineRoundActive = false;
+    this.matchStats.reset();
     this.input.setUiBlocked(false);
     this.onlineMatch.dispose();
     this.projectiles.clear();
