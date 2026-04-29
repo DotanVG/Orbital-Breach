@@ -433,6 +433,7 @@ export class App {
     }
 
     this.syncCombatPresentation(gameplayActive);
+    this.syncDesktopOverlayCursor(gameplayActive);
     this.sceneMgr.render();
     requestAnimationFrame((nextTimestamp) => this.loop(nextTimestamp));
   }
@@ -1547,5 +1548,20 @@ export class App {
     }
 
     this.combatPresentationActive = gameplayActive;
+  }
+
+  private syncDesktopOverlayCursor(gameplayActive: boolean): void {
+    if (this.mobile || !gameplayActive) {
+      return;
+    }
+
+    // Gameplay owns the cursor lifecycle. While in-world overlays are open,
+    // surface the custom cursor; otherwise keep it hidden like normal combat.
+    const overlayVisible = this.sessionMenu.isOpen() || this.input.isTabHeld();
+    if (overlayVisible) {
+      this.cursor.show();
+    } else {
+      this.cursor.hide();
+    }
   }
 }
