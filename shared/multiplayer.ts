@@ -2,16 +2,36 @@ import { MATCH_TEAM_SIZES, type MatchTeamSize } from "./match";
 import type { HitZone } from "./player-logic";
 
 export const MULTIPLAYER_ROOM_NAME = "orbital_lobby";
+export const MULTIPLAYER_BROWSER_ROOM_NAME = "orbital_browser_lobby";
 export const MULTIPLAYER_COUNTDOWN_SECONDS = 5;
 export const MULTIPLAYER_ROUND_SECONDS = 120;
 export const MULTIPLAYER_ROUND_END_SECONDS = 4;
 export const MULTIPLAYER_DEFAULT_TEAM_SIZE: MatchTeamSize = 5;
+export const MULTIPLAYER_INVITE_PARAM = "roomId";
+export const MULTIPLAYER_ROOM_NAME_MAX_LENGTH = 24;
 
 export type MultiplayerRoomPhase = "LOBBY" | "COUNTDOWN" | "PLAYING" | "ROUND_END";
 export type LobbyTeam = 0 | 1;
+export type MultiplayerRoomListing = "quick" | "browser";
+export type MultiplayerRoomVisibility = "public" | "private";
+export type MultiplayerRoomStatus = "Lobby Open" | "Full" | "Countdown" | "Live" | "Round End";
+
+export interface MultiplayerCreateRoomTarget {
+  kind: "create";
+  roomName: string;
+  listing: MultiplayerRoomListing;
+  visibility: MultiplayerRoomVisibility;
+  teamSize: MatchTeamSize;
+}
+
+export type MultiplayerJoinTarget =
+  | { kind: "quick" }
+  | { kind: "roomId"; roomId: string }
+  | MultiplayerCreateRoomTarget;
 
 export interface MultiplayerJoinOptions {
   name: string;
+  target?: MultiplayerJoinTarget;
 }
 
 export interface LobbyMemberSnapshot {
@@ -47,10 +67,13 @@ export interface OnlineActorSnapshot {
 
 export interface MultiplayerRoomSnapshot {
   roomId: string;
+  roomName: string;
   sessionId: string;
   selfTeam: LobbyTeam;
   phase: MultiplayerRoomPhase;
   matchComplete: boolean;
+  visibility: MultiplayerRoomVisibility;
+  listing: MultiplayerRoomListing;
   countdownRemaining: number;
   roundTimeRemaining: number;
   score: {
@@ -59,8 +82,22 @@ export interface MultiplayerRoomSnapshot {
   };
   roundNumber: number;
   teamSize: MatchTeamSize;
+  maxPlayers: number;
   members: LobbyMemberSnapshot[];
   actors: OnlineActorSnapshot[];
+}
+
+export interface MultiplayerRoomDirectoryEntry {
+  roomId: string;
+  roomName: string;
+  phase: MultiplayerRoomPhase;
+  status: MultiplayerRoomStatus;
+  listing: MultiplayerRoomListing;
+  visibility: MultiplayerRoomVisibility;
+  currentPlayers: number;
+  maxPlayers: number;
+  teamSize: MatchTeamSize;
+  joinable: boolean;
 }
 
 export interface PlayerUpdateMessage {
@@ -218,4 +255,57 @@ export function buildBotName(botIndex: number, team: LobbyTeam): string {
 
 export function canJoinMultiplayerRoom(phase: MultiplayerRoomPhase): boolean {
   return phase === "LOBBY";
+}
+
+export function getMaxPlayersForTeamSize(teamSize: MatchTeamSize): number {
+  return teamSize * 2;
+}
+
+export function getTeamSizeForMaxPlayers(maxPlayers: number): MatchTeamSize | null {
+  if (maxPlayers % 2 !== 0) {
+    return null;
+  }
+
+  const teamSize = maxPlayers / 2;
+  return isMatchTeamSizeValue(teamSize) ? teamSize : null;
+}
+
+export function getRoomStatus(
+  phase: MultiplayerRoomPhase,
+  currentPlayers: number,
+  maxPlayers: number,
+  locked = false,
+): MultiplayerRoomStatus {
+  switch (phase) {
+    case "COUNTDOWN":
+      return "Countdown";
+    case "PLAYING":
+      return "Live";
+    case "ROUND_END":
+      return "Round End";
+    case "LOBBY":
+    default:
+      return locked || currentPlayers >= maxPlayers ? "Full" : "Lobby Open";
+  }
+}
+
+export function sanitizeRoomName(raw: string | null | undefined): string {
+  const value = String(raw ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, MULTIPLAYER_ROOM_NAME_MAX_LENGTH);
+
+  return value || "Orbital Lobby";
+}
+
+export function getInviteRoomIdFromSearch(search: string): string | null {
+  const params = new URLSearchParams(search);
+  const roomId = params.get(MULTIPLAYER_INVITE_PARAM)?.trim();
+  return roomId ? roomId : null;
+}
+
+export function buildInviteUrl(roomId: string, origin: string, pathname = "/"): string {
+  const url = new URL(pathname, origin);
+  url.searchParams.set(MULTIPLAYER_INVITE_PARAM, roomId);
+  return url.toString();
 }

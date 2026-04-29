@@ -34,6 +34,9 @@ export class ActorState extends Schema {
 }
 
 export class OrbitalLobbyState extends Schema {
+  public roomName = "Orbital Lobby";
+  public visibility = "public";
+  public listing = "quick";
   public phase = "LOBBY";
   public matchComplete = false;
   public countdownRemaining = 0;
@@ -41,6 +44,7 @@ export class OrbitalLobbyState extends Schema {
   public scoreTeam0 = 0;
   public scoreTeam1 = 0;
   public teamSize = 5;
+  public maxPlayers = 10;
   public roundNumber = 0;
   public members = new MapSchema<LobbyMemberState>();
   public actors = new MapSchema<ActorState>();
@@ -80,6 +84,9 @@ defineTypes(ActorState, {
 });
 
 defineTypes(OrbitalLobbyState, {
+  roomName: "string",
+  visibility: "string",
+  listing: "string",
   phase: "string",
   matchComplete: "boolean",
   countdownRemaining: "number",
@@ -87,6 +94,7 @@ defineTypes(OrbitalLobbyState, {
   scoreTeam0: "number",
   scoreTeam1: "number",
   teamSize: "number",
+  maxPlayers: "number",
   roundNumber: "number",
   members: { map: LobbyMemberState },
   actors: { map: ActorState },

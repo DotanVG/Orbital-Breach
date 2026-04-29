@@ -1,9 +1,11 @@
 import { MATCH_TEAM_SIZES, type MatchTeamSize } from "../../../shared/match";
 import {
+  buildInviteUrl,
   getLobbyMemberCounts,
   type LobbyEventMessage,
   type MultiplayerRoomSnapshot,
 } from "../../../shared/multiplayer";
+import QRCode from "qrcode";
 
 const CYAN = "#7ffcff";
 const MAGENTA = "#ff7df8";
@@ -161,6 +163,79 @@ const CSS = `
     margin-top: 16px;
     padding: 14px;
     border-radius: 0;
+  }
+
+  .ob-mp-invite {
+    margin-top: 16px;
+    padding: 16px;
+    border: 1px solid rgba(127, 252, 255, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .ob-mp-invite-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    align-items: baseline;
+  }
+
+  .ob-mp-invite-title {
+    margin-top: 6px;
+    font-size: 24px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .ob-mp-invite-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 170px;
+    gap: 16px;
+    align-items: start;
+    margin-top: 14px;
+  }
+
+  .ob-mp-invite-main {
+    display: grid;
+    gap: 10px;
+  }
+
+  .ob-mp-invite-url {
+    min-height: 44px;
+    width: 100%;
+    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #effcff;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+
+  .ob-mp-invite-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .ob-mp-invite-note {
+    color: #c7d6ec;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .ob-mp-qr-card {
+    display: grid;
+    gap: 10px;
+    justify-items: center;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .ob-mp-qr-card img {
+    width: 140px;
+    height: 140px;
+    background: white;
   }
 
   .ob-mp-select-wrap {
@@ -475,6 +550,10 @@ const CSS = `
     .ob-mp-roster-badges {
       justify-content: flex-start;
     }
+
+    .ob-mp-invite-grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* ===== BRIEFING 3-COLUMN LAYOUT ===== */
@@ -660,6 +739,12 @@ export class MultiplayerLobby {
   private clearBotsButton: HTMLButtonElement;
   private settingsButton: HTMLButtonElement;
   private leaveButton: HTMLButtonElement;
+  private inviteUrlInput: HTMLInputElement;
+  private copyInviteButton: HTMLButtonElement;
+  private shareInviteButton: HTMLButtonElement;
+  private inviteQrImage: HTMLImageElement;
+  private inviteNote: HTMLDivElement;
+  private inviteQrMeta: HTMLDivElement;
   private teamSizeSelect: HTMLSelectElement;
   private team0Title: HTMLDivElement;
   private team0Relation: HTMLSpanElement;
@@ -670,6 +755,7 @@ export class MultiplayerLobby {
   private team0Roster: HTMLDivElement;
   private team1Roster: HTMLDivElement;
   private latestState: MultiplayerRoomSnapshot | null = null;
+  private latestInviteUrl = "";
 
   public onLeaveLobby: (() => void) | null = null;
   public onReadyChange: ((ready: boolean) => void) | null = null;
@@ -699,6 +785,12 @@ export class MultiplayerLobby {
     this.clearBotsButton = this.query("#mp-clear-bots");
     this.settingsButton = this.query("#mp-settings");
     this.leaveButton = this.query("#mp-leave");
+    this.inviteUrlInput = this.query("#mp-invite-url");
+    this.copyInviteButton = this.query("#mp-copy-invite");
+    this.shareInviteButton = this.query("#mp-share-invite");
+    this.inviteQrImage = this.query("#mp-invite-qr");
+    this.inviteNote = this.query("#mp-invite-note");
+    this.inviteQrMeta = this.query("#mp-invite-qr-meta");
     this.teamSizeSelect = this.query("#mp-team-size");
     this.team0Title = this.query("#mp-team0-title");
     this.team0Relation = this.query("#mp-team0-relation");
@@ -727,6 +819,12 @@ export class MultiplayerLobby {
     this.clearBotsButton.addEventListener("click", () => this.onFillBots?.(false));
     this.settingsButton.addEventListener("click", () => this.onOpenSettings?.());
     this.leaveButton.addEventListener("click", () => this.onLeaveLobby?.());
+    this.copyInviteButton.addEventListener("click", () => {
+      void this.copyInviteUrl();
+    });
+    this.shareInviteButton.addEventListener("click", () => {
+      void this.shareInviteUrl();
+    });
     this.teamSizeSelect.addEventListener("change", () => {
       const teamSize = Number(this.teamSizeSelect.value);
       if (MATCH_TEAM_SIZES.includes(teamSize as MatchTeamSize)) {
@@ -751,6 +849,12 @@ export class MultiplayerLobby {
     this.team1Count.textContent = "Loading";
     this.team0Roster.innerHTML = `<div class="ob-mp-empty">Joining room...</div>`;
     this.team1Roster.innerHTML = `<div class="ob-mp-empty">Joining room...</div>`;
+    this.inviteUrlInput.value = "";
+    this.inviteQrImage.removeAttribute("src");
+    this.inviteNote.textContent = "Invite tools will activate as soon as the room session is established.";
+    this.inviteQrMeta.textContent = "Waiting for room id";
+    this.copyInviteButton.disabled = true;
+    this.shareInviteButton.disabled = true;
     this.setStatus(`Connecting ${escapeHtml(playerName)} to the live queue...`, "info");
   }
 
@@ -786,7 +890,7 @@ export class MultiplayerLobby {
 
     this.phase.textContent = describePhase(state);
     this.meta.textContent =
-      `Room ${state.roomId} · ${playlistLabel(state.teamSize)} · Round ${Math.max(1, state.roundNumber || 1)}`;
+      `${state.roomName} · ${state.roomId} · ${playlistLabel(state.teamSize)} · Round ${Math.max(1, state.roundNumber || 1)}`;
     this.score.textContent = `${state.score.team0} - ${state.score.team1}`;
     this.teamSizeSelect.value = String(state.teamSize);
 
@@ -843,10 +947,72 @@ export class MultiplayerLobby {
     this.team1Count.textContent = `${team1Members.length}/${state.teamSize} queued`;
     this.team0Roster.innerHTML = renderRoster(team0Members, state.sessionId, 0);
     this.team1Roster.innerHTML = renderRoster(team1Members, state.sessionId, 1);
+    void this.renderInvite(state);
   }
 
   private getSelf(state: MultiplayerRoomSnapshot) {
     return state.members.find((member) => member.id === state.sessionId) ?? null;
+  }
+
+  private async renderInvite(state: MultiplayerRoomSnapshot): Promise<void> {
+    const inviteUrl = buildInviteUrl(state.roomId, window.location.origin, window.location.pathname);
+    this.latestInviteUrl = inviteUrl;
+    this.inviteUrlInput.value = inviteUrl;
+    this.inviteNote.textContent = state.visibility === "private"
+      ? "Private lobbies stay off the public room list. Share this URL, the native share sheet, or the QR code to bring other pilots in."
+      : "Public lobbies stay visible in the room browser, and this direct invite still drops friends into the same room.";
+    this.inviteQrMeta.textContent = `${state.visibility === "private" ? "Private" : "Public"} · ${state.maxPlayers} Max Players`;
+    this.copyInviteButton.disabled = false;
+    this.shareInviteButton.disabled = false;
+
+    try {
+      this.inviteQrImage.src = await QRCode.toDataURL(inviteUrl, {
+        margin: 1,
+        width: 140,
+        color: {
+          dark: "#06121d",
+          light: "#ffffff",
+        },
+      });
+    } catch {
+      this.inviteQrImage.removeAttribute("src");
+      this.inviteQrMeta.textContent = "QR generation unavailable";
+    }
+  }
+
+  private async copyInviteUrl(): Promise<void> {
+    if (!this.latestInviteUrl || !navigator.clipboard) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(this.latestInviteUrl);
+      this.setStatus("Invite URL copied to the clipboard.", "info");
+    } catch {
+      this.setStatus("Copy failed for the invite URL.", "error");
+    }
+  }
+
+  private async shareInviteUrl(): Promise<void> {
+    if (!this.latestInviteUrl) {
+      return;
+    }
+
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({
+          title: "Orbital Breach Invite",
+          text: "Join my Orbital Breach room.",
+          url: this.latestInviteUrl,
+        });
+        this.setStatus("Invite sent through the system share sheet.", "info");
+      } catch {
+        this.setStatus("Share cancelled or unavailable for this room invite.", "error");
+      }
+      return;
+    }
+
+    await this.copyInviteUrl();
   }
 
   private query<T extends HTMLElement>(selector: string): T {
@@ -888,6 +1054,32 @@ function buildMarkup(): string {
           <button id="mp-clear-bots" class="ob-mp-button ob-mp-button--clear">Humans Only</button>
           <button id="mp-settings" class="ob-mp-button ob-mp-button--settings">Settings</button>
           <button id="mp-leave" class="ob-mp-button ob-mp-button--leave">Main Menu</button>
+        </div>
+
+        <div class="ob-mp-invite">
+          <div class="ob-mp-invite-head">
+            <div>
+              <div class="ob-mp-card-label">Invite</div>
+              <div class="ob-mp-invite-title">Share This Room</div>
+            </div>
+            <div id="mp-invite-qr-meta" class="ob-mp-roster-meta">Waiting for room id</div>
+          </div>
+
+          <div class="ob-mp-invite-grid">
+            <div class="ob-mp-invite-main">
+              <span class="ob-mp-select-label">Direct URL</span>
+              <input id="mp-invite-url" class="ob-mp-invite-url" readonly />
+              <div class="ob-mp-invite-actions">
+                <button id="mp-copy-invite" class="ob-mp-button">Copy Link</button>
+                <button id="mp-share-invite" class="ob-mp-button">Share</button>
+              </div>
+              <div id="mp-invite-note" class="ob-mp-invite-note"></div>
+            </div>
+
+            <div class="ob-mp-qr-card">
+              <img id="mp-invite-qr" alt="Room invite QR code" />
+            </div>
+          </div>
         </div>
 
         <div style="display:none">
