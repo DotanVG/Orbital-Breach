@@ -28,6 +28,7 @@ import { FloatArmTuneOverlay } from "./floatArmTuneOverlay";
 import { ProjectileSystem } from "./projectileSystem";
 import { RoundController } from "./roundController";
 import { GunTuneOverlay } from "./gunTuneOverlay";
+import { shouldShowDesktopOverlayCursor } from "./overlayCursor";
 import { buildShotFromCamera } from "./weaponFire";
 import { NetClient } from "../net/client";
 import { MultiplayerLobby } from "../ui/multiplayerLobby";
@@ -1551,14 +1552,12 @@ export class App {
   }
 
   private syncDesktopOverlayCursor(gameplayActive: boolean): void {
-    if (this.mobile || !gameplayActive) {
-      return;
-    }
-
-    // Gameplay owns the cursor lifecycle. While in-world overlays are open,
-    // surface the custom cursor; otherwise keep it hidden like normal combat.
-    const overlayVisible = this.sessionMenu.isOpen() || this.input.isTabHeld();
-    if (overlayVisible) {
+    if (shouldShowDesktopOverlayCursor({
+      gameplayActive,
+      mobile: this.mobile,
+      sessionMenuOpen: this.sessionMenu.isOpen(),
+      tabHeld: this.input.isTabHeld(),
+    })) {
       this.cursor.show();
     } else {
       this.cursor.hide();
