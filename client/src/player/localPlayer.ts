@@ -40,6 +40,7 @@ import {
   measureLeftHandGripOffset,
 } from './playerGrabPose';
 import { PlayerDamageGlow } from './playerDamageGlow';
+import { applyVictoryDancePose } from './playerVictoryDance';
 import { loadAlienRenderClone } from './alienRenderAsset';
 import { applyTeamAccent } from './teamAccent';
 import {
@@ -116,6 +117,8 @@ export class LocalPlayer {
   // ticking mixers so the death pose holds instead of looping flails.
   private frozenHoldTimer = 0;
   private floatLimbTuningEnabled = false;
+  private victoryDanceActive = false;
+  private victoryDanceElapsed = 0;
 
   public constructor(scene: THREE.Scene) {
     this.mesh = new THREE.Group();
@@ -170,6 +173,7 @@ export class LocalPlayer {
     arena: Arena,
     dt: number,
   ): void {
+    const celebrating = this.victoryDanceActive && !this.damage.frozen;
     switch (this.phase) {
       case 'FROZEN':
         this.updateFrozen(arena, dt);
@@ -193,7 +197,7 @@ export class LocalPlayer {
     this.updateAnimation(input, cam, dt);
     this.damageGlow.update(this.damage, this.phase, dt);
     const visualQuat = this.computeVisualQuaternion(cam, dt);
-    if (this.phase === 'GRABBING' || this.phase === 'AIMING') {
+    if (!celebrating && (this.phase === 'GRABBING' || this.phase === 'AIMING')) {
       this.lockGripToBar(visualQuat);
     }
     this.mesh.position.copy(this.phys.pos);
@@ -404,7 +408,9 @@ export class LocalPlayer {
   }
 
   private updateAnimation(input: InputManager, cam: CameraController, dt: number): void {
-    if (this.phase === 'GRABBING' || this.phase === 'AIMING') {
+    const celebrating = this.victoryDanceActive && !this.damage.frozen;
+
+    if (!celebrating && (this.phase === 'GRABBING' || this.phase === 'AIMING')) {
       this.animation.resetBreathing();
       if (!this.grabPoseLocked) {
         this.lockGrabPose();
@@ -463,14 +469,20 @@ export class LocalPlayer {
 
     this.lastKnownAnimation = nextAnimation;
 
-    if (this.isBreachIdle(input)) {
+    if (celebrating) {
+      this.animation.resetBreathing();
+      this.victoryDanceElapsed += dt;
+      applyVictoryDancePose(this.animation.getRigs(), this.victoryDanceElapsed);
+    } else if (this.isBreachIdle(input)) {
       this.animation.tickBreathing(dt);
     } else {
       this.animation.resetBreathing();
+      this.victoryDanceElapsed = 0;
     }
   }
 
   private selectAnimation(input: InputManager): string {
+    if (this.victoryDanceActive && !this.damage.frozen) return ANIM_STANDING;
     if (this.phase === 'FROZEN') return ANIM_DEATH;
     if (this.phase === 'FLOATING') return ANIM_FLOAT;
     if (this.phase === 'RESPAWNING') return ANIM_STANDING;
@@ -502,7 +514,10 @@ export class LocalPlayer {
   private computeVisualQuaternion(cam: CameraController, dt: number): THREE.Quaternion {
     const cameraQuat = cam.getQuaternion();
 
-    if (this.phase !== 'GRABBING' && this.phase !== 'AIMING') {
+    if (
+      this.victoryDanceActive
+      || (this.phase !== 'GRABBING' && this.phase !== 'AIMING')
+    ) {
       this.visualQuaternion.copy(cameraQuat);
       return this.visualQuaternion;
     }
@@ -608,6 +623,8 @@ export class LocalPlayer {
     this.breachEntryCarryTimer = 0;
     this.currentBreachTeam = this.team;
     this.phys.vel.set(0, 0, 0);
+    this.victoryDanceActive = false;
+    this.victoryDanceElapsed = 0;
 
     const spawn = spawnOverride ?? (() => {
       const center = arena.getBreachRoomCenter(this.team);
@@ -665,6 +682,13 @@ export class LocalPlayer {
     this.team = team;
     this.damageGlow.setTeam(team);
     this.applyTeamVisuals();
+  }
+
+  public setVictoryDanceActive(active: boolean): void {
+    this.victoryDanceActive = active;
+    if (!active) {
+      this.victoryDanceElapsed = 0;
+    }
   }
 
   public setWorldModelVisible(visible: boolean): void {

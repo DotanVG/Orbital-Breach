@@ -266,6 +266,7 @@ export class App {
       }
 
       if (event.matchWinner !== null && event.finalScore) {
+        this.setCelebratingTeam(event.matchWinner);
         this.onlineMatchConcluding = true;
         this.pendingOnlineDebrief = this.buildOnlineDebrief(event.matchWinner, event.finalScore);
         this.sessionMenu.close();
@@ -682,6 +683,7 @@ export class App {
       return;
     }
 
+    this.clearCelebrationState();
     this.onlineGameActive = true;
     this.onlineRoundActive = snapshot.phase === "PLAYING";
     this.onlineBreachReported = false;
@@ -741,6 +743,7 @@ export class App {
   private endOnlineGame(): void {
     this.sound.stopCountdown();
     this.closeSessionMenu();
+    this.clearCelebrationState();
     this.onlineGameActive = false;
     this.onlineRoundActive = false;
     this.onlineBreachReported = false;
@@ -872,6 +875,7 @@ export class App {
   // ── Solo round lifecycle ────────────────────────────────────────────────────
 
   private beginNewRound(): void {
+    this.clearCelebrationState();
     this.hud.hideRoundEnd();
     this.projectiles.clear();
     clearVibeJamPortals();
@@ -944,6 +948,7 @@ export class App {
     finalScore: { team0: number; team1: number },
   ): void {
     this.matchOver = true;
+    this.setCelebratingTeam(winningTeam);
     this.round.cancelPendingRestart();
     if (this.matchEndHandle) clearTimeout(this.matchEndHandle);
     this.matchEndHandle = setTimeout(() => {
@@ -1000,6 +1005,7 @@ export class App {
   private returnToMenuFromSolo(): void {
     this.sound.stopCountdown();
     this.closeSessionMenu();
+    this.clearCelebrationState();
     this.debrief.hide();
     this.appMode = "menu";
     this.cursor.show();
@@ -1161,6 +1167,7 @@ export class App {
   private startSoloMatch(selection: PlaySelection): void {
     this.lastSoloSelection = selection;
     this.debrief.hide();
+    this.clearCelebrationState();
     this.appMode = "solo";
     this.cursor.hide();
     this.matchOver = false;
@@ -1263,6 +1270,7 @@ export class App {
   private async returnToMenuFromOnline(): Promise<void> {
     this.closeSessionMenu();
     this.debrief.hide();
+    this.clearCelebrationState();
     this.appMode = "menu";
     this.onlineGameActive = false;
     this.onlineRoundActive = false;
@@ -1373,6 +1381,7 @@ export class App {
   }
 
   private returnToOnlineLobbyFromDebrief(): void {
+    this.clearCelebrationState();
     this.onlineMatchConcluding = false;
     this.onlineGameActive = false;
     this.onlineRoundActive = false;
@@ -1408,6 +1417,18 @@ export class App {
     this.sound.playLocalShot();
     this.player.triggerArmRecoil();
     this.tutorial.noteShotFired();
+  }
+
+  private setCelebratingTeam(team: 0 | 1): void {
+    this.player.setVictoryDanceActive(this.player.team === team && !this.player.damage.frozen);
+    this.match.setCelebratingTeam(team);
+    this.onlineMatch.setCelebratingTeam(team);
+  }
+
+  private clearCelebrationState(): void {
+    this.player.setVictoryDanceActive(false);
+    this.match.setCelebratingTeam(null);
+    this.onlineMatch.setCelebratingTeam(null);
   }
 
   // ── Gun tuning overlays ─────────────────────────────────────────────────────

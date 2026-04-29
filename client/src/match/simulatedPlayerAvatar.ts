@@ -13,6 +13,7 @@ import {
 import { PlayerDamageGlow } from "../player/playerDamageGlow";
 import { applyBarHoldPose } from "../player/playerGrabPose";
 import { applyArmRecoil, RECOIL_DURATION } from "../player/playerAimPose";
+import { applyVictoryDancePose } from "../player/playerVictoryDance";
 import { ThirdPersonGun } from "../player/playerThirdPersonGun";
 import { PlayerNameTag } from "../render/playerNameTag";
 
@@ -27,6 +28,7 @@ export class SimulatedPlayerAvatar {
   private recoilTimer = 0;
   private ready = false;
   private readonly root = new THREE.Group();
+  private victoryDanceElapsed = 0;
 
   public constructor(scene: THREE.Scene, team: 0 | 1, name = "") {
     this.damageGlow = new PlayerDamageGlow(team);
@@ -60,6 +62,7 @@ export class SimulatedPlayerAvatar {
     yaw: number,
     dt: number,
     moveSpeed: number,
+    celebrating = false,
   ): void {
     this.root.position.copy(pos);
     this.root.rotation.set(0, yaw, 0);
@@ -71,7 +74,10 @@ export class SimulatedPlayerAvatar {
 
     if (!this.ready) return;
 
-    const animation = selectAnimation(phase, moveSpeed);
+    const shouldCelebrate = celebrating && !damage.frozen;
+    const animation = shouldCelebrate
+      ? ANIM_STANDING
+      : selectAnimation(phase, moveSpeed);
     this.animation.setTargetAnimation(animation);
 
     // Hold the frozen pose: once the crossfade into ANIM_DEATH settles, tick
@@ -87,13 +93,18 @@ export class SimulatedPlayerAvatar {
       : dt;
     this.animation.tickMixers(animationDt);
 
-    if (phase === "GRABBING" || phase === "AIMING") {
+    if (!shouldCelebrate && (phase === "GRABBING" || phase === "AIMING")) {
       applyBarHoldPose(this.animation.getRigs());
       this.animation.resetBreathing();
+    } else if (shouldCelebrate) {
+      this.animation.resetBreathing();
+      this.victoryDanceElapsed += dt;
+      applyVictoryDancePose(this.animation.getRigs(), this.victoryDanceElapsed);
     } else if (animation === ANIM_IDLE_HOLD) {
       this.animation.tickBreathing(dt);
     } else {
       this.animation.resetBreathing();
+      this.victoryDanceElapsed = 0;
     }
 
     this.recoilTimer = Math.max(0, this.recoilTimer - dt);
