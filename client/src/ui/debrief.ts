@@ -69,6 +69,14 @@ const CSS = `
     gap: 22px;
   }
 
+  @media (hover: hover) and (pointer: fine) {
+    .ob-debrief-wrap {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .ob-debrief-wrap::-webkit-scrollbar { display: none; }
+  }
+
   /* ── Score head ── */
   .ob-debrief-head {
     display: grid;
