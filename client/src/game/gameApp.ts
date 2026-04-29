@@ -35,6 +35,7 @@ import { MultiplayerLobby } from "../ui/multiplayerLobby";
 import type { PlaySelection } from "../ui/menu";
 import { DebriefScreen, type DebriefData, type DebriefPlayer } from "../ui/debrief";
 import { showConfirmDialog } from "../ui/confirmDialog";
+import { getScoreboardCursorTransition } from "./scoreboardCursor";
 import {
   PORTAL_ARRIVAL_SPAWN,
   checkPortalCollisions,
@@ -71,6 +72,7 @@ export class App {
   private combatPresentationActive = false;
   private portalArrivalPending = false;
   private portalUrlCleaned = false;
+  private restorePointerLockAfterScoreboard = false;
 
   private arena: Arena;
   private cam: CameraController;
@@ -107,6 +109,9 @@ export class App {
     this.sceneMgr = new SceneManager();
     this.sound = new SoundEngine(this.sceneMgr.getCamera(), this.sceneMgr.getScene());
     this.input = new InputManager();
+    this.input.onTabHoldChange = (held) => {
+      this.handleScoreboardTabHoldChange(held);
+    };
     this.cam = new CameraController(this.sceneMgr.getCamera());
     this.arena = new Arena(this.sceneMgr.getScene());
     this.player = new LocalPlayer(this.sceneMgr.getScene());
@@ -270,6 +275,7 @@ export class App {
             matchScore: event.finalScore,
           }),
         );
+        this.restorePointerLockAfterScoreboard = false;
         this.input.exitPointerLock();
         this.input.setUiBlocked(true);
         this.mobileControls?.hide();
@@ -739,6 +745,7 @@ export class App {
     this.onlineMatch.dispose();
     this.projectiles.clear();
     this.killFeed.setVisible(false);
+    this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
@@ -999,6 +1006,7 @@ export class App {
     this.hud.setVisible(false);
     this.hud.hideRoundEnd();
     this.killFeed.setVisible(false);
+    this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
@@ -1036,6 +1044,7 @@ export class App {
           : "Back To Lobby";
     const mainMenuLabel = inMenu ? null : "Return To Main Menu";
 
+    this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
     this.input.setUiBlocked(true);
     if (this.mobile) {
@@ -1209,6 +1218,7 @@ export class App {
     this.hud.setVisible(false);
     this.killFeed.setVisible(false);
     this.input.setUiBlocked(false);
+    this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
@@ -1270,6 +1280,7 @@ export class App {
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
     this.input.setUiBlocked(false);
+    this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
     this.sessionMenu.setLauncherVisible(false);
     this.gun.setVisible(false);
@@ -1300,6 +1311,7 @@ export class App {
     }
 
     this.sessionMenu.close();
+    this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
     this.input.setUiBlocked(true);
     this.mobileControls?.hide();
@@ -1532,6 +1544,30 @@ export class App {
         this.appMode === "solo"
         || (this.appMode === "online" && this.onlineGameActive)
       );
+  }
+
+  private handleScoreboardTabHoldChange(held: boolean): void {
+    const transition = getScoreboardCursorTransition(held, {
+      desktop: !this.mobile,
+      gameplayActive: this.isGameplaySceneActive(),
+      pointerLocked: this.input.isLocked(),
+      restorePointerLockAfterScoreboard: this.restorePointerLockAfterScoreboard,
+      sessionMenuOpen: this.sessionMenu.isOpen(),
+    });
+    this.restorePointerLockAfterScoreboard = transition.nextRestorePointerLockAfterScoreboard;
+
+    if (transition.showCursor) {
+      this.cursor.show();
+    }
+    if (transition.hideCursor) {
+      this.cursor.hide();
+    }
+    if (transition.exitPointerLock) {
+      this.input.exitPointerLock();
+    }
+    if (transition.requestPointerLock) {
+      this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
+    }
   }
 
   private syncCombatPresentation(gameplayActive: boolean): void {
