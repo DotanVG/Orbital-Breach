@@ -126,7 +126,7 @@ const CSS = `
     color: #57637a; margin-top: 8px; text-transform: uppercase;
   }
 
-  /* ── Main grid ── */
+  /* Main grid */
   .ob-debrief-grid {
     display: grid;
     grid-template-columns: 2fr 1fr;
@@ -152,7 +152,7 @@ const CSS = `
   }
   .ob-debrief-panel-head h3 .ob-dph-idx { color: var(--ob-debrief-accent); }
 
-  /* ── Stats table ── */
+  /* Stats table */
   .ob-stats-table {
     width: 100%; border-collapse: collapse;
     font-family: "JetBrains Mono", monospace; font-size: 11px;
@@ -183,7 +183,7 @@ const CSS = `
   .ob-stats-table .ob-self td { color: #e8ecf4; }
   .ob-stats-table .ob-self td.ob-pname { font-weight: 500; }
 
-  /* ── Awards ── */
+  /* Awards */
   .ob-awards { display: grid; gap: 10px; }
   .ob-award {
     border: 1px solid rgba(210, 220, 240, 0.08);
@@ -203,7 +203,7 @@ const CSS = `
     color: var(--ob-debrief-accent); margin-top: 2px;
   }
 
-  /* ── Action buttons ── */
+  /* Action buttons */
   .ob-debrief-actions { display: flex; gap: 12px; margin-top: 10px; }
   .ob-debrief-btn {
     flex: 1; position: relative;
@@ -219,13 +219,13 @@ const CSS = `
   .ob-debrief-btn--primary { border-color: var(--ob-debrief-accent-border); }
   .ob-debrief-btn--primary:hover { border-color: var(--ob-debrief-accent); color: var(--ob-debrief-accent-text); }
 
-  /* ── Tablet: collapse grid to 1-col ── */
+  /* Tablet: collapse grid to 1-col */
   @media (max-width: 900px) {
     .ob-debrief-grid { grid-template-columns: 1fr; }
     .ob-debrief-head { grid-template-columns: 1fr; gap: 12px; text-align: center; }
   }
 
-  /* ── Mobile portrait ── */
+  /* Mobile portrait */
   @media (max-width: 640px) and (orientation: portrait) {
     .ob-debrief-root {
       padding: 12px 10px;
@@ -271,7 +271,7 @@ const CSS = `
     #debrief-play-again { order: -1; }
   }
 
-  /* ── Mobile landscape ── */
+  /* Mobile landscape */
   @media (max-height: 500px) and (max-width: 900px) {
     .ob-debrief-root {
       padding: 8px 10px;
@@ -307,16 +307,6 @@ function injectStyle(): void {
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.appendChild(style);
-}
-
-function rating(breaches: number, frozen: number): string {
-  const r = (breaches * 3) / (frozen + 1);
-  if (r >= 3.5) return "A+";
-  if (r >= 2.2) return "A";
-  if (r >= 1.2) return "B+";
-  if (r >= 0.6) return "B";
-  if (r >= 0.2) return "C+";
-  return "C";
 }
 
 function escapeHtml(s: string): string {
@@ -487,14 +477,5 @@ export class DebriefScreen {
     return (awards ?? [{ key: "Round Complete", value: "-", note: "match concluded" }])
       .map((entry) => award(entry.key, entry.value, entry.note))
       .join("");
-    /*
-      parts.push(award("Top Rating", topKd.name, `${rating(topKd.breaches, topKd.frozen)} · ${topKd.breaches} breaches / ${topKd.frozen} frozen`));
-    }
-    if (parts.length === 0) {
-      parts.push(award("Round Complete", "—", "match concluded"));
-    }
-
-    return parts.join("");
-    */
   }
 }
