@@ -376,6 +376,9 @@ export class App {
     this.menu.onOpenSettings = () => {
       this.openSessionMenu();
     };
+    this.menu.onOpenCredits = () => {
+      this.openSessionMenu("credits");
+    };
     this.menu.onPlayTutorial = (selection) => {
       this.startTutorialMatch(selection);
     };
@@ -1016,7 +1019,7 @@ export class App {
     this.menu.show();
   }
 
-  private openSessionMenu(): void {
+  private openSessionMenu(view: "settings" | "credits" = "settings"): void {
     if (this.sessionMenu.isOpen() || this.debrief.isVisible() || this.onlineMatchConcluding) return;
 
     const inMenu = this.appMode === "menu";
@@ -1057,7 +1060,7 @@ export class App {
       subtitle,
       resumeLabel,
       mainMenuLabel,
-    });
+    }, view);
   }
 
   private closeSessionMenu(): void {

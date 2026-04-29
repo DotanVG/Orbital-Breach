@@ -19,6 +19,7 @@ export class MainMenu {
   public onPlaySolo: ((selection: PlaySelection) => void) | null = null;
   public onPlayOnline: ((selection: PlaySelection) => void) | null = null;
   public onOpenSettings: (() => void) | null = null;
+  public onOpenCredits: (() => void) | null = null;
   public onPlayTutorial: ((selection: PlaySelection) => void) | null = null;
 
   public show(): void {
@@ -60,6 +61,9 @@ export class MainMenu {
     });
     elements.openSettingsButton.addEventListener('click', () => {
       this.onOpenSettings?.();
+    });
+    elements.openCreditsButton.addEventListener('click', () => {
+      this.onOpenCredits?.();
     });
     elements.playTutorialButton.addEventListener('click', () => {
       if (!this.checkNameBeforePlay(elements)) return;
