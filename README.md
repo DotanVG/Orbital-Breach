@@ -4,7 +4,7 @@
 
 Two teams fight in a floating debris field. Freeze your enemies with a cryo-pistol. If an entire team is frozen, their breach portal opens. Be the first player to physically float through it to score. First team to five round wins takes the match.
 
-No install. No login. [**Play now →**](https://orbital-breach.vercel.app)
+No install. No login. [**Play now →**](https://orbital-breach.vercel.app) · [**itch.io →**](https://dotanv.itch.io)
 
 ---
 
