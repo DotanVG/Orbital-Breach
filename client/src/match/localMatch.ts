@@ -124,6 +124,7 @@ interface ActorDescriptor {
 export class LocalMatch {
   private barGraph: BarRouteGraph = buildBarGraph([]);
   private bots: BotState[] = [];
+  private celebratingTeam: 0 | 1 | null = null;
   private config: SoloMatchConfig = { humanName: "You", humanTeam: 0, teamSize: 1 };
   private roundResolved = false;
   private roundSeed = 0;
@@ -135,6 +136,7 @@ export class LocalMatch {
 
   public startNewGame(config: SoloMatchConfig): void {
     this.config = config;
+    this.celebratingTeam = null;
     this.score = { team0: 0, team1: 0 };
     this.roundResolved = false;
     this.roundSeed = 0;
@@ -146,6 +148,7 @@ export class LocalMatch {
     player: LocalPlayer,
     humanSpawnOverride?: { x: number; y: number; z: number },
   ): void {
+    this.celebratingTeam = null;
     this.roundResolved = false;
     this.roundSeed += 1;
 
@@ -182,6 +185,10 @@ export class LocalMatch {
       bot.avatar.dispose(this.scene);
     }
     this.bots = [];
+  }
+
+  public setCelebratingTeam(team: 0 | 1 | null): void {
+    this.celebratingTeam = team;
   }
 
   public getScore(): { team0: number; team1: number } {
@@ -355,7 +362,15 @@ export class LocalMatch {
     this.resolveActorOverlap(player);
 
     for (const bot of this.bots) {
-      bot.avatar.update(bot.phys.pos, bot.damage, bot.phase, bot.rot.yaw, dt, bot.phys.vel.length());
+      bot.avatar.update(
+        bot.phys.pos,
+        bot.damage,
+        bot.phase,
+        bot.rot.yaw,
+        dt,
+        bot.phys.vel.length(),
+        this.celebratingTeam === bot.team,
+      );
     }
 
     return shots;
