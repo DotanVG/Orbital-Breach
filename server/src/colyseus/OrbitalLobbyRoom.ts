@@ -131,18 +131,17 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   }
 
   public onLeave(client: RoomClient): void {
-    this.lastPlayerUpdate.delete(client.sessionId);
     const member = this.state.members.get(client.sessionId);
-    if (!member) {
-      return;
+    if (member) {
+      const leavingName = member.name;
+      this.state.members.delete(client.sessionId);
+      this.broadcast("lobby_event", {
+        type: "info",
+        text: `${leavingName} left the room.`,
+      });
     }
 
-    const leavingName = member.name;
-    this.state.members.delete(client.sessionId);
-    this.broadcast("lobby_event", {
-      type: "info",
-      text: `${leavingName} left the room.`,
-    });
+    this.removePresence(client.sessionId);
 
     if (!this.hasHumanMembers()) {
       this.removeAllBots();
@@ -618,6 +617,14 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.state.actors.clear();
     this.botAI.clear();
     this.botFireTimers.clear();
+    this.lastPlayerUpdate.clear();
+  }
+
+  private removePresence(id: string): void {
+    this.state.actors.delete(id);
+    this.botAI.delete(id);
+    this.botFireTimers.delete(id);
+    this.lastPlayerUpdate.delete(id);
   }
 
   private tickBots(dt: number): void {

@@ -1,0 +1,95 @@
+import { describe, expect, it, vi } from "vitest";
+import { OrbitalLobbyRoom } from "../server/src/colyseus/OrbitalLobbyRoom";
+import { ActorState, LobbyMemberState, OrbitalLobbyState } from "../server/src/colyseus/state";
+
+function createRoom(): OrbitalLobbyRoom {
+  const room = new OrbitalLobbyRoom();
+  room.state = new OrbitalLobbyState();
+  room.state.teamSize = 1;
+  room.broadcast = vi.fn() as typeof room.broadcast;
+  return room;
+}
+
+function addMember(
+  room: OrbitalLobbyRoom,
+  id: string,
+  options: { name: string; team: 0 | 1; isBot?: boolean; ready?: boolean },
+): void {
+  const member = new LobbyMemberState();
+  member.id = id;
+  member.sessionId = options.isBot ? "" : id;
+  member.name = options.name;
+  member.team = options.team;
+  member.ready = options.ready ?? true;
+  member.connected = true;
+  member.isBot = options.isBot ?? false;
+  room.state.members.set(id, member);
+}
+
+function addActor(
+  room: OrbitalLobbyRoom,
+  id: string,
+  options: { name: string; team: 0 | 1; isBot?: boolean; phase?: string },
+): void {
+  const actor = new ActorState();
+  actor.id = id;
+  actor.name = options.name;
+  actor.team = options.team;
+  actor.isBot = options.isBot ?? false;
+  actor.phase = options.phase ?? "FLOATING";
+  room.state.actors.set(id, actor);
+}
+
+describe("OrbitalLobbyRoom onLeave", () => {
+  it("removes the departing human from roster and live actors without touching bots", () => {
+    const room = createRoom();
+    room.state.phase = "PLAYING";
+
+    addMember(room, "human-1", { name: "Alpha", team: 0 });
+    addMember(room, "human-2", { name: "Bravo", team: 1 });
+    addMember(room, "bot-0", { name: "CY-BOT-01", team: 0, isBot: true });
+    addActor(room, "human-1", { name: "Alpha", team: 0 });
+    addActor(room, "human-2", { name: "Bravo", team: 1 });
+    addActor(room, "bot-0", { name: "CY-BOT-01", team: 0, isBot: true });
+
+    room.onLeave({ sessionId: "human-1" } as never);
+
+    expect(room.state.members.has("human-1")).toBe(false);
+    expect(room.state.actors.has("human-1")).toBe(false);
+    expect(room.state.members.has("human-2")).toBe(true);
+    expect(room.state.actors.has("human-2")).toBe(true);
+    expect(room.state.members.has("bot-0")).toBe(true);
+    expect(room.state.actors.has("bot-0")).toBe(true);
+    expect(room.state.phase).toBe("PLAYING");
+  });
+
+  it("clears bots, actors, and round state when the room loses its last human", () => {
+    const room = createRoom();
+    room.state.phase = "PLAYING";
+    room.state.matchComplete = true;
+    room.state.scoreTeam0 = 3;
+    room.state.scoreTeam1 = 2;
+    room.state.roundNumber = 4;
+    room.state.countdownRemaining = 2;
+    room.state.roundTimeRemaining = 18;
+
+    addMember(room, "human-1", { name: "Alpha", team: 0 });
+    addMember(room, "bot-0", { name: "CY-BOT-01", team: 0, isBot: true });
+    addMember(room, "bot-1", { name: "MG-BOT-01", team: 1, isBot: true });
+    addActor(room, "human-1", { name: "Alpha", team: 0 });
+    addActor(room, "bot-0", { name: "CY-BOT-01", team: 0, isBot: true });
+    addActor(room, "bot-1", { name: "MG-BOT-01", team: 1, isBot: true });
+
+    room.onLeave({ sessionId: "human-1" } as never);
+
+    expect(Array.from(room.state.members.keys())).toEqual([]);
+    expect(Array.from(room.state.actors.keys())).toEqual([]);
+    expect(room.state.phase).toBe("LOBBY");
+    expect(room.state.matchComplete).toBe(false);
+    expect(room.state.scoreTeam0).toBe(0);
+    expect(room.state.scoreTeam1).toBe(0);
+    expect(room.state.roundNumber).toBe(0);
+    expect(room.state.countdownRemaining).toBe(0);
+    expect(room.state.roundTimeRemaining).toBe(0);
+  });
+});
