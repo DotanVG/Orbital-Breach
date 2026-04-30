@@ -42,7 +42,19 @@ Choose a size from the main menu then pick **Solo** (bots fill all slots) or **O
 | 10v10 Arena Rush | 10 vs 10 |
 | 20v20 Zero-G War | 20 vs 20 |
 
-You always play for Team Cyan. The match ends when one team wins 5 rounds.
+The match ends when one team wins 5 rounds.
+
+### Online Lobby
+
+Click **Play Online** from the main menu to enter the online lobby. You will be placed into a matchmaking room where you can:
+
+- See the full **Team Cyan** and **Team Magenta** rosters update in real time as players join
+- **Switch teams** at any time before the match starts
+- Hit **Fill Bots** to top up empty slots with AI opponents so a match can start immediately
+- Toggle your **Ready** status — the countdown begins once all humans are ready
+- Share the room link to invite friends directly
+
+When the room fills or all players ready up, a 5-second countdown runs and the match begins. Bots fill any remaining slots automatically.
 
 ---
 
