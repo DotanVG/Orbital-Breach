@@ -1,7 +1,8 @@
 import * as THREE from "three";
-import { BREACH_ROOM_D, BREACH_ROOM_W, PLAYER_RADIUS } from "../../../../shared/constants";
+import { PLAYER_RADIUS } from "../../../../shared/constants";
 import { computeBreachSpawnPosition } from "../../player/playerSpawn";
 import { parsePortalParams, type PortalParams } from "./parsePortalParams";
+import { computeBreachRoomPortalTransform } from "./portalPlacement";
 
 const OUTBOUND_URL = "https://vibej.am/portal/2026";
 const PORTAL_RADIUS = 1.3;
@@ -87,7 +88,7 @@ void main() {
 
 let cachedParams: PortalParams | null = null;
 let sceneRef: THREE.Scene | null = null;
-let redirected = false;
+let activeTrigger: PortalTrigger | null = null;
 let arrivalSpawnConfigured = false;
 let arrivalOpenAxis: "x" | "y" | "z" = "z";
 let arrivalOpenSign: 1 | -1 = 1;
@@ -173,19 +174,19 @@ export function addOutboundVibeJamPortal(scene: THREE.Scene, params: PortalParam
 }
 
 export function checkPortalCollisions(playerPos: THREE.Vector3, velY: number): void {
-  if (redirected) return;
-  if (velY < JUMP_VEL_THRESHOLD) return;
-
-  for (const trigger of triggers) {
-    if (!trigger.box.containsPoint(playerPos)) continue;
-
-    redirected = true;
-    if (import.meta.env.DEV && trigger.type === "outbound") {
-      console.log("[VibeJam] outbound redirect URL:", trigger.targetUrl);
-    }
-    window.location.href = trigger.targetUrl;
+  const trigger = triggers.find((candidate) => candidate.box.containsPoint(playerPos)) ?? null;
+  if (!trigger) {
+    activeTrigger = null;
     return;
   }
+  if (activeTrigger === trigger) return;
+  if (velY < JUMP_VEL_THRESHOLD) return;
+
+  activeTrigger = trigger;
+  if (import.meta.env.DEV && trigger.type === "outbound") {
+    console.log("[VibeJam] outbound portal URL:", trigger.targetUrl);
+  }
+  openPortalInNewTab(trigger.targetUrl);
 }
 
 export function updateVibeJamPortals(cameraPos: THREE.Vector3, dt: number): void {
@@ -206,6 +207,7 @@ export function clearVibeJamPortals(): void {
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 function clearTriggers(type?: PortalTrigger["type"]): void {
+  if (!type || activeTrigger?.type === type) activeTrigger = null;
   for (let i = triggers.length - 1; i >= 0; i--) {
     const trigger = triggers[i];
     if (type && trigger.type !== type) continue;
@@ -218,23 +220,10 @@ function clearTriggers(type?: PortalTrigger["type"]): void {
 }
 
 function buildReturnPortalTransform(): { normal: THREE.Vector3; position: THREE.Vector3 } {
-  if (!arrivalSpawnConfigured) {
-    return {
-      normal: new THREE.Vector3(0, 0, 1),
-      position: PORTAL_ARRIVAL_SPAWN.clone().add(new THREE.Vector3(2.5, 1.2, 1.3)),
-    };
-  }
-
-  const sideAxis: "x" | "z" = arrivalOpenAxis === "x" ? "z" : "x";
-  const normal = new THREE.Vector3();
-  normal[sideAxis] = -1;
-
-  const position = PORTAL_ARRIVAL_SPAWN.clone();
-  position[sideAxis] = arrivalCenter[sideAxis] + BREACH_ROOM_W / 2 - 0.08;
-  position[arrivalOpenAxis] += arrivalOpenSign * 1.2;
-  position.y = arrivalCenter.y + 0.2;
-
-  return { normal, position };
+  const center = arrivalSpawnConfigured ? arrivalCenter : DEFAULT_ARRIVAL_CENTER;
+  const openAxis = arrivalSpawnConfigured ? arrivalOpenAxis : "z";
+  const openSign = arrivalSpawnConfigured ? arrivalOpenSign : 1;
+  return computeBreachRoomPortalTransform(center, openAxis, openSign);
 }
 
 function buildOutboundPortalTransform(): { normal: THREE.Vector3; position: THREE.Vector3 } {
@@ -244,14 +233,11 @@ function buildOutboundPortalTransform(): { normal: THREE.Vector3; position: THRE
     openSign: -1 as const,
   };
 
-  const { center, openAxis, openSign } = transform;
-  const normal = new THREE.Vector3();
-  normal[openAxis] = openSign;
-
-  const position = center.clone();
-  position[openAxis] = center[openAxis] - openSign * (BREACH_ROOM_D / 2 - 0.08);
-  position.y = center.y + 0.2;
-  return { normal, position };
+  return computeBreachRoomPortalTransform(
+    transform.center,
+    transform.openAxis,
+    transform.openSign,
+  );
 }
 
 function createPortal(
@@ -450,6 +436,12 @@ function appendString(url: URL, key: string, value: string | undefined): void {
 
 function appendNumber(url: URL, key: string, value: number | undefined): void {
   if (value !== undefined && Number.isFinite(value)) url.searchParams.set(key, String(value));
+}
+
+function openPortalInNewTab(targetUrl: string): void {
+  if (typeof window === "undefined") return;
+  const popup = window.open(targetUrl, "_blank", "noopener,noreferrer");
+  if (popup) popup.opener = null;
 }
 
 function disposeObject(root: THREE.Object3D): void {
