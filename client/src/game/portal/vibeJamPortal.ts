@@ -1,8 +1,7 @@
 import * as THREE from "three";
-import { PLAYER_RADIUS } from "../../../../shared/constants";
+import { BREACH_ROOM_D, PLAYER_RADIUS } from "../../../../shared/constants";
 import { computeBreachSpawnPosition } from "../../player/playerSpawn";
 import { parsePortalParams, type PortalParams } from "./parsePortalParams";
-import { computeBreachRoomPortalTransform } from "./portalPlacement";
 
 const OUTBOUND_URL = "https://vibej.am/portal/2026";
 const PORTAL_RADIUS = 1.3;
@@ -220,10 +219,11 @@ function clearTriggers(type?: PortalTrigger["type"]): void {
 }
 
 function buildReturnPortalTransform(): { normal: THREE.Vector3; position: THREE.Vector3 } {
-  const center = arrivalSpawnConfigured ? arrivalCenter : DEFAULT_ARRIVAL_CENTER;
-  const openAxis = arrivalSpawnConfigured ? arrivalOpenAxis : "z";
-  const openSign = arrivalSpawnConfigured ? arrivalOpenSign : 1;
-  return computeBreachRoomPortalTransform(center, openAxis, openSign);
+  return computeBackWallPortalTransform(
+    arrivalSpawnConfigured ? arrivalCenter : DEFAULT_ARRIVAL_CENTER,
+    arrivalSpawnConfigured ? arrivalOpenAxis : "z",
+    arrivalSpawnConfigured ? arrivalOpenSign : 1,
+  );
 }
 
 function buildOutboundPortalTransform(): { normal: THREE.Vector3; position: THREE.Vector3 } {
@@ -233,11 +233,22 @@ function buildOutboundPortalTransform(): { normal: THREE.Vector3; position: THRE
     openSign: -1 as const,
   };
 
-  return computeBreachRoomPortalTransform(
-    transform.center,
-    transform.openAxis,
-    transform.openSign,
-  );
+  return computeBackWallPortalTransform(transform.center, transform.openAxis, transform.openSign);
+}
+
+export function computeBackWallPortalTransform(
+  center: THREE.Vector3,
+  openAxis: "x" | "y" | "z",
+  openSign: 1 | -1,
+): { normal: THREE.Vector3; position: THREE.Vector3 } {
+  const normal = new THREE.Vector3();
+  normal[openAxis] = openSign;
+
+  const position = center.clone();
+  position[openAxis] = center[openAxis] - openSign * (BREACH_ROOM_D / 2 - 0.08);
+  position.y = center.y + 0.2;
+
+  return { normal, position };
 }
 
 function createPortal(
