@@ -118,6 +118,7 @@ export interface RoundResultEventMessage {
   winningTeam: 0 | 1 | null;
   matchWinner: 0 | 1 | null;
   reason: "breach" | "fullFreeze" | "timeout";
+  scorerId?: string;
   scorerName: string;
   finalScore?: {
     team0: number;

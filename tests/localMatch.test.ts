@@ -151,12 +151,13 @@ describe("LocalMatch", () => {
   });
 
   it("emits a score event for breach wins", () => {
-    (match as unknown as { awardRoundPoint: (team: 0 | 1, scorerName: string, reason: "breach" | "fullFreeze") => void })
-      .awardRoundPoint(0, "Pilot", "breach");
+    (match as unknown as { awardRoundPoint: (team: 0 | 1, scorerId: string, scorerName: string, reason: "breach" | "fullFreeze") => void })
+      .awardRoundPoint(0, "local-player", "Pilot", "breach");
 
     expect(events).toEqual([
       {
         type: "score",
+        scorerId: "local-player",
         scorerName: "Pilot",
         scorerTeam: 0,
       },
@@ -187,6 +188,7 @@ describe("LocalMatch", () => {
     expect(events).toEqual([
       {
         type: "score",
+        scorerId: "local-player",
         scorerName: "Pilot",
         scorerTeam: 0,
       },
@@ -216,6 +218,7 @@ describe("LocalMatch", () => {
     expect(events).toEqual([
       {
         type: "score",
+        scorerId: "local-player",
         scorerName: "Pilot",
         scorerTeam: 0,
       },

@@ -61,6 +61,17 @@ export interface SpawnProjectileEvent {
   team: 0 | 1;
 }
 
+export interface LocalMatchStatsActor {
+  id: string;
+  name: string;
+  team: 0 | 1;
+  isBot: boolean;
+  isSelf: boolean;
+  freezes: number;
+  frozen: number;
+  position: Vec3;
+}
+
 export type LocalMatchEvent =
   | {
     type: "hitConfirm";
@@ -75,6 +86,7 @@ export type LocalMatchEvent =
   }
   | {
     type: "score";
+    scorerId: string;
     scorerName: string;
     scorerTeam: 0 | 1;
   }
@@ -193,6 +205,31 @@ export class LocalMatch {
 
   public getScore(): { team0: number; team1: number } {
     return { ...this.score };
+  }
+
+  public getMatchStatsActors(player: LocalPlayer): LocalMatchStatsActor[] {
+    return [
+      {
+        id: LOCAL_PLAYER_ID,
+        name: this.config.humanName,
+        team: this.config.humanTeam,
+        isBot: false,
+        isSelf: true,
+        freezes: player.kills,
+        frozen: player.deaths,
+        position: toVec3(player.getPosition()),
+      },
+      ...this.bots.map((bot) => ({
+        id: bot.id,
+        name: bot.name,
+        team: bot.team,
+        isBot: true,
+        isSelf: false,
+        freezes: bot.kills,
+        frozen: bot.deaths,
+        position: toVec3(bot.phys.pos),
+      })),
+    ];
   }
 
   public addOutboundVibeJamPortal(params: PortalParams): void {
@@ -422,7 +459,7 @@ export class LocalMatch {
         bot.phase = "BREACH";
       }
 
-      this.awardRoundPoint(actor.team, actor.name, "breach");
+      this.awardRoundPoint(actor.team, actor.id, actor.name, "breach");
       return;
     }
   }
@@ -443,7 +480,12 @@ export class LocalMatch {
     this.maybeEmitMatchEnd();
   }
 
-  private awardRoundPoint(team: 0 | 1, scorerName: string, reason: "breach" | "fullFreeze"): void {
+  private awardRoundPoint(
+    team: 0 | 1,
+    scorerId: string,
+    scorerName: string,
+    reason: "breach" | "fullFreeze",
+  ): void {
     if (this.roundResolved) return;
     this.roundResolved = true;
     if (team === 0) this.score.team0 += 1;
@@ -451,6 +493,7 @@ export class LocalMatch {
 
     this.emitEvent({
       type: "score",
+      scorerId,
       scorerName,
       scorerTeam: team,
     });
