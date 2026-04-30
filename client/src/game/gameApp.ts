@@ -28,6 +28,7 @@ import { FloatArmTuneOverlay } from "./floatArmTuneOverlay";
 import { ProjectileSystem } from "./projectileSystem";
 import { RoundController } from "./roundController";
 import { GunTuneOverlay } from "./gunTuneOverlay";
+import { shouldShowDesktopOverlayCursor } from "./overlayCursor";
 import { buildShotFromCamera } from "./weaponFire";
 import { NetClient } from "../net/client";
 import { MultiplayerLobby } from "../ui/multiplayerLobby";
@@ -433,6 +434,7 @@ export class App {
     }
 
     this.syncCombatPresentation(gameplayActive);
+    this.syncDesktopOverlayCursor(gameplayActive);
     this.sceneMgr.render();
     requestAnimationFrame((nextTimestamp) => this.loop(nextTimestamp));
   }
@@ -1547,5 +1549,18 @@ export class App {
     }
 
     this.combatPresentationActive = gameplayActive;
+  }
+
+  private syncDesktopOverlayCursor(gameplayActive: boolean): void {
+    if (shouldShowDesktopOverlayCursor({
+      gameplayActive,
+      mobile: this.mobile,
+      sessionMenuOpen: this.sessionMenu.isOpen(),
+      tabHeld: this.input.isTabHeld(),
+    })) {
+      this.cursor.show();
+    } else {
+      this.cursor.hide();
+    }
   }
 }
