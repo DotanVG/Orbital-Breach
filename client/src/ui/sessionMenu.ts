@@ -1,3 +1,11 @@
+import {
+  ASSET_CREDITS,
+  AUDIO_CREDITS,
+  GITHUB_REPO_URL,
+  ITCH_IO_URL,
+  NOAM_SOUNDCLOUD_URL,
+} from "./creditsContent";
+
 export interface SessionSettings {
   mouseSensitivity: number;
   musicVolume: number;
@@ -12,6 +20,8 @@ export interface SessionMenuConfig {
   subtitle: string;
   title: string;
 }
+
+type SessionMenuView = "settings" | "credits";
 
 export const SESSION_MENU_GEAR_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
 
@@ -299,6 +309,111 @@ const CSS = `
     outline: 1px solid rgba(127, 252, 255, 0.4);
   }
 
+  .ob-session-view[hidden] {
+    display: none !important;
+  }
+
+  .ob-session-card-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+  }
+
+  .ob-session-inline-button {
+    min-height: 42px;
+    padding: 0 16px;
+    border: 1px solid rgba(127, 252, 255, 0.22);
+    background: rgba(127, 252, 255, 0.05);
+    color: #effcff;
+    cursor: pointer;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    transition: border-color 0.2s, background 0.2s, transform 0.2s;
+  }
+
+  .ob-session-inline-button:hover {
+    border-color: rgba(127, 252, 255, 0.48);
+    background: rgba(127, 252, 255, 0.1);
+    transform: translateY(-1px);
+  }
+
+  .ob-session-inline-button--ghost {
+    border-color: rgba(210, 220, 240, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .ob-session-inline-button--ghost:hover {
+    border-color: rgba(210, 220, 240, 0.3);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .ob-session-credit-list {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .ob-session-credit-item {
+    padding: 14px 16px;
+    border: 1px solid rgba(210, 220, 240, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .ob-session-credit-name {
+    color: #effcff;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .ob-session-credit-detail {
+    margin-top: 8px;
+    color: #cfe3ed;
+    font-size: 16px;
+    line-height: 1.45;
+  }
+
+  .ob-session-link-grid {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .ob-session-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 1px solid rgba(210, 220, 240, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+    color: #effcff;
+    text-decoration: none;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    transition: border-color 0.2s, background 0.2s, transform 0.2s;
+  }
+
+  .ob-session-link:hover {
+    border-color: rgba(127, 252, 255, 0.42);
+    background: rgba(127, 252, 255, 0.06);
+    transform: translateY(-1px);
+  }
+
+  .ob-session-link:focus-visible {
+    outline: 1px solid rgba(127, 252, 255, 0.5);
+    outline-offset: 2px;
+  }
+
   @media (max-width: 640px) {
     .ob-session-actions {
       grid-template-columns: 1fr;
@@ -376,6 +491,10 @@ export class SessionMenu {
   private readonly subtitle: HTMLDivElement;
   private readonly resumeButton: HTMLButtonElement;
   private readonly mainMenuButton: HTMLButtonElement;
+  private readonly settingsView: HTMLDivElement;
+  private readonly creditsView: HTMLDivElement;
+  private readonly openCreditsButton: HTMLButtonElement;
+  private readonly backToSettingsButton: HTMLButtonElement;
   private readonly sensitivityInput: HTMLInputElement;
   private readonly sensitivityValue: HTMLSpanElement;
   private readonly soundtrackInput: HTMLInputElement;
@@ -386,6 +505,7 @@ export class SessionMenu {
   private readonly sfxValue: HTMLSpanElement;
   private readonly cameraSelect: HTMLSelectElement;
   private settings = loadSettings();
+  private currentConfig: SessionMenuConfig | null = null;
 
   public onLauncherRequest: (() => void) | null = null;
   public onMainMenu: (() => void) | null = null;
@@ -419,55 +539,117 @@ export class SessionMenu {
         </div>
 
         <div class="ob-session-settings">
-          <section class="ob-session-settings-card">
-            <div class="ob-session-settings-title">Flight Settings</div>
-            <div class="ob-session-note">Changes apply immediately. Soundtrack toggle mutes music while preserving the level setting.</div>
+          <div id="session-menu-settings-view" class="ob-session-view">
+            <section class="ob-session-settings-card">
+              <div class="ob-session-settings-title">Flight Settings</div>
+              <div class="ob-session-note">Changes apply immediately. Soundtrack toggle mutes music while preserving the level setting.</div>
 
-            <div class="ob-session-field">
-              <div class="ob-session-field-head">
-                <span class="ob-session-field-label">Mouse Sensitivity</span>
-                <span id="session-menu-sensitivity-value" class="ob-session-value"></span>
+              <div class="ob-session-field">
+                <div class="ob-session-field-head">
+                  <span class="ob-session-field-label">Mouse Sensitivity</span>
+                  <span id="session-menu-sensitivity-value" class="ob-session-value"></span>
+                </div>
+                <input id="session-menu-sensitivity" class="ob-session-range" type="range" min="5" max="40" step="1" />
               </div>
-              <input id="session-menu-sensitivity" class="ob-session-range" type="range" min="5" max="40" step="1" />
-            </div>
 
-            <div class="ob-session-field">
-              <div class="ob-session-field-head">
-                <span class="ob-session-field-label">Soundtrack</span>
-                <span id="session-menu-soundtrack-value" class="ob-session-value"></span>
+              <div class="ob-session-field">
+                <div class="ob-session-field-head">
+                  <span class="ob-session-field-label">Soundtrack</span>
+                  <span id="session-menu-soundtrack-value" class="ob-session-value"></span>
+                </div>
+                <label class="ob-session-toggle">
+                  <span class="ob-session-toggle-copy">Keep the soundtrack channel armed once the music pass lands.</span>
+                  <input id="session-menu-soundtrack" class="ob-session-checkbox" type="checkbox" />
+                </label>
               </div>
-              <label class="ob-session-toggle">
-                <span class="ob-session-toggle-copy">Keep the soundtrack channel armed once the music pass lands.</span>
-                <input id="session-menu-soundtrack" class="ob-session-checkbox" type="checkbox" />
-              </label>
-            </div>
 
-            <div class="ob-session-field">
-              <div class="ob-session-field-head">
-                <span class="ob-session-field-label">Music Level</span>
-                <span id="session-menu-music-value" class="ob-session-value"></span>
+              <div class="ob-session-field">
+                <div class="ob-session-field-head">
+                  <span class="ob-session-field-label">Music Level</span>
+                  <span id="session-menu-music-value" class="ob-session-value"></span>
+                </div>
+                <input id="session-menu-music" class="ob-session-range" type="range" min="0" max="100" step="1" />
               </div>
-              <input id="session-menu-music" class="ob-session-range" type="range" min="0" max="100" step="1" />
-            </div>
 
-            <div class="ob-session-field">
-              <div class="ob-session-field-head">
-                <span class="ob-session-field-label">SFX Level</span>
-                <span id="session-menu-sfx-value" class="ob-session-value"></span>
+              <div class="ob-session-field">
+                <div class="ob-session-field-head">
+                  <span class="ob-session-field-label">SFX Level</span>
+                  <span id="session-menu-sfx-value" class="ob-session-value"></span>
+                </div>
+                <input id="session-menu-sfx" class="ob-session-range" type="range" min="0" max="100" step="1" />
               </div>
-              <input id="session-menu-sfx" class="ob-session-range" type="range" min="0" max="100" step="1" />
-            </div>
 
-            <div class="ob-session-field">
-              <div class="ob-session-field-head">
-                <span class="ob-session-field-label">Default Camera</span>
+              <div class="ob-session-field">
+                <div class="ob-session-field-head">
+                  <span class="ob-session-field-label">Default Camera</span>
+                </div>
+                <select id="session-menu-camera" class="ob-session-select">
+                  <option value="first">First Person</option>
+                  <option value="third">Third Person</option>
+                </select>
               </div>
-              <select id="session-menu-camera" class="ob-session-select">
-                <option value="first">First Person</option>
-                <option value="third">Third Person</option>
-              </select>
-            </div>
-          </section>
+            </section>
+
+            <section class="ob-session-settings-card">
+              <div class="ob-session-settings-title">Credits</div>
+              <div class="ob-session-note">Review model, audio, and project-link credits without leaving the build.</div>
+              <div class="ob-session-card-actions">
+                <button id="session-menu-open-credits" type="button" class="ob-session-inline-button">Open Credits</button>
+              </div>
+            </section>
+          </div>
+
+          <div id="session-menu-credits-view" class="ob-session-view" hidden>
+            <section class="ob-session-settings-card">
+              <div class="ob-session-settings-title">Asset Credits</div>
+              <div class="ob-session-note">Bundled 3D model assets used by the current browser build.</div>
+              <div class="ob-session-credit-list">
+                ${ASSET_CREDITS.map((credit) => `
+                  <article class="ob-session-credit-item">
+                    <div class="ob-session-credit-name">${escapeHtml(credit.title)}</div>
+                    <div class="ob-session-credit-detail">${escapeHtml(credit.detail)}</div>
+                  </article>
+                `).join("")}
+              </div>
+            </section>
+
+            <section class="ob-session-settings-card">
+              <div class="ob-session-settings-title">Audio Credits</div>
+              <div class="ob-session-note">Original soundtrack and sound design for Orbital Breach.</div>
+              <div class="ob-session-credit-list">
+                ${AUDIO_CREDITS.map((credit) => `
+                  <article class="ob-session-credit-item">
+                    <div class="ob-session-credit-name">${escapeHtml(credit.title)}</div>
+                    <div class="ob-session-credit-detail">${escapeHtml(credit.detail)}</div>
+                  </article>
+                `).join("")}
+              </div>
+              <div class="ob-session-link-grid">
+                <a class="ob-session-link" href="${NOAM_SOUNDCLOUD_URL}" target="_blank" rel="noreferrer noopener">
+                  <span>Noam Ouzana SoundCloud</span>
+                  <span>&nearr;</span>
+                </a>
+              </div>
+            </section>
+
+            <section class="ob-session-settings-card">
+              <div class="ob-session-settings-title">Project Links</div>
+              <div class="ob-session-note">External pages open in a new tab.</div>
+              <div class="ob-session-link-grid">
+                <a class="ob-session-link" href="${GITHUB_REPO_URL}" target="_blank" rel="noreferrer noopener">
+                  <span>GitHub Repository</span>
+                  <span>&nearr;</span>
+                </a>
+                <a class="ob-session-link" href="${ITCH_IO_URL}" target="_blank" rel="noreferrer noopener">
+                  <span>itch.io Page</span>
+                  <span>&nearr;</span>
+                </a>
+              </div>
+              <div class="ob-session-card-actions">
+                <button id="session-menu-back-to-settings" type="button" class="ob-session-inline-button ob-session-inline-button--ghost">Back To Settings</button>
+              </div>
+            </section>
+          </div>
         </div>
       </div>
     `;
@@ -477,6 +659,10 @@ export class SessionMenu {
     this.subtitle = this.query("#session-menu-subtitle");
     this.resumeButton = this.query("#session-menu-resume");
     this.mainMenuButton = this.query("#session-menu-main");
+    this.settingsView = this.query("#session-menu-settings-view");
+    this.creditsView = this.query("#session-menu-credits-view");
+    this.openCreditsButton = this.query("#session-menu-open-credits");
+    this.backToSettingsButton = this.query("#session-menu-back-to-settings");
     this.sensitivityInput = this.query("#session-menu-sensitivity");
     this.sensitivityValue = this.query("#session-menu-sensitivity-value");
     this.soundtrackInput = this.query("#session-menu-soundtrack");
@@ -489,6 +675,8 @@ export class SessionMenu {
 
     this.resumeButton.addEventListener("click", () => this.onResume?.());
     this.mainMenuButton.addEventListener("click", () => this.onMainMenu?.());
+    this.openCreditsButton.addEventListener("click", () => this.showView("credits"));
+    this.backToSettingsButton.addEventListener("click", () => this.showView("settings"));
 
     this.sensitivityInput.addEventListener("input", () => {
       this.settings.mouseSensitivity = Number(this.sensitivityInput.value) / 10000;
@@ -532,7 +720,8 @@ export class SessionMenu {
     return this.root.style.display === "flex";
   }
 
-  public open(config: SessionMenuConfig): void {
+  public open(config: SessionMenuConfig, initialView: SessionMenuView = "settings"): void {
+    this.currentConfig = config;
     this.title.textContent = config.title;
     this.subtitle.textContent = config.subtitle;
 
@@ -556,10 +745,12 @@ export class SessionMenu {
       !config.resumeLabel || !config.mainMenuLabel,
     );
 
+    this.showView(initialView);
     this.root.style.display = "flex";
   }
 
   public close(): void {
+    this.showView("settings");
     this.root.style.display = "none";
   }
 
@@ -586,9 +777,38 @@ export class SessionMenu {
     this.cameraSelect.value = this.settings.defaultCameraMode;
   }
 
+  private showView(view: SessionMenuView): void {
+    this.settingsView.hidden = view !== "settings";
+    this.creditsView.hidden = view !== "credits";
+
+    if (!this.currentConfig) return;
+
+    if (view === "credits") {
+      this.title.textContent = "Credits";
+      this.subtitle.textContent = "Asset, audio, and external-link acknowledgements for Orbital Breach.";
+      return;
+    }
+
+    this.title.textContent = this.currentConfig.title;
+    this.subtitle.textContent = this.currentConfig.subtitle;
+  }
+
   private query<T extends HTMLElement>(selector: string): T {
     return this.root.querySelector<T>(selector) as T;
   }
+}
+
+function escapeHtml(raw: string): string {
+  return raw.replace(/[&<>"']/g, (ch) => {
+    switch (ch) {
+      case "&": return "&amp;";
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case '"': return "&quot;";
+      case "'": return "&#39;";
+      default: return ch;
+    }
+  });
 }
 
 function loadSettings(): SessionSettings {

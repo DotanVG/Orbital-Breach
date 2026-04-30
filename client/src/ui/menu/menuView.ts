@@ -1,5 +1,6 @@
 import { isTouchDevice } from "../../platform";
 import type { MatchTeamSize } from "../../../../shared/match";
+import { GITHUB_REPO_URL, ITCH_IO_URL } from "../creditsContent";
 import { injectDesignTokens } from "../designTokens";
 import { SESSION_MENU_GEAR_ICON } from "../sessionMenu";
 
@@ -345,6 +346,38 @@ const CSS = `
   .ob-btn-corner.ob-br { bottom: 4px; right: 4px; border-left:  none; border-top:    none; }
 
   /* ── TUTORIAL BUTTON ── */
+  .ob-link-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+    width: 100%;
+  }
+  .ob-link-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    padding: 0 18px;
+    border: 1px solid rgba(210,220,240,.16);
+    background: rgba(10,14,26,.44);
+    color: var(--ob-fg-dim);
+    text-decoration: none;
+    font-family: var(--ob-mono);
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    transition: border-color .25s, color .25s, transform .25s, background .25s;
+  }
+  .ob-link-chip:hover {
+    border-color: rgba(140,225,255,.42);
+    color: var(--ob-cyan);
+    background: rgba(12,20,36,.74);
+    transform: translateY(-1px);
+  }
+  .ob-link-chip:focus-visible { outline: 2px solid var(--ob-cyan); outline-offset: 3px; }
+  .ob-link-chip-arrow { font-family: var(--ob-serif); font-size: 14px; letter-spacing: 0; }
+
   .ob-tutorial-btn {
     position: relative;
     display: flex;
@@ -419,6 +452,7 @@ const CSS = `
     .ob-match-grid   { grid-template-columns: repeat(3, 1fr); }
     .ob-launch-row   { flex-direction: column; align-items: center; }
     .ob-settings-row { margin-top: 0; }
+    .ob-link-row     { gap: 8px; }
     .ob-callsign-box { min-width: 0; width: 90vw; }
     .menu-root       { cursor: auto; overflow-y: auto; align-items: start; }
 
@@ -495,6 +529,7 @@ export interface MenuElements {
   playSoloButton: HTMLButtonElement;
   playOnlineButton: HTMLButtonElement;
   openSettingsButton: HTMLButtonElement;
+  openCreditsButton: HTMLButtonElement;
   playTutorialButton: HTMLButtonElement;
 }
 
@@ -541,6 +576,19 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
         <span class="ob-btn-corner ob-bl"></span><span class="ob-btn-corner ob-br"></span>
         <span class="ob-btn-label">${label} ${adornment}</span>
       </button>`;
+  }
+
+  function externalLink(label: string, href: string): string {
+    return `
+      <a
+        class="ob-link-chip"
+        href="${href}"
+        target="_blank"
+        rel="noreferrer noopener"
+      >
+        <span>${label}</span>
+        <span class="ob-link-chip-arrow">&nearr;</span>
+      </a>`;
   }
 
   const container = document.createElement("div") as HTMLDivElement;
@@ -670,6 +718,11 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
         </div>
         <div class="ob-settings-row">
           ${btn("btn-open-settings", "utility", "Settings", SESSION_MENU_GEAR_ICON)}
+          ${btn("btn-open-credits", "utility", "Credits")}
+        </div>
+        <div class="ob-link-row" aria-label="External project links">
+          ${externalLink("GitHub", GITHUB_REPO_URL)}
+          ${externalLink("itch.io", ITCH_IO_URL)}
         </div>
       </div>
 
@@ -713,6 +766,7 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
     playSoloButton:    container.querySelector<HTMLButtonElement>("#btn-play-solo")!,
     playOnlineButton:  container.querySelector<HTMLButtonElement>("#btn-play-online")!,
     openSettingsButton:container.querySelector<HTMLButtonElement>("#btn-open-settings")!,
+    openCreditsButton: container.querySelector<HTMLButtonElement>("#btn-open-credits")!,
     playTutorialButton:container.querySelector<HTMLButtonElement>("#btn-play-tutorial")!,
   };
 }
