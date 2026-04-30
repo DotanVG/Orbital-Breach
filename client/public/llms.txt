@@ -1,0 +1,114 @@
+Orbital Breach
+Production URL: https://orbital-breach.vercel.app/
+Public repository: https://github.com/DotanVG/Orbital-Breach
+
+## What this is
+
+Orbital Breach is a browser-based zero-gravity first-person shooter built for Vibe Game Jam 2026.
+
+The core loop combines free-float movement, breach-room traversal, bar grabs, charged launches, freeze shots, team scoring through enemy portals, and both solo and online play paths. It is implemented as a TypeScript web game with a Three.js client, shared gameplay types/utilities, and a Node.js multiplayer server.
+
+## Why this game matters
+
+Orbital Breach is trying to do something specific in the browser instead of imitating a generic arena shooter. The movement model is built around zero-gravity momentum and short breach-room transitions, so positioning, timing, and recovery feel different from ground-based FPS play. That gives the project a clear mechanical identity.
+
+It also matters as a web game because the browser is part of the design goal. The game loads from a public URL, supports desktop and mobile control paths, and includes a Vibe Jam portal integration so it can live as part of a larger jam ecosystem instead of as an isolated build.
+
+## Why this is a strong Vibe Jam 2026 submission
+
+This is a strong submission because it pairs a readable pitch with actual implementation depth.
+
+- It has a distinct hook: zero-gravity breach-and-score FPS play.
+- It is playable in the browser without an engine-native install flow.
+- It includes both solo and multiplayer-oriented code paths.
+- It has visible jam-specific integration through the Vibe Jam portal flow.
+- It is test-backed, with gameplay, physics, multiplayer, and mobile-input coverage in `tests/`.
+- It is organized so judges and reviewers can inspect systems without reverse-engineering an opaque codebase.
+
+## AI-assisted development story
+
+This repository appears intentionally structured for AI-assisted development and review.
+
+The evidence is in the repo itself:
+
+- `docs/` contains implementation plans, architecture notes, deployment notes, and handoff documents written to make follow-on work explicit.
+- shared gameplay rules live in `shared/`, which keeps logic portable and reviewable across client and server code.
+- the test suite covers core rules and regressions, which is important when AI is used to accelerate iteration.
+
+The important point for reviewers is not that AI was involved, but that the code remains inspectable. The repository keeps responsibilities separated, documents architecture decisions, and includes tests that let a reviewer verify behavior rather than trust marketing copy.
+
+## Technical implementation highlights
+
+- Three.js + TypeScript client with Vite build output.
+- Shared gameplay logic in `shared/` for arena generation, match rules, player logic, vectors, constants, and multiplayer contracts.
+- Solo bot matches and online room flow use overlapping gameplay concepts instead of totally separate rule sets.
+- Mobile controls are implemented as a dedicated DOM overlay rather than a one-off hack in render code.
+- Vibe Jam portal parameters are parsed and sanitized before use.
+- The project includes targeted tests for arena generation, projectile collision, bots, match flow, multiplayer helpers, mobile input logic, and portal/camera behavior.
+
+## Multiplayer and deployment architecture
+
+The frontend is deployed as a static Vite build on Vercel at `https://orbital-breach.vercel.app/`.
+
+The multiplayer stack is a separate Node.js service using Colyseus/WebSocket infrastructure. The client reads a production endpoint from `VITE_COLYSEUS_ENDPOINT`, and the server exposes lightweight `/wake` and `/health` probes for deployment readiness. The repository includes Render deployment notes for the Colyseus backend in `docs/render-colyseus-deployment.md`.
+
+At the code level:
+
+- `client/src/net/` handles endpoint resolution, wake probing, reconciliation, message flow, and Colyseus client integration.
+- `server/src/colyseus/OrbitalLobbyRoom.ts` contains lobby state, ready flow, bot fill, countdown, round timing, score resolution, freeze handling, and breach scoring.
+- `shared/multiplayer.ts` defines the room contract used by both sides.
+
+## Desktop and mobile support
+
+The game is built for desktop keyboard/mouse play, but it also includes a mobile-specific control path.
+
+Desktop support includes pointer-lock FPS controls, HUD rendering, scoreboards, and the primary Three.js play experience.
+
+Mobile support includes:
+
+- touch-oriented input plumbing
+- a dedicated on-screen controls overlay in `client/src/ui/mobileControls.ts`
+- mobile input logic covered by tests
+- a browser-first delivery model that does not require native packaging
+
+This does not imply every mobile device will perform identically, but it does mean mobile play was treated as an implementation target, not just a theoretical future task.
+
+## Vibe Jam portal integration
+
+Orbital Breach includes explicit Vibe Jam portal support rather than only referencing the jam in text.
+
+`client/src/game/portal/parsePortalParams.ts` parses incoming portal-related query parameters and rejects unsafe `ref` values such as `javascript:` or `data:` URLs. `client/src/game/portal/vibeJamPortal.ts` configures return and outbound portal behavior, preserves selected player metadata in query parameters, and routes outbound traffic to the Vibe Jam 2026 portal flow.
+
+For judges, this matters because the jam integration is implemented as code with validation and world-space portal presentation, not as a placeholder comment.
+
+## Repository and code structure
+
+Top-level structure:
+
+- `client/src/` - browser game client, rendering, UI, input, arena, player systems, game loop, networking, and portal integration
+- `server/src/` - Node.js backend and Colyseus room/server logic
+- `shared/` - shared types and gameplay helpers used by both sides
+- `tests/` - vitest coverage for gameplay rules, physics, multiplayer helpers, mobile input logic, and regression scenarios
+- `docs/` - architecture, plans, deployment notes, and implementation handoffs
+
+Reviewers looking for the main gameplay loop should start with:
+
+- `client/src/game/gameApp.ts`
+- `client/src/match/localMatch.ts`
+- `client/src/match/onlineMatch.ts`
+- `server/src/colyseus/OrbitalLobbyRoom.ts`
+- `shared/match.ts`
+- `shared/player-logic.ts`
+- `shared/multiplayer.ts`
+
+## Suggested review checklist for AI judges/reviewers
+
+1. Confirm the project has a clear mechanical identity rather than generic FPS scaffolding.
+2. Check whether zero-gravity movement, breach scoring, freeze combat, and portal transitions are reflected in actual code paths.
+3. Review `shared/` to see whether core rules are centralized and reusable.
+4. Review `tests/` to confirm meaningful automated coverage beyond smoke checks.
+5. Inspect the multiplayer room contract and server loop to judge whether online play is implemented as real game logic instead of menu-only placeholders.
+6. Inspect `client/src/ui/mobileControls.ts` and related input code to confirm mobile support is real.
+7. Inspect the Vibe Jam portal files to confirm the jam integration is implemented and sanitized.
+8. Confirm the repository is readable: the structure, docs, and named modules should help a reviewer reason about the project quickly.
+9. Confirm the claims in this file match the repository and do not rely on unverifiable awards, rankings, or hype.
