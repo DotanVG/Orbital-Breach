@@ -2,6 +2,8 @@ import { Client as ColyseusClient, type Room } from "@colyseus/sdk";
 import { getColyseusEndpoint } from "./endpoint";
 import { isMatchTeamSize, type MatchTeamSize } from "../../../shared/match";
 import {
+  getMaxPlayersForTeamSize,
+  MULTIPLAYER_BROWSER_ROOM_NAME,
   MULTIPLAYER_DEFAULT_TEAM_SIZE,
   MULTIPLAYER_ROOM_NAME,
   type BreachReportMessage,
@@ -28,6 +30,9 @@ import {
 const SERVER_URL = getColyseusEndpoint();
 
 type ColyseusRoomState = {
+  roomName: string;
+  visibility: string;
+  listing: string;
   phase: string;
   matchComplete: boolean;
   countdownRemaining: number;
@@ -35,6 +40,7 @@ type ColyseusRoomState = {
   scoreTeam0: number;
   scoreTeam1: number;
   teamSize: number;
+  maxPlayers: number;
   roundNumber: number;
   members: unknown;
   actors: unknown;
@@ -60,9 +66,7 @@ export class NetClient {
       );
     }
 
-    const room = await this.client.joinOrCreate(MULTIPLAYER_ROOM_NAME, {
-      name: options.name,
-    });
+    const room = await this.connectToTarget(options);
 
     this.room = room;
     room.onStateChange((state) => {
@@ -93,6 +97,34 @@ export class NetClient {
     this.room = null;
     if (room) {
       await room.leave(consented);
+    }
+  }
+
+  private async connectToTarget(options: MultiplayerJoinOptions): Promise<Room> {
+    if (!this.client) {
+      throw new Error("Online multiplayer endpoint not configured.");
+    }
+
+    const target = options.target ?? { kind: "quick" as const };
+    switch (target.kind) {
+      case "roomId":
+        return this.client.joinById(target.roomId, {
+          name: options.name,
+        });
+      case "create":
+        return this.client.create(MULTIPLAYER_BROWSER_ROOM_NAME, {
+          name: options.name,
+          listing: target.listing,
+          visibility: target.visibility,
+          roomName: target.roomName,
+          teamSize: target.teamSize,
+        });
+      case "quick":
+      default:
+        return this.client.joinOrCreate(MULTIPLAYER_ROOM_NAME, {
+          name: options.name,
+          listing: "quick",
+        });
     }
   }
 
@@ -150,10 +182,13 @@ function buildSnapshot(
 
   return {
     roomId: room.roomId,
+    roomName: String(state.roomName ?? "Orbital Lobby"),
     sessionId: room.sessionId,
     selfTeam: self?.team ?? 0,
     phase: toRoomPhase(state.phase),
     matchComplete: Boolean(state.matchComplete),
+    visibility: state.visibility === "private" ? "private" : "public",
+    listing: state.listing === "browser" ? "browser" : "quick",
     countdownRemaining: Number(state.countdownRemaining ?? 0),
     roundTimeRemaining: Number(state.roundTimeRemaining ?? 0),
     score: {
@@ -162,6 +197,7 @@ function buildSnapshot(
     },
     roundNumber: Number(state.roundNumber ?? 0),
     teamSize,
+    maxPlayers: Number(state.maxPlayers ?? getMaxPlayersForTeamSize(teamSize)),
     members,
     actors,
   };

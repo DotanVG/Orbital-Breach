@@ -2,7 +2,12 @@ import * as THREE from "three";
 import { GRAB_RADIUS, HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_POINT_TARGET } from "../../../shared/constants";
 import { generateArenaLayout } from "../../../shared/arena-gen";
 import { findMatchWinner } from "../../../shared/match-flow";
-import type { MultiplayerRoomSnapshot } from "../../../shared/multiplayer";
+import {
+  getInviteRoomIdFromSearch,
+  MULTIPLAYER_INVITE_PARAM,
+  type MultiplayerJoinTarget,
+  type MultiplayerRoomSnapshot,
+} from "../../../shared/multiplayer";
 import { Arena } from "../arena/arena";
 import { CameraController } from "../camera";
 import { FEATURE_FLAGS } from "../featureFlags";
@@ -20,6 +25,7 @@ import { KillFeed } from "../ui/kill-feed";
 import { initGlobalCursor, type GlobalCursor } from "../ui/globalCursor";
 import { MainMenu } from "../ui/menu";
 import { MobileControls } from "../ui/mobileControls";
+import { RoomBrowser } from "../ui/roomBrowser";
 import { WelcomeScreen } from "../ui/welcome";
 import { SessionMenu, type SessionSettings } from "../ui/sessionMenu";
 import { SoundEngine } from "../audio/SoundEngine";
@@ -64,6 +70,7 @@ export class App {
   private lastSoloSelection: PlaySelection | null = null;
   private matchEndHandle: ReturnType<typeof setTimeout> | null = null;
   private pendingOnlineDebrief: DebriefData | null = null;
+  private pendingOnlineRoomSelection: PlaySelection | null = null;
   private onlineMatchConcluding = false;
   private playerUpdateTimer = 0;
   private latestOnlineSnapshot: MultiplayerRoomSnapshot | null = null;
@@ -88,6 +95,7 @@ export class App {
   private match: LocalMatch;
   private menu: MainMenu;
   private readonly matchStats = new MatchStatsTracker();
+  private roomBrowser = new RoomBrowser();
   private welcome!: WelcomeScreen;
   private debrief = new DebriefScreen();
   private multiplayer = new MultiplayerLobby();
@@ -357,6 +365,23 @@ export class App {
     this.multiplayer.onTeamSizeChange = (teamSize) => {
       this.net.setTeamSize(teamSize);
     };
+    this.roomBrowser.onJoinRoom = (roomId) => {
+      if (!this.pendingOnlineRoomSelection) return;
+      const selection = this.pendingOnlineRoomSelection;
+      this.menu.fadeOut(() => {
+        void this.startOnlineLobby(selection, { kind: "roomId", roomId });
+      });
+    };
+    this.roomBrowser.onCreateRoom = (target) => {
+      if (!this.pendingOnlineRoomSelection) return;
+      const selection = this.pendingOnlineRoomSelection;
+      this.menu.fadeOut(() => {
+        void this.startOnlineLobby(selection, target);
+      });
+    };
+    this.roomBrowser.onClose = () => {
+      this.pendingOnlineRoomSelection = null;
+    };
 
     if (this.mobile) {
       this.mobileControls = new MobileControls(this.input);
@@ -381,6 +406,13 @@ export class App {
     };
     this.menu.onPlayOnline = (selection) => {
       void this.startOnlineLobby(selection);
+    };
+    this.menu.onBrowseOnline = (selection) => {
+      this.pendingOnlineRoomSelection = selection;
+      void this.roomBrowser.show({
+        inviteRoomId: this.getInviteRoomId(),
+        defaultTeamSize: selection.teamSize,
+      });
     };
     this.menu.onOpenSettings = () => {
       this.openSessionMenu();
@@ -1215,7 +1247,16 @@ export class App {
 
   // ── Online lobby start ──────────────────────────────────────────────────────
 
-  private async startOnlineLobby(selection: PlaySelection): Promise<void> {
+  private async startOnlineLobby(
+    selection: PlaySelection,
+    target?: MultiplayerJoinTarget,
+  ): Promise<void> {
+    this.pendingOnlineRoomSelection = null;
+    this.roomBrowser.hide();
+    const resolvedTarget = target ?? this.getInviteJoinTarget() ?? { kind: "quick" };
+    if (resolvedTarget.kind === "roomId") {
+      this.clearInviteRoomIdFromUrl();
+    }
     this.appMode = "online";
     this.onlinePlayerName = selection.name;
     this.killFeed.setLocalPlayerName(selection.name);
@@ -1243,7 +1284,10 @@ export class App {
     const myToken = ++this.onlineSessionToken;
 
     try {
-      const snapshot = await this.net.connect({ name: selection.name });
+      const snapshot = await this.net.connect({
+        name: selection.name,
+        target: resolvedTarget,
+      });
       if (myToken !== this.onlineSessionToken || this.isUserExitingOnline || this.appMode !== "online") {
         try { await this.net.disconnect(); } catch { /* ignore */ }
         return;
@@ -1272,6 +1316,8 @@ export class App {
   }
 
   private async returnToMenuFromOnline(): Promise<void> {
+    this.pendingOnlineRoomSelection = null;
+    this.roomBrowser.hide();
     this.closeSessionMenu();
     this.debrief.hide();
     this.clearCelebrationState();
@@ -1316,6 +1362,25 @@ export class App {
     });
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));
     await Promise.race([disconnectPromise, timeout]);
+  }
+
+  private getInviteRoomId(): string | null {
+    return getInviteRoomIdFromSearch(window.location.search);
+  }
+
+  private getInviteJoinTarget(): MultiplayerJoinTarget | null {
+    const roomId = this.getInviteRoomId();
+    return roomId ? { kind: "roomId", roomId } : null;
+  }
+
+  private clearInviteRoomIdFromUrl(): void {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(MULTIPLAYER_INVITE_PARAM)) {
+      return;
+    }
+
+    url.searchParams.delete(MULTIPLAYER_INVITE_PARAM);
+    window.history.replaceState({}, "", url);
   }
 
   // ── Weapon fire (solo) ──────────────────────────────────────────────────────
