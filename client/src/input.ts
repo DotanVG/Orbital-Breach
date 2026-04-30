@@ -17,6 +17,7 @@ export class InputManager {
   private gunTunePrintPressed = false;
   private menuTogglePressed = false;
   private helpPressed = false;
+  public onTabHoldChange: ((held: boolean) => void) | null = null;
 
   // Mobile touch input state
   private touchLookDx = 0;
@@ -30,7 +31,9 @@ export class InputManager {
 
   public constructor() {
     window.addEventListener('keydown', (e) => {
+      const tabWasHeld = this.keys.has('Tab');
       this.keys.add(e.code);
+      if (e.code === 'Tab' && !tabWasHeld) this.onTabHoldChange?.(true);
       if (e.code === 'KeyE' && !e.repeat) this.grabPressed = true;
       if (e.code === 'KeyV' && !e.repeat) this.thirdPersonTogglePressed = true;
       if (e.code === 'KeyP' && !e.repeat) this.gunTuneTogglePressed = true;
@@ -59,7 +62,9 @@ export class InputManager {
     });
 
     window.addEventListener('keyup', (e) => {
+      const tabWasHeld = e.code === 'Tab' && this.keys.has('Tab');
       this.keys.delete(e.code);
+      if (tabWasHeld) this.onTabHoldChange?.(false);
     });
 
     window.addEventListener('mousemove', (e) => {
@@ -344,6 +349,7 @@ export class InputManager {
   }
 
   private clearState(): void {
+    const tabWasHeld = this.keys.has('Tab');
     this.keys.clear();
     this.mouseDx = 0;
     this.mouseDy = 0;
@@ -359,6 +365,7 @@ export class InputManager {
     this.gunTunePrintPressed = false;
     this.menuTogglePressed = false;
     // mobileControlsActive is intentionally preserved across blur/visibility changes
+    if (tabWasHeld) this.onTabHoldChange?.(false);
   }
 }
 
