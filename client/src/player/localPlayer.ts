@@ -89,6 +89,8 @@ export class LocalPlayer {
   public grabbedBarPos: THREE.Vector3 | null = null;
   public currentBreachTeam: 0 | 1 = 0;
 
+  public onFullyFrozen: (() => void) | null = null;
+
   private respawnTimer = 0;
   private onGround = false;
   private breachJumpAnimationActive = false;
@@ -588,6 +590,7 @@ export class LocalPlayer {
     if (!this.damage.frozen) {
       this.damage.frozen = true;
       this.deaths++;
+      this.onFullyFrozen?.();
     }
     this.phase = 'FROZEN';
     this.grabbedBarPos = null;

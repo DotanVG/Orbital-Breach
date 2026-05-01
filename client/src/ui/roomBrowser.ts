@@ -32,7 +32,7 @@ const CSS = `
   }
 
   .ob-rb-shell {
-    width: min(1100px, calc(100vw - 28px));
+    width: min(1100px, calc(100vw - 36px));
     max-height: calc(100dvh - 28px);
     overflow: auto;
     padding: 22px;
