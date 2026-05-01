@@ -427,6 +427,9 @@ export class App {
         defaultTeamSize: selection.teamSize,
       });
     };
+    this.menu.onOpenInstructions = () => {
+      this.openSessionMenu("instructions");
+    };
     this.menu.onOpenSettings = () => {
       this.openSessionMenu();
     };
@@ -1076,7 +1079,7 @@ export class App {
     this.menu.show();
   }
 
-  private openSessionMenu(view: "settings" | "credits" = "settings"): void {
+  private openSessionMenu(view: "settings" | "instructions" | "credits" = "settings"): void {
     if (this.sessionMenu.isOpen() || this.debrief.isVisible() || this.onlineMatchConcluding) return;
 
     const inMenu = this.appMode === "menu";
