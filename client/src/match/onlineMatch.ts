@@ -169,7 +169,7 @@ export class OnlineMatch {
         track.renderPos.z,
       ),
       team: track.snapshot.team,
-      active: !track.snapshot.frozen && track.snapshot.phase !== "RESPAWNING",
+      active: !track.snapshot.frozen && track.snapshot.phase !== "RESPAWNING" && track.snapshot.phase !== "BREACH",
       radius: HITBOX_RADIUS,
     }));
   }

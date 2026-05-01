@@ -1,6 +1,7 @@
 import { isTouchDevice } from "../../platform";
 import type { MatchTeamSize } from "../../../../shared/match";
 import { GITHUB_REPO_URL, ITCH_IO_URL } from "../creditsContent";
+import { GITHUB_ICON_SVG, ITCH_ICON_SVG } from "../linkIcons";
 import { injectDesignTokens } from "../designTokens";
 import { SESSION_MENU_GEAR_ICON } from "../sessionMenu";
 
@@ -353,6 +354,15 @@ const CSS = `
     justify-content: center;
     width: 100%;
   }
+  .ob-link-chip-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+  .ob-link-chip-icon svg { width: 18px; height: 18px; }
   .ob-link-chip {
     display: inline-flex;
     align-items: center;
@@ -451,10 +461,10 @@ const CSS = `
   @media (max-width: 640px) {
     .ob-match-grid   { grid-template-columns: repeat(3, 1fr); }
     .ob-launch-row   { flex-direction: column; align-items: center; }
-    .ob-settings-row { margin-top: 0; }
+    .ob-settings-row { margin-top: 0; flex-wrap: wrap; }
     .ob-link-row     { gap: 8px; }
     .ob-callsign-box { min-width: 0; width: 90vw; }
-    .menu-root       { cursor: auto; overflow-y: auto; align-items: start; }
+    .menu-root       { cursor: auto; overflow-y: auto; overflow-x: hidden; align-items: start; }
 
     .ob-topbar  { padding-left: 16px; padding-right: 16px; padding-top: calc(14px + env(safe-area-inset-top, 0px)); }
     .ob-bottombar { padding-left: 16px; padding-right: 16px;
@@ -579,7 +589,7 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
       </button>`;
   }
 
-  function externalLink(label: string, href: string): string {
+  function externalLink(label: string, href: string, icon: string): string {
     return `
       <a
         class="ob-link-chip"
@@ -587,6 +597,7 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
         target="_blank"
         rel="noreferrer noopener"
       >
+        <span class="ob-link-chip-icon">${icon}</span>
         <span>${label}</span>
         <span class="ob-link-chip-arrow">&nearr;</span>
       </a>`;
@@ -723,8 +734,8 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
           ${btn("btn-open-credits", "utility", "Credits")}
         </div>
         <div class="ob-link-row" aria-label="External project links">
-          ${externalLink("GitHub", GITHUB_REPO_URL)}
-          ${externalLink("itch.io", ITCH_IO_URL)}
+          ${externalLink("GITHUB REPO", GITHUB_REPO_URL, GITHUB_ICON_SVG)}
+          ${externalLink("DOTANV.ITCH.IO", ITCH_IO_URL, ITCH_ICON_SVG)}
         </div>
       </div>
 

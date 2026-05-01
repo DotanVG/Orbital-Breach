@@ -270,7 +270,7 @@ export class LocalMatch {
     humanCentre.y += HITBOX_OFFSET_Y;
     return [
       {
-        active: player.phase !== "RESPAWNING" && !player.damage.frozen,
+        active: player.phase !== "RESPAWNING" && player.phase !== "BREACH" && !player.damage.frozen,
         id: LOCAL_PLAYER_ID,
         pos: humanCentre,
         radius: HITBOX_RADIUS,
@@ -280,7 +280,7 @@ export class LocalMatch {
         const botCentre = bot.phys.pos.clone();
         botCentre.y += HITBOX_OFFSET_Y;
         return {
-          active: bot.phase !== "RESPAWNING" && !bot.damage.frozen,
+          active: bot.phase !== "RESPAWNING" && bot.phase !== "BREACH" && !bot.damage.frozen,
           id: bot.id,
           pos: botCentre,
           radius: HITBOX_RADIUS,
@@ -650,7 +650,7 @@ export class LocalMatch {
     bot.rot.yaw = command.lookYaw;
     bot.rot.pitch = command.lookPitch;
 
-    if (command.fire && !bot.damage.rightArm && command.fireDirection) {
+    if (command.fire && bot.phase !== "BREACH" && !bot.damage.rightArm && command.fireDirection) {
       const forward = toThree(command.fireDirection).normalize();
       shots.push({
         direction: forward.clone(),
