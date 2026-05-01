@@ -1,11 +1,12 @@
-import { Server } from "@colyseus/core";
+import { matchMaker, Server } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import type { ErrorRequestHandler, Request, Response } from "express";
-import { MULTIPLAYER_ROOM_NAME } from "../../shared/multiplayer";
+import { MULTIPLAYER_BROWSER_ROOM_NAME, MULTIPLAYER_ROOM_NAME } from "../../shared/multiplayer";
 import { OrbitalLobbyRoom } from "./colyseus/OrbitalLobbyRoom";
+import { buildPublicRoomDirectory } from "./colyseus/roomDirectory";
 
 const PORT = Number(process.env.PORT || 2567);
 const NODE_ENV = process.env.NODE_ENV ?? "development";
@@ -79,6 +80,17 @@ async function main(): Promise<void> {
       app.get("/wake", probeLimiter, (_req: Request, res: Response) => {
         res.json(probePayload());
       });
+      app.get("/rooms", probeLimiter, async (_req: Request, res: Response, next) => {
+        try {
+          const rooms = await matchMaker.query({ name: MULTIPLAYER_BROWSER_ROOM_NAME });
+          res.json({
+            ok: true,
+            rooms: buildPublicRoomDirectory(rooms as unknown[]),
+          });
+        } catch (error) {
+          next(error);
+        }
+      });
 
       const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
         if (!IS_PROD) console.error(err);
@@ -94,6 +106,7 @@ async function main(): Promise<void> {
   // Do not mount @colyseus/monitor in production without auth; it exposes
   // room state, client list, and admin actions to anyone with the URL.
   gameServer.define(MULTIPLAYER_ROOM_NAME, OrbitalLobbyRoom);
+  gameServer.define(MULTIPLAYER_BROWSER_ROOM_NAME, OrbitalLobbyRoom);
   await gameServer.listen(PORT);
 
   console.log(`Colyseus listening on port ${PORT}`);

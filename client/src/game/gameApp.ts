@@ -2,7 +2,12 @@ import * as THREE from "three";
 import { GRAB_RADIUS, HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_POINT_TARGET } from "../../../shared/constants";
 import { generateArenaLayout } from "../../../shared/arena-gen";
 import { findMatchWinner } from "../../../shared/match-flow";
-import type { MultiplayerRoomSnapshot } from "../../../shared/multiplayer";
+import {
+  getInviteRoomIdFromSearch,
+  MULTIPLAYER_INVITE_PARAM,
+  type MultiplayerJoinTarget,
+  type MultiplayerRoomSnapshot,
+} from "../../../shared/multiplayer";
 import { Arena } from "../arena/arena";
 import { CameraController } from "../camera";
 import { FEATURE_FLAGS } from "../featureFlags";
@@ -20,6 +25,7 @@ import { KillFeed } from "../ui/kill-feed";
 import { initGlobalCursor, type GlobalCursor } from "../ui/globalCursor";
 import { MainMenu } from "../ui/menu";
 import { MobileControls } from "../ui/mobileControls";
+import { RoomBrowser } from "../ui/roomBrowser";
 import { WelcomeScreen } from "../ui/welcome";
 import { SessionMenu, type SessionSettings } from "../ui/sessionMenu";
 import { SoundEngine } from "../audio/SoundEngine";
@@ -28,12 +34,15 @@ import { FloatArmTuneOverlay } from "./floatArmTuneOverlay";
 import { ProjectileSystem } from "./projectileSystem";
 import { RoundController } from "./roundController";
 import { GunTuneOverlay } from "./gunTuneOverlay";
+import { shouldShowDesktopOverlayCursor } from "./overlayCursor";
 import { buildShotFromCamera } from "./weaponFire";
 import { NetClient } from "../net/client";
 import { MultiplayerLobby } from "../ui/multiplayerLobby";
 import type { PlaySelection } from "../ui/menu";
 import { DebriefScreen, type DebriefData, type DebriefPlayer } from "../ui/debrief";
 import { showConfirmDialog } from "../ui/confirmDialog";
+import { getScoreboardCursorTransition } from "./scoreboardCursor";
+import { MatchStatsTracker, type ObservedMatchPlayer } from "./matchStatsTracker";
 import {
   PORTAL_ARRIVAL_SPAWN,
   checkPortalCollisions,
@@ -61,6 +70,7 @@ export class App {
   private lastSoloSelection: PlaySelection | null = null;
   private matchEndHandle: ReturnType<typeof setTimeout> | null = null;
   private pendingOnlineDebrief: DebriefData | null = null;
+  private pendingOnlineRoomSelection: PlaySelection | null = null;
   private onlineMatchConcluding = false;
   private playerUpdateTimer = 0;
   private latestOnlineSnapshot: MultiplayerRoomSnapshot | null = null;
@@ -70,6 +80,7 @@ export class App {
   private combatPresentationActive = false;
   private portalArrivalPending = false;
   private portalUrlCleaned = false;
+  private restorePointerLockAfterScoreboard = false;
 
   private arena: Arena;
   private cam: CameraController;
@@ -83,6 +94,8 @@ export class App {
   private lastTime = 0;
   private match: LocalMatch;
   private menu: MainMenu;
+  private readonly matchStats = new MatchStatsTracker();
+  private roomBrowser = new RoomBrowser();
   private welcome!: WelcomeScreen;
   private debrief = new DebriefScreen();
   private multiplayer = new MultiplayerLobby();
@@ -106,9 +119,13 @@ export class App {
     this.sceneMgr = new SceneManager();
     this.sound = new SoundEngine(this.sceneMgr.getCamera(), this.sceneMgr.getScene());
     this.input = new InputManager();
+    this.input.onTabHoldChange = (held) => {
+      this.handleScoreboardTabHoldChange(held);
+    };
     this.cam = new CameraController(this.sceneMgr.getCamera());
     this.arena = new Arena(this.sceneMgr.getScene());
     this.player = new LocalPlayer(this.sceneMgr.getScene());
+    this.player.onFullyFrozen = () => this.sound.playHit();
     this.hud = new HUD();
     this.menu = new MainMenu();
     this.cursor = initGlobalCursor();
@@ -138,6 +155,7 @@ export class App {
           );
           break;
         case "score":
+          this.matchStats.recordBreach(event.scorerId);
           this.killFeed.addScore(event.scorerName, event.scorerTeam);
           break;
         case "roundWin":
@@ -195,6 +213,7 @@ export class App {
           this.syncLocalOnlineActor(snapshot);
           this.arena.setPortalDoorsOpen(snapshot.phase === "PLAYING");
           this.onlineMatch.applySnapshot(snapshot.actors, snapshot.sessionId);
+          this.matchStats.observePlayers(this.getOnlineMatchStatsActors(snapshot), { accumulateTravel: false });
         }
         return;
       }
@@ -225,6 +244,9 @@ export class App {
         this.syncLocalOnlineActor(snapshot);
         this.arena.setPortalDoorsOpen(snapshot.phase === "PLAYING");
         this.onlineMatch.applySnapshot(snapshot.actors, snapshot.sessionId);
+        this.matchStats.observePlayers(this.getOnlineMatchStatsActors(snapshot), {
+          accumulateTravel: snapshot.phase === "PLAYING",
+        });
       }
     };
 
@@ -256,10 +278,12 @@ export class App {
       }
 
       if (event.reason === "breach" && event.winningTeam !== null) {
+        this.matchStats.recordBreach(event.scorerId);
         this.killFeed.addScore(event.scorerName, event.winningTeam);
       }
 
       if (event.matchWinner !== null && event.finalScore) {
+        this.setCelebratingTeam(event.matchWinner);
         this.onlineMatchConcluding = true;
         this.pendingOnlineDebrief = this.buildOnlineDebrief(event.matchWinner, event.finalScore);
         this.sessionMenu.close();
@@ -269,6 +293,7 @@ export class App {
             matchScore: event.finalScore,
           }),
         );
+        this.restorePointerLockAfterScoreboard = false;
         this.input.exitPointerLock();
         this.input.setUiBlocked(true);
         this.mobileControls?.hide();
@@ -341,6 +366,23 @@ export class App {
     this.multiplayer.onTeamSizeChange = (teamSize) => {
       this.net.setTeamSize(teamSize);
     };
+    this.roomBrowser.onJoinRoom = (roomId) => {
+      if (!this.pendingOnlineRoomSelection) return;
+      const selection = this.pendingOnlineRoomSelection;
+      this.menu.fadeOut(() => {
+        void this.startOnlineLobby(selection, { kind: "roomId", roomId });
+      });
+    };
+    this.roomBrowser.onCreateRoom = (target) => {
+      if (!this.pendingOnlineRoomSelection) return;
+      const selection = this.pendingOnlineRoomSelection;
+      this.menu.fadeOut(() => {
+        void this.startOnlineLobby(selection, target);
+      });
+    };
+    this.roomBrowser.onClose = () => {
+      this.pendingOnlineRoomSelection = null;
+    };
 
     if (this.mobile) {
       this.mobileControls = new MobileControls(this.input);
@@ -366,8 +408,18 @@ export class App {
     this.menu.onPlayOnline = (selection) => {
       void this.startOnlineLobby(selection);
     };
+    this.menu.onBrowseOnline = (selection) => {
+      this.pendingOnlineRoomSelection = selection;
+      void this.roomBrowser.show({
+        inviteRoomId: this.getInviteRoomId(),
+        defaultTeamSize: selection.teamSize,
+      });
+    };
     this.menu.onOpenSettings = () => {
       this.openSessionMenu();
+    };
+    this.menu.onOpenCredits = () => {
+      this.openSessionMenu("credits");
     };
     this.menu.onPlayTutorial = (selection) => {
       this.startTutorialMatch(selection);
@@ -433,6 +485,7 @@ export class App {
     }
 
     this.syncCombatPresentation(gameplayActive);
+    this.syncDesktopOverlayCursor(gameplayActive);
     this.sceneMgr.render();
     requestAnimationFrame((nextTimestamp) => this.loop(nextTimestamp));
   }
@@ -469,6 +522,9 @@ export class App {
       (hit) => this.match.handleProjectileHit(hit, this.player, this.cam),
     );
     this.tickGunTuning();
+    this.matchStats.observePlayers(this.match.getMatchStatsActors(this.player), {
+      accumulateTravel: this.round.isPlaying(),
+    });
 
     checkPortalCollisions(this.player.getPosition(), this.player.phys.vel.y);
     updateVibeJamPortals(this.sceneMgr.getCamera().position, dt);
@@ -509,7 +565,7 @@ export class App {
     const localCentre = this.player.getPosition().clone();
     localCentre.y += HITBOX_OFFSET_Y;
     const localTarget = {
-      active: this.player.phase !== "RESPAWNING" && !this.player.damage.frozen,
+      active: this.player.phase !== "RESPAWNING" && this.player.phase !== "BREACH" && !this.player.damage.frozen,
       id: localActorId,
       pos: localCentre,
       radius: HITBOX_RADIUS,
@@ -671,6 +727,16 @@ export class App {
       return;
     }
 
+    this.clearCelebrationState();
+    if (
+      snapshot.roundNumber === 1
+      && snapshot.score.team0 === 0
+      && snapshot.score.team1 === 0
+    ) {
+      this.matchStats.reset();
+    }
+
+
     this.onlineGameActive = true;
     this.onlineRoundActive = snapshot.phase === "PLAYING";
     this.onlineBreachReported = false;
@@ -713,6 +779,7 @@ export class App {
     this.arena.setPortalDoorsOpen(snapshot.phase === "PLAYING");
 
     this.onlineMatch.applySnapshot(snapshot.actors, snapshot.sessionId);
+    this.matchStats.observePlayers(this.getOnlineMatchStatsActors(snapshot), { accumulateTravel: false });
 
     if (this.mobile) {
       const menuOpen = this.sessionMenu.isOpen();
@@ -730,6 +797,7 @@ export class App {
   private endOnlineGame(): void {
     this.sound.stopCountdown();
     this.closeSessionMenu();
+    this.clearCelebrationState();
     this.onlineGameActive = false;
     this.onlineRoundActive = false;
     this.onlineBreachReported = false;
@@ -737,6 +805,7 @@ export class App {
     this.onlineMatch.dispose();
     this.projectiles.clear();
     this.killFeed.setVisible(false);
+    this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
@@ -860,6 +929,7 @@ export class App {
   // ── Solo round lifecycle ────────────────────────────────────────────────────
 
   private beginNewRound(): void {
+    this.clearCelebrationState();
     this.hud.hideRoundEnd();
     this.projectiles.clear();
     clearVibeJamPortals();
@@ -932,6 +1002,7 @@ export class App {
     finalScore: { team0: number; team1: number },
   ): void {
     this.matchOver = true;
+    this.setCelebratingTeam(winningTeam);
     this.round.cancelPendingRestart();
     if (this.matchEndHandle) clearTimeout(this.matchEndHandle);
     this.matchEndHandle = setTimeout(() => {
@@ -944,28 +1015,8 @@ export class App {
     winningTeam: 0 | 1,
     finalScore: { team0: number; team1: number },
   ): void {
-    const rosters = this.match.getHudRosters(this.player);
     const playerTeam = this.player.team;
-    const enemyTeam = (1 - playerTeam) as 0 | 1;
-
-    const ownPlayers: DebriefPlayer[] = rosters.ownTeam.map((p) => ({
-      id: p.id,
-      name: p.name,
-      team: playerTeam,
-      breaches: p.kills,
-      frozen: p.deaths,
-      isBot: p.isBot,
-      isSelf: p.id === "local-player",
-    }));
-    const enemyPlayers: DebriefPlayer[] = rosters.enemyTeam.map((p) => ({
-      id: p.id,
-      name: p.name,
-      team: enemyTeam,
-      breaches: p.kills,
-      frozen: p.deaths,
-      isBot: p.isBot,
-      isSelf: false,
-    }));
+    this.matchStats.observePlayers(this.match.getMatchStatsActors(this.player), { accumulateTravel: false });
 
     const teamSize = this.lastSoloSelection?.teamSize ?? 1;
     const sizeLabelMap: Record<number, string> = {
@@ -975,7 +1026,8 @@ export class App {
     const debriefData: DebriefData = {
       winningTeam,
       score: finalScore,
-      players: [...ownPlayers, ...enemyPlayers],
+      players: this.matchStats.buildPlayers(),
+      awards: this.matchStats.buildAwards(),
       playerTeam,
       secondaryActionLabel: "Main Menu",
       primaryActionLabel: "Play Again",
@@ -988,6 +1040,7 @@ export class App {
   private returnToMenuFromSolo(): void {
     this.sound.stopCountdown();
     this.closeSessionMenu();
+    this.clearCelebrationState();
     this.debrief.hide();
     this.appMode = "menu";
     this.cursor.show();
@@ -997,6 +1050,7 @@ export class App {
     this.hud.setVisible(false);
     this.hud.hideRoundEnd();
     this.killFeed.setVisible(false);
+    this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
@@ -1006,7 +1060,7 @@ export class App {
     this.menu.show();
   }
 
-  private openSessionMenu(): void {
+  private openSessionMenu(view: "settings" | "credits" = "settings"): void {
     if (this.sessionMenu.isOpen() || this.debrief.isVisible() || this.onlineMatchConcluding) return;
 
     const inMenu = this.appMode === "menu";
@@ -1034,6 +1088,7 @@ export class App {
           : "Back To Lobby";
     const mainMenuLabel = inMenu ? null : "Return To Main Menu";
 
+    this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
     this.input.setUiBlocked(true);
     if (this.mobile) {
@@ -1046,7 +1101,7 @@ export class App {
       subtitle,
       resumeLabel,
       mainMenuLabel,
-    });
+    }, view);
   }
 
   private closeSessionMenu(): void {
@@ -1147,11 +1202,13 @@ export class App {
   private startSoloMatch(selection: PlaySelection): void {
     this.lastSoloSelection = selection;
     this.debrief.hide();
+    this.clearCelebrationState();
     this.appMode = "solo";
     this.cursor.hide();
     this.matchOver = false;
     this.onlineBreachReported = false;
     this.helpVisible = false;
+    this.matchStats.reset();
     this.tutorial.beginRun();
     this.killFeed.setLocalPlayerName(selection.name);
     this.thirdPerson = this.sessionMenu.getSettings().defaultCameraMode === "third";
@@ -1191,7 +1248,18 @@ export class App {
 
   // ── Online lobby start ──────────────────────────────────────────────────────
 
-  private async startOnlineLobby(selection: PlaySelection): Promise<void> {
+  private async startOnlineLobby(
+    selection: PlaySelection,
+    target?: MultiplayerJoinTarget,
+  ): Promise<void> {
+    this.pendingOnlineRoomSelection = null;
+    this.roomBrowser.hide();
+    const inviteRoomId = this.getInviteRoomId();
+    const resolvedTarget = target ?? this.getInviteJoinTarget() ?? { kind: "quick" };
+    const shouldClearInviteParam =
+      resolvedTarget.kind === "roomId"
+      && inviteRoomId !== null
+      && resolvedTarget.roomId === inviteRoomId;
     this.appMode = "online";
     this.onlinePlayerName = selection.name;
     this.killFeed.setLocalPlayerName(selection.name);
@@ -1199,6 +1267,7 @@ export class App {
     this.onlineRoundActive = false;
     this.onlineBreachReported = false;
     this.onlineMatchConcluding = false;
+    this.matchStats.reset();
     this.pendingOnlineDebrief = null;
     if (this.matchEndHandle) { clearTimeout(this.matchEndHandle); this.matchEndHandle = null; }
     this.previousOnlinePhase = null;
@@ -1207,6 +1276,7 @@ export class App {
     this.hud.setVisible(false);
     this.killFeed.setVisible(false);
     this.input.setUiBlocked(false);
+    this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
@@ -1217,10 +1287,16 @@ export class App {
     const myToken = ++this.onlineSessionToken;
 
     try {
-      const snapshot = await this.net.connect({ name: selection.name });
+      const snapshot = await this.net.connect({
+        name: selection.name,
+        target: resolvedTarget,
+      });
       if (myToken !== this.onlineSessionToken || this.isUserExitingOnline || this.appMode !== "online") {
         try { await this.net.disconnect(); } catch { /* ignore */ }
         return;
+      }
+      if (shouldClearInviteParam) {
+        this.clearInviteRoomIdFromUrl();
       }
       this.latestOnlineSnapshot = snapshot;
       this.previousOnlinePhase = snapshot.phase;
@@ -1246,8 +1322,12 @@ export class App {
   }
 
   private async returnToMenuFromOnline(): Promise<void> {
+    this.pendingOnlineRoomSelection = null;
+    this.roomBrowser.hide();
     this.closeSessionMenu();
     this.debrief.hide();
+    this.clearCelebrationState();
+    this.matchStats.reset();
     this.appMode = "menu";
     this.onlineGameActive = false;
     this.onlineRoundActive = false;
@@ -1268,6 +1348,7 @@ export class App {
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
     this.input.setUiBlocked(false);
+    this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
     this.sessionMenu.setLauncherVisible(false);
     this.gun.setVisible(false);
@@ -1289,6 +1370,25 @@ export class App {
     await Promise.race([disconnectPromise, timeout]);
   }
 
+  private getInviteRoomId(): string | null {
+    return getInviteRoomIdFromSearch(window.location.search);
+  }
+
+  private getInviteJoinTarget(): MultiplayerJoinTarget | null {
+    const roomId = this.getInviteRoomId();
+    return roomId ? { kind: "roomId", roomId } : null;
+  }
+
+  private clearInviteRoomIdFromUrl(): void {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(MULTIPLAYER_INVITE_PARAM)) {
+      return;
+    }
+
+    url.searchParams.delete(MULTIPLAYER_INVITE_PARAM);
+    window.history.replaceState({}, "", url);
+  }
+
   // ── Weapon fire (solo) ──────────────────────────────────────────────────────
 
   private showMatchDebrief(data: DebriefData): void {
@@ -1298,6 +1398,7 @@ export class App {
     }
 
     this.sessionMenu.close();
+    this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
     this.input.setUiBlocked(true);
     this.mobileControls?.hide();
@@ -1322,32 +1423,15 @@ export class App {
       1: "1v1 Duel", 2: "2v2 Duos", 5: "5v5 Squads", 10: "10v10 Rush", 20: "20v20 War",
     };
 
-    const players: DebriefPlayer[] = (snapshot?.actors ?? []).map((actor) => ({
-      id: actor.id,
-      name: actor.name,
-      team: actor.team,
-      breaches: actor.kills,
-      frozen: actor.deaths,
-      isBot: actor.isBot,
-      isSelf: actor.id === sessionId,
-    }));
-
-    if (players.length === 0) {
-      players.push({
-        id: sessionId,
-        name: this.onlinePlayerName,
-        team: playerTeam,
-        breaches: this.player.kills,
-        frozen: this.player.deaths,
-        isBot: false,
-        isSelf: true,
-      });
+    if (snapshot) {
+      this.matchStats.observePlayers(this.getOnlineMatchStatsActors(snapshot), { accumulateTravel: false });
     }
 
     return {
       winningTeam,
       score: finalScore,
-      players,
+      players: this.getTrackedOnlineDebriefPlayers(sessionId, playerTeam),
+      awards: this.matchStats.buildAwards(),
       playerTeam,
       secondaryActionLabel: "Main Menu",
       primaryActionLabel: "Return To Lobby",
@@ -1355,10 +1439,48 @@ export class App {
     };
   }
 
+  private getOnlineMatchStatsActors(snapshot: MultiplayerRoomSnapshot): ObservedMatchPlayer[] {
+    return snapshot.actors.map((actor) => ({
+      id: actor.id,
+      name: actor.name,
+      team: actor.team,
+      isBot: actor.isBot,
+      isSelf: actor.id === snapshot.sessionId,
+      freezes: actor.kills,
+      frozen: actor.deaths,
+      position: {
+        x: actor.posX,
+        y: actor.posY,
+        z: actor.posZ,
+      },
+    }));
+  }
+
+  private getTrackedOnlineDebriefPlayers(sessionId: string, playerTeam: 0 | 1): DebriefPlayer[] {
+    const trackedPlayers = this.matchStats.buildPlayers();
+    if (trackedPlayers.length > 0) {
+      return trackedPlayers;
+    }
+
+    return [{
+      id: sessionId,
+      name: this.onlinePlayerName,
+      team: playerTeam,
+      breaches: 0,
+      freezes: this.player.kills,
+      frozen: this.player.deaths,
+      travelDistance: 0,
+      isBot: false,
+      isSelf: true,
+    }];
+  }
+
   private returnToOnlineLobbyFromDebrief(): void {
+    this.clearCelebrationState();
     this.onlineMatchConcluding = false;
     this.onlineGameActive = false;
     this.onlineRoundActive = false;
+    this.matchStats.reset();
     this.input.setUiBlocked(false);
     this.onlineMatch.dispose();
     this.projectiles.clear();
@@ -1391,6 +1513,18 @@ export class App {
     this.sound.playLocalShot();
     this.player.triggerArmRecoil();
     this.tutorial.noteShotFired();
+  }
+
+  private setCelebratingTeam(team: 0 | 1): void {
+    this.player.setVictoryDanceActive(this.player.team === team && !this.player.damage.frozen);
+    this.match.setCelebratingTeam(team);
+    this.onlineMatch.setCelebratingTeam(team);
+  }
+
+  private clearCelebrationState(): void {
+    this.player.setVictoryDanceActive(false);
+    this.match.setCelebratingTeam(null);
+    this.onlineMatch.setCelebratingTeam(null);
   }
 
   // ── Gun tuning overlays ─────────────────────────────────────────────────────
@@ -1532,6 +1666,30 @@ export class App {
       );
   }
 
+  private handleScoreboardTabHoldChange(held: boolean): void {
+    const transition = getScoreboardCursorTransition(held, {
+      desktop: !this.mobile,
+      gameplayActive: this.isGameplaySceneActive(),
+      pointerLocked: this.input.isLocked(),
+      restorePointerLockAfterScoreboard: this.restorePointerLockAfterScoreboard,
+      sessionMenuOpen: this.sessionMenu.isOpen(),
+    });
+    this.restorePointerLockAfterScoreboard = transition.nextRestorePointerLockAfterScoreboard;
+
+    if (transition.showCursor) {
+      this.cursor.show();
+    }
+    if (transition.hideCursor) {
+      this.cursor.hide();
+    }
+    if (transition.exitPointerLock) {
+      this.input.exitPointerLock();
+    }
+    if (transition.requestPointerLock) {
+      this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
+    }
+  }
+
   private syncCombatPresentation(gameplayActive: boolean): void {
     if (!gameplayActive) {
       if (this.combatPresentationActive) {
@@ -1547,5 +1705,19 @@ export class App {
     }
 
     this.combatPresentationActive = gameplayActive;
+  }
+
+  private syncDesktopOverlayCursor(gameplayActive: boolean): void {
+    if (!gameplayActive) return;
+    if (shouldShowDesktopOverlayCursor({
+      gameplayActive,
+      mobile: this.mobile,
+      sessionMenuOpen: this.sessionMenu.isOpen(),
+      tabHeld: this.input.isTabHeld(),
+    })) {
+      this.cursor.show();
+    } else {
+      this.cursor.hide();
+    }
   }
 }

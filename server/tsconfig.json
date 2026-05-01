@@ -4,6 +4,7 @@
     "useDefineForClassFields": false,
     "module": "CommonJS",
     "moduleResolution": "Node",
+    "ignoreDeprecations": "5.0",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

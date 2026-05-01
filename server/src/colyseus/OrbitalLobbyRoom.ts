@@ -3,18 +3,22 @@ import {
   buildBotName,
   canJoinMultiplayerRoom,
   canStartLobbyRound,
+  getMaxPlayersForTeamSize,
   getPreferredJoinTeam,
   isMatchTeamSizeValue,
   MULTIPLAYER_COUNTDOWN_SECONDS,
   MULTIPLAYER_DEFAULT_TEAM_SIZE,
   MULTIPLAYER_ROUND_END_SECONDS,
   MULTIPLAYER_ROUND_SECONDS,
+  sanitizeRoomName,
   type BreachReportMessage,
   type FillBotsMessage,
   type FreezeEventMessage,
   type HitReportMessage,
   type LobbyTeam,
+  type MultiplayerRoomListing,
   type MultiplayerRoomPhase,
+  type MultiplayerRoomVisibility,
   type PlayerUpdateMessage,
   type RoundResultEventMessage,
   type SetReadyMessage,
@@ -40,6 +44,7 @@ import {
 import type { PlayerPhase } from "../../../shared/schema";
 import { generateSpawnPositions, resolveActorCollisions, type CollisionBody } from "../../../shared/player-logic";
 import { applyHitToOnlineActor, isHitZone, normalizeAuthoritativePhase } from "./actorDamage";
+import type { OrbitalRoomMetadata } from "./roomDirectory";
 import { ActorState, LobbyMemberState, OrbitalLobbyState } from "./state";
 
 type RoomClient = Client;
@@ -52,6 +57,13 @@ const VEL_CLAMP = MAX_SPEED * 4;
 const PLAYER_UPDATE_MIN_MS = 40;
 
 const VALID_PHASES = new Set<string>(["BREACH", "FLOATING", "GRABBING", "AIMING", "FROZEN", "RESPAWNING"]);
+
+interface OrbitalLobbyCreateOptions {
+  roomName?: string;
+  listing?: MultiplayerRoomListing;
+  visibility?: MultiplayerRoomVisibility;
+  teamSize?: MatchTeamSize;
+}
 
 export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   public maxClients = 32;
@@ -71,10 +83,23 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   private countdownPreparedRound = false;
   private roundResolved = false;
   private lastPlayerUpdate = new Map<string, number>();
+  private listing: MultiplayerRoomListing = "quick";
+  private visibility: MultiplayerRoomVisibility = "public";
 
-  public onCreate(): void {
+  public onCreate(options?: OrbitalLobbyCreateOptions): void {
     this.state = new OrbitalLobbyState();
-    this.state.teamSize = MULTIPLAYER_DEFAULT_TEAM_SIZE;
+    this.listing = options?.listing === "browser" ? "browser" : "quick";
+    this.visibility = options?.visibility === "private" ? "private" : "public";
+    this.state.roomName = sanitizeRoomName(options?.roomName);
+    this.state.listing = this.listing;
+    this.state.visibility = this.visibility;
+    this.state.teamSize = isMatchTeamSizeValue(Number(options?.teamSize))
+      ? Number(options?.teamSize)
+      : MULTIPLAYER_DEFAULT_TEAM_SIZE;
+    this.state.maxPlayers = getMaxPlayersForTeamSize(this.state.teamSize as MatchTeamSize);
+    this.maxClients = this.state.maxPlayers;
+    void this.setPrivate(this.visibility === "private");
+    void this.refreshRoomMetadata();
 
     this.onMessage("ready", (client, message: SetReadyMessage) => {
       this.handleReadyMessage(client, message);
@@ -113,11 +138,17 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   }
 
   public onJoin(client: RoomClient, options?: { name?: string }): void {
+    const joinTeam = this.getJoinTeamForHuman();
+    if (joinTeam === null) {
+      throw new Error("That room is full right now.");
+    }
+    this.ensureSeatForHuman(joinTeam);
+
     const member = new LobbyMemberState();
     member.id = client.sessionId;
     member.sessionId = client.sessionId;
     member.name = sanitizePlayerName(options?.name);
-    member.team = getPreferredJoinTeam(this.getMemberSnapshots());
+    member.team = joinTeam;
     member.ready = false;
     member.connected = true;
     member.isBot = false;
@@ -131,18 +162,17 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   }
 
   public onLeave(client: RoomClient): void {
-    this.lastPlayerUpdate.delete(client.sessionId);
     const member = this.state.members.get(client.sessionId);
-    if (!member) {
-      return;
+    if (member) {
+      const leavingName = member.name;
+      this.state.members.delete(client.sessionId);
+      this.broadcast("lobby_event", {
+        type: "info",
+        text: `${leavingName} left the room.`,
+      });
     }
 
-    const leavingName = member.name;
-    this.state.members.delete(client.sessionId);
-    this.broadcast("lobby_event", {
-      type: "info",
-      text: `${leavingName} left the room.`,
-    });
+    this.removePresence(client.sessionId);
 
     if (!this.hasHumanMembers()) {
       this.removeAllBots();
@@ -230,6 +260,8 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }
 
     this.state.teamSize = nextTeamSize;
+    this.state.maxPlayers = getMaxPlayersForTeamSize(nextTeamSize);
+    this.maxClients = this.state.maxPlayers;
     this.trimBotsToTeamSize();
     this.syncLobbyFlow();
   }
@@ -351,12 +383,14 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       ? message.scorerTeam
       : actor.team;
 
-    this.awardOnlineRoundPoint(scorerTeam, String(message.scorerName || actor.name), "breach");
+    this.awardOnlineRoundPoint(scorerTeam, actor.id, String(message.scorerName || actor.name), "breach");
   }
 
   // ── Round flow ──────────────────────────────────────────────────────────────
 
   private syncLobbyFlow(): void {
+    void this.refreshRoomMetadata();
+
     if (this.state.phase === "ROUND_END") {
       return;
     }
@@ -386,6 +420,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.state.phase = "COUNTDOWN";
     this.state.countdownRemaining = MULTIPLAYER_COUNTDOWN_SECONDS;
     void this.lock();
+    void this.refreshRoomMetadata();
 
     this.countdownTimer = setInterval(() => {
       this.state.countdownRemaining = Math.max(0, this.state.countdownRemaining - 1);
@@ -403,6 +438,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.state.countdownRemaining = 0;
     this.state.roundTimeRemaining = 0;
     void this.unlock();
+    void this.refreshRoomMetadata();
   }
 
   private prepareCountdownRound(): void {
@@ -426,6 +462,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.state.countdownRemaining = 0;
     this.state.roundTimeRemaining = MULTIPLAYER_ROUND_SECONDS;
     this.roundResolved = false;
+    void this.refreshRoomMetadata();
 
     this.roundTimer = setInterval(() => {
       this.state.roundTimeRemaining = Math.max(0, this.state.roundTimeRemaining - 1);
@@ -459,6 +496,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.state.phase = "ROUND_END";
     this.state.countdownRemaining = 0;
     this.state.roundTimeRemaining = 0;
+    void this.refreshRoomMetadata();
 
     this.roundEndTimer = setTimeout(() => {
       this.roundEndTimer = null;
@@ -484,6 +522,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
         });
       }
       void this.unlock();
+      void this.refreshRoomMetadata();
       this.syncLobbyFlow();
     }, MULTIPLAYER_ROUND_END_SECONDS * 1000);
   }
@@ -497,13 +536,18 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     if (team0.length === 0 || team1.length === 0) return;
 
     if (team0.every((a) => a.frozen)) {
-      this.awardOnlineRoundPoint(1, "Magenta Team", "fullFreeze");
+      this.awardOnlineRoundPoint(1, null, "Magenta Team", "fullFreeze");
     } else if (team1.every((a) => a.frozen)) {
-      this.awardOnlineRoundPoint(0, "Cyan Team", "fullFreeze");
+      this.awardOnlineRoundPoint(0, null, "Cyan Team", "fullFreeze");
     }
   }
 
-  private awardOnlineRoundPoint(team: 0 | 1, scorerName: string, reason: "breach" | "fullFreeze"): void {
+  private awardOnlineRoundPoint(
+    team: 0 | 1,
+    scorerId: string | null,
+    scorerName: string,
+    reason: "breach" | "fullFreeze",
+  ): void {
     if (this.roundResolved) return;
     this.roundResolved = true;
 
@@ -526,6 +570,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       winningTeam: team,
       matchWinner,
       reason,
+      scorerId: scorerId ?? undefined,
       scorerName,
     };
     if (matchWinner !== null) {
@@ -618,6 +663,14 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.state.actors.clear();
     this.botAI.clear();
     this.botFireTimers.clear();
+    this.lastPlayerUpdate.clear();
+  }
+
+  private removePresence(id: string): void {
+    this.state.actors.delete(id);
+    this.botAI.delete(id);
+    this.botFireTimers.delete(id);
+    this.lastPlayerUpdate.delete(id);
   }
 
   private tickBots(dt: number): void {
@@ -661,7 +714,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
         }
 
         if (!this.roundResolved && this.botIsInEnemyBreachRoom(actor)) {
-          this.awardOnlineRoundPoint(actor.team, actor.name, "breach");
+          this.awardOnlineRoundPoint(actor.team, actor.id, actor.name, "breach");
         }
 
         const fireTimer = this.botFireTimers.get(actor.id) ?? p.fireDelay;
@@ -829,6 +882,21 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     return true;
   }
 
+  private getJoinTeamForHuman(): LobbyTeam | null {
+    const preferredTeam = getPreferredJoinTeam(this.getMemberSnapshots());
+    if (this.hasSeatForHuman(preferredTeam)) {
+      return preferredTeam;
+    }
+
+    const fallbackTeam = preferredTeam === 0 ? 1 : 0;
+    return this.hasSeatForHuman(fallbackTeam) ? fallbackTeam : null;
+  }
+
+  private hasSeatForHuman(team: LobbyTeam): boolean {
+    const teamMembers = Array.from(this.state.members.values()).filter((member) => member.team === team);
+    return teamMembers.length < this.state.teamSize || teamMembers.some((member) => member.isBot);
+  }
+
   private fillBotsToLobbySize(): void {
     this.fillTeamWithBots(0);
     this.fillTeamWithBots(1);
@@ -947,6 +1015,20 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
   private sendError(client: RoomClient, text: string): void {
     client.send("lobby_event", { type: "error", text });
+  }
+
+  private async refreshRoomMetadata(): Promise<void> {
+    const metadata: OrbitalRoomMetadata = {
+      roomName: this.state.roomName,
+      listing: this.listing,
+      visibility: this.visibility,
+      phase: this.state.phase as MultiplayerRoomPhase,
+      currentPlayers: this.state.members.size,
+      maxPlayers: this.state.maxPlayers,
+      teamSize: this.state.teamSize,
+    };
+
+    await this.setMetadata(metadata);
   }
 }
 

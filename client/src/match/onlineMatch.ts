@@ -29,6 +29,7 @@ interface RemoteActorTrack {
 }
 
 export class OnlineMatch {
+  private celebratingTeam: 0 | 1 | null = null;
   private tracks = new Map<string, RemoteActorTrack>();
 
   public constructor(private scene: THREE.Scene) {}
@@ -121,8 +122,13 @@ export class OnlineMatch {
         track.renderYaw,
         dt,
         track.renderVel.length(),
+        this.celebratingTeam === track.snapshot.team,
       );
     }
+  }
+
+  public setCelebratingTeam(team: 0 | 1 | null): void {
+    this.celebratingTeam = team;
   }
 
   public triggerRemoteShot(actorId: string): void {
@@ -163,7 +169,7 @@ export class OnlineMatch {
         track.renderPos.z,
       ),
       team: track.snapshot.team,
-      active: !track.snapshot.frozen && track.snapshot.phase !== "RESPAWNING",
+      active: !track.snapshot.frozen && track.snapshot.phase !== "RESPAWNING" && track.snapshot.phase !== "BREACH",
       radius: HITBOX_RADIUS,
     }));
   }
@@ -210,6 +216,7 @@ export class OnlineMatch {
       track.avatar.dispose(this.scene);
     }
     this.tracks.clear();
+    this.celebratingTeam = null;
   }
 }
 

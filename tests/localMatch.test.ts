@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 
+const avatarUpdate = vi.fn();
+
 vi.mock("../client/src/match/simulatedPlayerAvatar", () => ({
   SimulatedPlayerAvatar: class {
-    public constructor() {}
+    private readonly team: 0 | 1;
+    public constructor(_scene: THREE.Scene, team: 0 | 1) {
+      this.team = team;
+    }
     public dispose(): void {}
-    public update(): void {}
+    public update(...args: unknown[]): void {
+      avatarUpdate(this.team, ...args);
+    }
   },
 }));
 
@@ -48,6 +55,7 @@ describe("LocalMatch", () => {
   let match: LocalMatch;
 
   beforeEach(() => {
+    avatarUpdate.mockClear();
     events = [];
     match = new LocalMatch(new THREE.Scene());
     match.onEvent = (event) => events.push(event);
@@ -143,12 +151,13 @@ describe("LocalMatch", () => {
   });
 
   it("emits a score event for breach wins", () => {
-    (match as unknown as { awardRoundPoint: (team: 0 | 1, scorerName: string, reason: "breach" | "fullFreeze") => void })
-      .awardRoundPoint(0, "Pilot", "breach");
+    (match as unknown as { awardRoundPoint: (team: 0 | 1, scorerId: string, scorerName: string, reason: "breach" | "fullFreeze") => void })
+      .awardRoundPoint(0, "local-player", "Pilot", "breach");
 
     expect(events).toEqual([
       {
         type: "score",
+        scorerId: "local-player",
         scorerName: "Pilot",
         scorerTeam: 0,
       },
@@ -179,6 +188,7 @@ describe("LocalMatch", () => {
     expect(events).toEqual([
       {
         type: "score",
+        scorerId: "local-player",
         scorerName: "Pilot",
         scorerTeam: 0,
       },
@@ -208,6 +218,7 @@ describe("LocalMatch", () => {
     expect(events).toEqual([
       {
         type: "score",
+        scorerId: "local-player",
         scorerName: "Pilot",
         scorerTeam: 0,
       },
@@ -229,6 +240,47 @@ describe("LocalMatch", () => {
   });
 
   // ── Breach detection: phase-dependent query selection ──────────────────────
+
+  it("routes celebration only to winning-team bots", () => {
+    match.dispose();
+    match = new LocalMatch(new THREE.Scene());
+    match.startNewGame({
+      humanName: "Pilot",
+      humanTeam: 0,
+      teamSize: 2,
+    });
+
+    const player = createFakePlayer();
+    const arena = {
+      bounceObstacles: () => {},
+      getAllBarGrabPoints: () => [],
+      getBreachOpenAxis: () => "x" as const,
+      getBreachOpenSign: (team: 0 | 1) => (team === 0 ? -1 : 1) as 1 | -1,
+      getBreachRoomCenter: (team: 0 | 1) => new THREE.Vector3(team === 0 ? -18 : 18, 0, 0),
+      getNearestBar: () => null,
+      isDeepInBreachRoom: () => false,
+      isGoalDoorOpen: () => false,
+      isInBreachRoom: () => true,
+    };
+
+    match.resetForRound(arena as never, player as never);
+    avatarUpdate.mockClear();
+
+    match.setCelebratingTeam(0);
+    match.tick(1 / 60, arena as never, player as never, false);
+
+    const ownTeamFlags = avatarUpdate.mock.calls
+      .filter(([team]) => team === 0)
+      .map((call) => call.at(-1));
+    const enemyFlags = avatarUpdate.mock.calls
+      .filter(([team]) => team === 1)
+      .map((call) => call.at(-1));
+
+    expect(ownTeamFlags.length).toBeGreaterThan(0);
+    expect(enemyFlags.length).toBeGreaterThan(0);
+    expect(ownTeamFlags.every((flag) => flag === true)).toBe(true);
+    expect(enemyFlags.every((flag) => flag === false)).toBe(true);
+  });
 
   it("does not score breach for BREACH-phase player when isInBreachRoom returns false", () => {
     const player = createFakePlayer();

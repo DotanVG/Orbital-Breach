@@ -5,15 +5,24 @@ export interface DebriefPlayer {
   name: string;
   team: 0 | 1;
   breaches: number;
+  freezes: number;
   frozen: number;
+  travelDistance: number;
   isBot: boolean;
   isSelf: boolean;
+}
+
+export interface DebriefAward {
+  key: string;
+  value: string;
+  note: string;
 }
 
 export interface DebriefData {
   winningTeam: 0 | 1 | null;
   score: { team0: number; team1: number };
   players: DebriefPlayer[];
+  awards?: DebriefAward[];
   playerTeam: 0 | 1;
   matchLabel: string;
   primaryActionLabel?: string;
@@ -69,6 +78,14 @@ const CSS = `
     gap: 22px;
   }
 
+  @media (hover: hover) and (pointer: fine) {
+    .ob-debrief-wrap {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .ob-debrief-wrap::-webkit-scrollbar { display: none; }
+  }
+
   /* ── Score head ── */
   .ob-debrief-head {
     display: grid;
@@ -109,7 +126,7 @@ const CSS = `
     color: #57637a; margin-top: 8px; text-transform: uppercase;
   }
 
-  /* ── Main grid ── */
+  /* Main grid */
   .ob-debrief-grid {
     display: grid;
     grid-template-columns: 2fr 1fr;
@@ -135,7 +152,7 @@ const CSS = `
   }
   .ob-debrief-panel-head h3 .ob-dph-idx { color: var(--ob-debrief-accent); }
 
-  /* ── Stats table ── */
+  /* Stats table */
   .ob-stats-table {
     width: 100%; border-collapse: collapse;
     font-family: "JetBrains Mono", monospace; font-size: 11px;
@@ -166,7 +183,7 @@ const CSS = `
   .ob-stats-table .ob-self td { color: #e8ecf4; }
   .ob-stats-table .ob-self td.ob-pname { font-weight: 500; }
 
-  /* ── Awards ── */
+  /* Awards */
   .ob-awards { display: grid; gap: 10px; }
   .ob-award {
     border: 1px solid rgba(210, 220, 240, 0.08);
@@ -186,7 +203,7 @@ const CSS = `
     color: var(--ob-debrief-accent); margin-top: 2px;
   }
 
-  /* ── Action buttons ── */
+  /* Action buttons */
   .ob-debrief-actions { display: flex; gap: 12px; margin-top: 10px; }
   .ob-debrief-btn {
     flex: 1; position: relative;
@@ -202,13 +219,13 @@ const CSS = `
   .ob-debrief-btn--primary { border-color: var(--ob-debrief-accent-border); }
   .ob-debrief-btn--primary:hover { border-color: var(--ob-debrief-accent); color: var(--ob-debrief-accent-text); }
 
-  /* ── Tablet: collapse grid to 1-col ── */
+  /* Tablet: collapse grid to 1-col */
   @media (max-width: 900px) {
     .ob-debrief-grid { grid-template-columns: 1fr; }
     .ob-debrief-head { grid-template-columns: 1fr; gap: 12px; text-align: center; }
   }
 
-  /* ── Mobile portrait ── */
+  /* Mobile portrait */
   @media (max-width: 640px) and (orientation: portrait) {
     .ob-debrief-root {
       padding: 12px 10px;
@@ -254,7 +271,7 @@ const CSS = `
     #debrief-play-again { order: -1; }
   }
 
-  /* ── Mobile landscape ── */
+  /* Mobile landscape */
   @media (max-height: 500px) and (max-width: 900px) {
     .ob-debrief-root {
       padding: 8px 10px;
@@ -292,16 +309,6 @@ function injectStyle(): void {
   document.head.appendChild(style);
 }
 
-function rating(breaches: number, frozen: number): string {
-  const r = (breaches * 3) / (frozen + 1);
-  if (r >= 3.5) return "A+";
-  if (r >= 2.2) return "A";
-  if (r >= 1.2) return "B+";
-  if (r >= 0.6) return "B";
-  if (r >= 0.2) return "C+";
-  return "C";
-}
-
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c
@@ -324,6 +331,7 @@ export function sortDebriefPlayers(players: DebriefPlayer[], playerTeam: 0 | 1):
     if (a.team !== b.team) return a.team - b.team;
     if (a.isSelf !== b.isSelf) return a.isSelf ? -1 : 1;
     if (a.breaches !== b.breaches) return b.breaches - a.breaches;
+    if (a.freezes !== b.freezes) return b.freezes - a.freezes;
     return a.name.localeCompare(b.name);
   });
 }
@@ -390,21 +398,24 @@ export class DebriefScreen {
       : winningTeam === null ? "DRAW"
       : "DEFEAT";
 
+    const winnerText = winningTeam === null
+      ? `Winner - Draw / ${matchLabel}`
+      : `Winner - ${winningTeam === 0 ? "Team Cyan" : "Team Magenta"} / ${matchLabel}`;
+
     const sortedPlayers = sortDebriefPlayers(players, playerTeam);
 
-    const tableRows = sortedPlayers.map((p, i) => {
+    const tableRows = sortedPlayers.map((p) => {
       const teamCls = p.team === 0 ? "ob-t-cyan" : "ob-t-magenta";
       const selfCls = p.isSelf ? " ob-self" : "";
-      const r = rating(p.breaches, p.frozen);
       return `<tr class="${teamCls}${selfCls}">
         <td class="ob-pname">${escapeHtml(p.name)}${p.isBot ? " <small style='opacity:.4;font-size:9px;font-family:var(--ob-mono,monospace)'>[BOT]</small>" : ""}</td>
         <td>${p.breaches}</td>
+        <td>${p.freezes}</td>
         <td>${p.frozen}</td>
-        <td>${r}</td>
       </tr>`;
     }).join("");
 
-    const awards = this.buildAwards(players);
+    const awards = this.buildAwards(data.awards);
     const secondaryAction = showSecondaryAction
       ? `<button class="ob-debrief-btn" id="debrief-main-menu">${escapeHtml(mainMenuLabel)}</button>`
       : "";
@@ -421,7 +432,7 @@ export class DebriefScreen {
           </div>
           <div class="ob-debrief-verdict">
             ${verdictText}
-            <span class="ob-dv-sub">${escapeHtml(matchLabel)}</span>
+            <span class="ob-dv-sub">${escapeHtml(winnerText)}</span>
           </div>
           <div class="ob-debrief-team-score ob-debrief-team-score--magenta ${team1StateClass}">
             <div class="ob-ds-name">Team Magenta</div>
@@ -437,7 +448,7 @@ export class DebriefScreen {
             </div>
             <table class="ob-stats-table">
               <thead>
-                <tr><th>Pilot</th><th>Breaches</th><th>Frozen</th><th>Rating</th></tr>
+                <tr><th>Pilot</th><th>Breaches</th><th>Freezes</th><th>Frozen</th></tr>
               </thead>
               <tbody>${tableRows}</tbody>
             </table>
@@ -455,43 +466,16 @@ export class DebriefScreen {
     `;
   }
 
-  private buildAwards(players: DebriefPlayer[]): string {
-    const humans = players.filter((p) => !p.isBot);
-    const all = players;
-
-    const mostBreaches = all.reduce<DebriefPlayer | null>(
-      (best, p) => (!best || p.breaches > best.breaches ? p : best), null,
-    );
-    const ironPilot = humans.find((p) => p.frozen === 0);
-    const topKd = all.reduce<DebriefPlayer | null>(
-      (best, p) => {
-        const scoreA = p.breaches * 3 / (p.frozen + 1);
-        const scoreB = best ? best.breaches * 3 / (best.frozen + 1) : -1;
-        return scoreA > scoreB ? p : best;
-      }, null,
-    );
-
+  private buildAwards(awards: DebriefAward[] | undefined): string {
     const award = (key: string, val: string, note: string) =>
       `<div class="ob-award">
-        <span class="ob-award-key">${key}</span>
+        <span class="ob-award-key">${escapeHtml(key)}</span>
         <span class="ob-award-val">${escapeHtml(val)}</span>
         <span class="ob-award-note">${escapeHtml(note)}</span>
       </div>`;
 
-    const parts: string[] = [];
-    if (mostBreaches && mostBreaches.breaches > 0) {
-      parts.push(award("Most Breaches", mostBreaches.name, `${mostBreaches.breaches} portal traversals`));
-    }
-    if (ironPilot) {
-      parts.push(award("Iron Pilot", ironPilot.name, "never frozen this match"));
-    }
-    if (topKd) {
-      parts.push(award("Top Rating", topKd.name, `${rating(topKd.breaches, topKd.frozen)} · ${topKd.breaches} breaches / ${topKd.frozen} frozen`));
-    }
-    if (parts.length === 0) {
-      parts.push(award("Round Complete", "—", "match concluded"));
-    }
-
-    return parts.join("");
+    return (awards ?? [{ key: "Round Complete", value: "-", note: "match concluded" }])
+      .map((entry) => award(entry.key, entry.value, entry.note))
+      .join("");
   }
 }
