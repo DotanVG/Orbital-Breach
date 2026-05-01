@@ -273,6 +273,13 @@ export class LocalPlayer {
 
     if (!arena.isInBreachRoom(this.phys.pos, this.currentBreachTeam)) {
       this.phase = 'FLOATING';
+      const MIN_EXIT_SPEED = 2;
+      const xzSpeed = Math.sqrt(this.phys.vel.x ** 2 + this.phys.vel.z ** 2);
+      if (xzSpeed < MIN_EXIT_SPEED) {
+        const fwd = cam.getYawForward();
+        this.phys.vel.x = fwd.x * MIN_EXIT_SPEED;
+        this.phys.vel.z = fwd.z * MIN_EXIT_SPEED;
+      }
     }
   }
 
