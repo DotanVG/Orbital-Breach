@@ -9,7 +9,7 @@ import {
 
 describe("credits content", () => {
   it("publishes the required external URLs", () => {
-    expect(GITHUB_REPO_URL).toBe("https://github.com/DotanVG/Zero-G-Arena");
+    expect(GITHUB_REPO_URL).toBe("https://github.com/DotanVG/Orbital-Breach");
     expect(ITCH_IO_URL).toBe("https://dotanv.itch.io/");
     expect(NOAM_SOUNDCLOUD_URL).toBe("https://soundcloud.com/ouzana");
   });
