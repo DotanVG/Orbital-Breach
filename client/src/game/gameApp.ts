@@ -125,6 +125,7 @@ export class App {
     this.cam = new CameraController(this.sceneMgr.getCamera());
     this.arena = new Arena(this.sceneMgr.getScene());
     this.player = new LocalPlayer(this.sceneMgr.getScene());
+    this.player.onFullyFrozen = () => this.sound.playHit();
     this.hud = new HUD();
     this.menu = new MainMenu();
     this.cursor = initGlobalCursor();

@@ -4,7 +4,8 @@ const AUDIO_URLS = {
   laser1: '/audio/laser-1.wav',
   laser2: '/audio/laser-2.wav',
   countdown: '/audio/countdown.wav',
-  music: '/audio/main-theme.wav',
+  music: '/audio/main-theme.ogg',
+  hit: '/audio/hit.wav',
 } as const;
 
 // Positional audio: refDistance 5m, beyond which volume fades over 40m linearly.
@@ -24,7 +25,8 @@ export class SoundEngine {
     laser2: AudioBuffer | null;
     countdown: AudioBuffer | null;
     music: AudioBuffer | null;
-  } = { laser1: null, laser2: null, countdown: null, music: null };
+    hit: AudioBuffer | null;
+  } = { laser1: null, laser2: null, countdown: null, music: null, hit: null };
 
   private loadPromise: Promise<void> | null = null;
   private unlocked = false;
@@ -178,6 +180,14 @@ export class SoundEngine {
     if (!this.activeCountdownSource) return;
     try { this.activeCountdownSource.stop(); } catch { /* already ended */ }
     this.activeCountdownSource = null;
+  }
+
+  public playHit(): void {
+    if (!this.ctx || !this.sfx2dGain || !this.buffers.hit) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.buffers.hit;
+    src.connect(this.sfx2dGain);
+    src.start();
   }
 
   private pickLaserBuffer(): AudioBuffer | null {
