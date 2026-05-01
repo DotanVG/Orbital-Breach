@@ -21,8 +21,10 @@ import { GunViewModel } from "../render/gun";
 import { buildRoundEndHtml, HUD } from "../render/hud";
 import { FirstTimeTutorial } from "../render/hud/tutorial";
 import { SceneManager } from "../render/scene";
+import { isEmbedMode } from "../embed";
 import { KillFeed } from "../ui/kill-feed";
 import { initGlobalCursor, type GlobalCursor } from "../ui/globalCursor";
+import { enterFullscreen, exitFullscreen, isFullscreen } from "../ui/fullscreen";
 import { MainMenu } from "../ui/menu";
 import { MobileControls } from "../ui/mobileControls";
 import { RoomBrowser } from "../ui/roomBrowser";
@@ -78,6 +80,7 @@ export class App {
   private onlinePlayerName = "Pilot";
   private onlineBreachReported = false;
   private combatPresentationActive = false;
+  private embedMode = false;
   private portalArrivalPending = false;
   private portalUrlCleaned = false;
   private restorePointerLockAfterScoreboard = false;
@@ -110,11 +113,13 @@ export class App {
   private sceneMgr: SceneManager;
   private sessionMenu = new SessionMenu();
   private sound!: SoundEngine;
+  private fullscreenPreference = false;
   private thirdPerson = false;
   private tutorial = new FirstTimeTutorial();
 
   public constructor() {
     this.portalParams = getPortalParams();
+    this.embedMode = isEmbedMode();
     this.portalArrivalPending = isPortalArrival();
     this.sceneMgr = new SceneManager();
     this.sound = new SoundEngine(this.sceneMgr.getCamera(), this.sceneMgr.getScene());
@@ -136,7 +141,9 @@ export class App {
     this.hud.setVisible(false);
     this.killFeed.setVisible(false);
     this.sessionMenu.setLauncherVisible(false);
-    this.applySessionSettings(this.sessionMenu.getSettings());
+    const initialSettings = this.sessionMenu.getSettings();
+    this.fullscreenPreference = initialSettings.fullscreenEnabled;
+    this.applySessionSettings(initialSettings);
 
     this.sceneMgr.getScene().add(this.sceneMgr.getCamera());
     this.gun = new GunViewModel(this.sceneMgr.getCamera());
@@ -178,7 +185,12 @@ export class App {
       void this.handleSessionMenuMainMenu();
     };
     this.sessionMenu.onSettingsChange = (settings) => {
+      const fullscreenPreferenceChanged = settings.fullscreenEnabled !== this.fullscreenPreference;
       this.applySessionSettings(settings);
+      if (fullscreenPreferenceChanged) {
+        this.fullscreenPreference = settings.fullscreenEnabled;
+        this.applyFullscreenPreference(settings.fullscreenEnabled);
+      }
     };
 
     this.debrief.onMainMenu = () => {
@@ -432,8 +444,12 @@ export class App {
         teamSize: 1,
         noBots: true,
       });
+    } else if (this.embedMode) {
+      this.cleanEmbedUrl();
+      this.menu.show();
     } else {
       this.welcome.onBreach = () => { this.menu.show(); };
+      this.welcome.fullscreenOnClick = this.fullscreenPreference;
       this.welcome.show();
     }
 
@@ -1179,6 +1195,20 @@ export class App {
     this.sound.setMusicVolume(settings.musicVolume);
     this.sound.setSfxVolume(settings.sfxVolume);
     this.sound.setMusicEnabled(settings.soundtrackEnabled);
+  }
+
+  private applyFullscreenPreference(enabled: boolean): void {
+    if (enabled) {
+      if (!isFullscreen()) enterFullscreen();
+    } else if (isFullscreen()) {
+      exitFullscreen();
+    }
+  }
+
+  private cleanEmbedUrl(): void {
+    if (typeof window === "undefined") return;
+    if (!window.location.search) return;
+    history.replaceState(null, "", window.location.pathname);
   }
 
   private cleanPortalUrl(): void {

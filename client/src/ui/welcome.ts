@@ -4,9 +4,11 @@ import {
   createWelcomeView,
   startWelcomeEffects,
 } from './welcome/welcomeView';
+import { enterFullscreen } from './fullscreen';
 
 export class WelcomeScreen {
   public onBreach: (() => void) | null = null;
+  public fullscreenOnClick = false;
 
   private root: HTMLDivElement | null = null;
   private stopEffects: (() => void) | null = null;
@@ -25,6 +27,7 @@ export class WelcomeScreen {
     btn.addEventListener('mouseenter', () => this.cursor.setHot(true));
     btn.addEventListener('mouseleave', () => this.cursor.setHot(false));
     btn.addEventListener('click', () => {
+      if (this.fullscreenOnClick) enterFullscreen();
       if (
         typeof DeviceOrientationEvent !== 'undefined' &&
         'requestPermission' in DeviceOrientationEvent &&

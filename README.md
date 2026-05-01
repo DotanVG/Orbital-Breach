@@ -93,6 +93,16 @@ Debrief awards are generated from match stats:
 - **Iron Pilot** for a human pilot who avoids being frozen.
 - **Moon Walker** for the most travel distance.
 
+## Current Status
+
+| Feature | Status |
+| --- | --- |
+| Browser game deployment | Done |
+| Solo and online multiplayer | Done |
+| Mobile touch controls | Done |
+| Itch.io landing page | Done |
+| Fullscreen mode with settings toggle | Done; iPhone Safari disables the toggle because non-video fullscreen is unsupported |
+
 ## Tech Stack
 
 | Layer | Technology |
