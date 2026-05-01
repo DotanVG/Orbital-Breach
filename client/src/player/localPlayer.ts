@@ -700,7 +700,16 @@ export class LocalPlayer {
 
   public setVictoryDanceActive(active: boolean): void {
     this.victoryDanceActive = active;
-    if (!active) {
+    if (active) {
+      this.victoryDanceElapsed = 0;
+      this.launchPower = 0;
+      this.grabbedBarPos = null;
+      this.grabHandGripLocal = null;
+      this.grabPoseLocked = false;
+      if (this.phase === 'GRABBING' || this.phase === 'AIMING') {
+        this.phase = 'FLOATING';
+      }
+    } else {
       this.victoryDanceElapsed = 0;
     }
   }

@@ -93,6 +93,10 @@ export class SimulatedPlayerAvatar {
       : dt;
     this.animation.tickMixers(animationDt);
 
+    if (!shouldCelebrate) {
+      this.victoryDanceElapsed = 0;
+    }
+
     if (!shouldCelebrate && (phase === "GRABBING" || phase === "AIMING")) {
       applyBarHoldPose(this.animation.getRigs());
       this.animation.resetBreathing();
@@ -104,7 +108,6 @@ export class SimulatedPlayerAvatar {
       this.animation.tickBreathing(dt);
     } else {
       this.animation.resetBreathing();
-      this.victoryDanceElapsed = 0;
     }
 
     this.recoilTimer = Math.max(0, this.recoilTimer - dt);

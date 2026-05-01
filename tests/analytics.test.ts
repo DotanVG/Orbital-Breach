@@ -1,4 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const originalGlobals = {
+  window: Object.getOwnPropertyDescriptor(globalThis, "window"),
+  document: Object.getOwnPropertyDescriptor(globalThis, "document"),
+  navigator: Object.getOwnPropertyDescriptor(globalThis, "navigator"),
+};
 
 function installBrowserGlobals(options?: {
   pathname?: string;
@@ -50,10 +56,17 @@ function installBrowserGlobals(options?: {
 }
 
 describe("analytics", () => {
-  const consoleInfoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+  let consoleInfoSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    consoleInfoSpy.mockClear();
+    vi.resetModules();
+    consoleInfoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleInfoSpy.mockRestore();
+    restoreBrowserGlobals();
+    vi.resetModules();
   });
 
   it("tracks landing_visit once per page load with landing source fields", async () => {
@@ -88,3 +101,17 @@ describe("analytics", () => {
     });
   });
 });
+
+function restoreBrowserGlobals(): void {
+  restoreGlobal("window", originalGlobals.window);
+  restoreGlobal("document", originalGlobals.document);
+  restoreGlobal("navigator", originalGlobals.navigator);
+}
+
+function restoreGlobal(name: "window" | "document" | "navigator", descriptor: PropertyDescriptor | undefined): void {
+  if (descriptor) {
+    Object.defineProperty(globalThis, name, descriptor);
+  } else {
+    Reflect.deleteProperty(globalThis, name);
+  }
+}

@@ -452,7 +452,11 @@ function appendNumber(url: URL, key: string, value: number | undefined): void {
 function openPortalInNewTab(targetUrl: string): void {
   if (typeof window === "undefined") return;
   const popup = window.open(targetUrl, "_blank", "noopener,noreferrer");
-  if (popup) popup.opener = null;
+  if (!popup) {
+    window.location.assign(targetUrl);
+    return;
+  }
+  popup.opener = null;
 }
 
 function disposeObject(root: THREE.Object3D): void {

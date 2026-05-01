@@ -1254,10 +1254,12 @@ export class App {
   ): Promise<void> {
     this.pendingOnlineRoomSelection = null;
     this.roomBrowser.hide();
+    const inviteRoomId = this.getInviteRoomId();
     const resolvedTarget = target ?? this.getInviteJoinTarget() ?? { kind: "quick" };
-    if (resolvedTarget.kind === "roomId") {
-      this.clearInviteRoomIdFromUrl();
-    }
+    const shouldClearInviteParam =
+      resolvedTarget.kind === "roomId"
+      && inviteRoomId !== null
+      && resolvedTarget.roomId === inviteRoomId;
     this.appMode = "online";
     this.onlinePlayerName = selection.name;
     this.killFeed.setLocalPlayerName(selection.name);
@@ -1292,6 +1294,9 @@ export class App {
       if (myToken !== this.onlineSessionToken || this.isUserExitingOnline || this.appMode !== "online") {
         try { await this.net.disconnect(); } catch { /* ignore */ }
         return;
+      }
+      if (shouldClearInviteParam) {
+        this.clearInviteRoomIdFromUrl();
       }
       this.latestOnlineSnapshot = snapshot;
       this.previousOnlinePhase = snapshot.phase;

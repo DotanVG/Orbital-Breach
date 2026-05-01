@@ -14,9 +14,9 @@ export async function fetchPublicRoomDirectory(): Promise<MultiplayerRoomDirecto
 
   const response = await fetch(url, {
     method: "GET",
+    cache: "no-store",
     headers: {
       "Accept": "application/json",
-      "Cache-Control": "no-store",
     },
   });
 
@@ -25,7 +25,10 @@ export async function fetchPublicRoomDirectory(): Promise<MultiplayerRoomDirecto
   }
 
   const data = await response.json() as RoomDirectoryResponse;
-  return Array.isArray(data.rooms) ? data.rooms : [];
+  if (!Array.isArray(data.rooms)) {
+    throw new Error("Room directory response was malformed.");
+  }
+  return data.rooms;
 }
 
 function getRoomDirectoryUrl(): string | null {

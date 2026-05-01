@@ -386,6 +386,8 @@ const CSS = `
     letter-spacing: 2px;
     color: var(--ob-cyan, #00e5ff);
     text-decoration: none;
+    overflow-wrap: anywhere;
+    word-break: break-word;
     opacity: .7;
     transition: opacity .2s;
   }

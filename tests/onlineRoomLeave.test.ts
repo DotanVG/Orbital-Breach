@@ -6,7 +6,9 @@ function createRoom(): OrbitalLobbyRoom {
   const room = new OrbitalLobbyRoom();
   room.state = new OrbitalLobbyState();
   room.state.teamSize = 1;
+  room.state.maxPlayers = 2;
   room.broadcast = vi.fn() as typeof room.broadcast;
+  room.setMetadata = vi.fn().mockResolvedValue(undefined) as typeof room.setMetadata;
   return room;
 }
 
@@ -91,5 +93,26 @@ describe("OrbitalLobbyRoom onLeave", () => {
     expect(room.state.roundNumber).toBe(0);
     expect(room.state.countdownRemaining).toBe(0);
     expect(room.state.roundTimeRemaining).toBe(0);
+  });
+});
+
+describe("OrbitalLobbyRoom onJoin", () => {
+  it("reclaims a bot seat when a human joins a bot-filled lobby", () => {
+    const room = createRoom();
+    room.state.phase = "LOBBY";
+
+    addMember(room, "bot-0", { name: "CY-BOT-01", team: 0, isBot: true });
+    addMember(room, "bot-1", { name: "MG-BOT-01", team: 1, isBot: true });
+
+    room.onJoin({ sessionId: "human-1" } as never, { name: "Alpha" });
+
+    const members = Array.from(room.state.members.values());
+    expect(members).toHaveLength(2);
+    expect(room.state.members.has("human-1")).toBe(true);
+    expect(members.filter((member) => member.isBot)).toHaveLength(1);
+    expect(room.setMetadata).toHaveBeenLastCalledWith(expect.objectContaining({
+      currentPlayers: 2,
+      maxPlayers: 2,
+    }));
   });
 });

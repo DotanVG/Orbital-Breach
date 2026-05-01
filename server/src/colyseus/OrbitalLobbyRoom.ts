@@ -138,11 +138,17 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   }
 
   public onJoin(client: RoomClient, options?: { name?: string }): void {
+    const joinTeam = this.getJoinTeamForHuman();
+    if (joinTeam === null) {
+      throw new Error("That room is full right now.");
+    }
+    this.ensureSeatForHuman(joinTeam);
+
     const member = new LobbyMemberState();
     member.id = client.sessionId;
     member.sessionId = client.sessionId;
     member.name = sanitizePlayerName(options?.name);
-    member.team = getPreferredJoinTeam(this.getMemberSnapshots());
+    member.team = joinTeam;
     member.ready = false;
     member.connected = true;
     member.isBot = false;
@@ -876,6 +882,21 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     return true;
   }
 
+  private getJoinTeamForHuman(): LobbyTeam | null {
+    const preferredTeam = getPreferredJoinTeam(this.getMemberSnapshots());
+    if (this.hasSeatForHuman(preferredTeam)) {
+      return preferredTeam;
+    }
+
+    const fallbackTeam = preferredTeam === 0 ? 1 : 0;
+    return this.hasSeatForHuman(fallbackTeam) ? fallbackTeam : null;
+  }
+
+  private hasSeatForHuman(team: LobbyTeam): boolean {
+    const teamMembers = Array.from(this.state.members.values()).filter((member) => member.team === team);
+    return teamMembers.length < this.state.teamSize || teamMembers.some((member) => member.isBot);
+  }
+
   private fillBotsToLobbySize(): void {
     this.fillTeamWithBots(0);
     this.fillTeamWithBots(1);
@@ -1002,7 +1023,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       listing: this.listing,
       visibility: this.visibility,
       phase: this.state.phase as MultiplayerRoomPhase,
-      currentPlayers: this.clients.length,
+      currentPlayers: this.state.members.size,
       maxPlayers: this.state.maxPlayers,
       teamSize: this.state.teamSize,
     };

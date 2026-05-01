@@ -469,7 +469,7 @@ export class DebriefScreen {
   private buildAwards(awards: DebriefAward[] | undefined): string {
     const award = (key: string, val: string, note: string) =>
       `<div class="ob-award">
-        <span class="ob-award-key">${key}</span>
+        <span class="ob-award-key">${escapeHtml(key)}</span>
         <span class="ob-award-val">${escapeHtml(val)}</span>
         <span class="ob-award-note">${escapeHtml(note)}</span>
       </div>`;

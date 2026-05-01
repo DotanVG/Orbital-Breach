@@ -756,6 +756,9 @@ export class MultiplayerLobby {
   private team1Roster: HTMLDivElement;
   private latestState: MultiplayerRoomSnapshot | null = null;
   private latestInviteUrl = "";
+  private inviteQrForUrl = "";
+  private inviteQrPendingUrl = "";
+  private inviteQrRequestId = 0;
 
   public onLeaveLobby: (() => void) | null = null;
   public onReadyChange: ((ready: boolean) => void) | null = null;
@@ -965,8 +968,18 @@ export class MultiplayerLobby {
     this.copyInviteButton.disabled = false;
     this.shareInviteButton.disabled = false;
 
+    if (this.inviteQrForUrl === inviteUrl && this.inviteQrImage.getAttribute("src")) {
+      return;
+    }
+    if (this.inviteQrPendingUrl === inviteUrl) {
+      return;
+    }
+
+    const requestId = ++this.inviteQrRequestId;
+    this.inviteQrPendingUrl = inviteUrl;
+
     try {
-      this.inviteQrImage.src = await QRCode.toDataURL(inviteUrl, {
+      const qrSrc = await QRCode.toDataURL(inviteUrl, {
         margin: 1,
         width: 140,
         color: {
@@ -974,9 +987,22 @@ export class MultiplayerLobby {
           light: "#ffffff",
         },
       });
+      if (requestId !== this.inviteQrRequestId || this.latestInviteUrl !== inviteUrl) {
+        return;
+      }
+      this.inviteQrForUrl = inviteUrl;
+      this.inviteQrImage.src = qrSrc;
     } catch {
+      if (requestId !== this.inviteQrRequestId || this.latestInviteUrl !== inviteUrl) {
+        return;
+      }
+      this.inviteQrForUrl = "";
       this.inviteQrImage.removeAttribute("src");
       this.inviteQrMeta.textContent = "QR generation unavailable";
+    } finally {
+      if (this.inviteQrPendingUrl === inviteUrl) {
+        this.inviteQrPendingUrl = "";
+      }
     }
   }
 

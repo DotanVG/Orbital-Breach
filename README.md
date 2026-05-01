@@ -77,15 +77,15 @@ Open [http://localhost:5173](http://localhost:5173). The Vite dev server proxies
 npx vitest run
 
 # TypeScript checks
-cd client && node_modules/.bin/tsc --noEmit
-cd server && node_modules/.bin/tsc --noEmit
+(cd client && node_modules/.bin/tsc --noEmit)
+(cd server && node_modules/.bin/tsc --noEmit)
 ```
 
 ### Build
 
 ```bash
-cd client && npm run build
-cd server && npm run build
+(cd client && npm run build)
+(cd server && npm run build)
 ```
 
 ---
@@ -126,33 +126,17 @@ Imported by both sides. `schema.ts` is the wire contract. `constants.ts` holds a
 | Mobile controls — virtual joystick, touch buttons | ✅ Done |
 | Vibe Jam portal integration | ✅ Done |
 | Vercel (frontend) + Render (backend) deployment | ✅ Done |
-| Post-match debrief with stats & awards | 🔄 In staging |
-| Room browser, private lobbies, invite links | 🔄 In staging |
-| Credits page + GitHub/itch.io links | 🔄 In staging |
-| Victory dance animation for winning team | 🔄 In staging |
-| Vercel Web Analytics + landing attribution | 🔄 In staging |
+| Post-match debrief with stats & awards | ✅ Done |
+| Room browser, private lobbies, invite links | ✅ Done |
+| Credits page + GitHub/itch.io links | ✅ Done |
+| Victory dance animation for winning team | ✅ Done |
+| Vercel Web Analytics + landing attribution | ✅ Done |
 
 ---
 
-## Coming Soon — Open PRs
+## Vibe Jam 2026 Release
 
-These are actively in review and will land on `staging` / `main` shortly:
-
-| PR | Title |
-|---|---|
-| [#72](https://github.com/DotanVG/Orbital-Breach/pull/72) | Fix desktop scoreboard cursor handling (Tab releases pointer lock, shows cursor) |
-| [#71](https://github.com/DotanVG/Orbital-Breach/pull/71) | Hide desktop debrief scrollbar while preserving mouse-wheel scrolling |
-| [#70](https://github.com/DotanVG/Orbital-Breach/pull/70) | Tune Vite client chunk size warning threshold for Three.js bundle |
-| [#69](https://github.com/DotanVG/Orbital-Breach/pull/69) | Debrief stats tracking and awards (breaches, freezes, travel, Iron/Moon Walker) |
-| [#68](https://github.com/DotanVG/Orbital-Breach/pull/68) | Show crosshair cursor on ESC session menu and Tab combat roster |
-| [#67](https://github.com/DotanVG/Orbital-Breach/pull/67) | Vercel Web Analytics + landing source attribution (`/?ref=vibejam` etc.) |
-| [#66](https://github.com/DotanVG/Orbital-Breach/pull/66) | Room browser, private lobbies, and invite sharing (URL + QR) |
-| [#65](https://github.com/DotanVG/Orbital-Breach/pull/65) | Credits page + GitHub and itch.io external links in main menu |
-| [#64](https://github.com/DotanVG/Orbital-Breach/pull/64) | AI-facing `llms.txt` site context for judges and crawlers |
-| [#63](https://github.com/DotanVG/Orbital-Breach/pull/63) | Place tutorial Vibe Jam return portal on breach-room back wall |
-| [#62](https://github.com/DotanVG/Orbital-Breach/pull/62) | Fix portal tab behavior — open in new tab, fix return portal placement |
-| [#61](https://github.com/DotanVG/Orbital-Breach/pull/61) | Victory dance animation for unfrozen winners at match end |
-| [#60](https://github.com/DotanVG/Orbital-Breach/pull/60) | Fix stale online player cleanup when leaving rooms |
+The staging release for main is tracked in [#75](https://github.com/DotanVG/Orbital-Breach/pull/75) as **Vibe Jam 2026 submission**. It consolidates the room browser, private invites, debrief stats and awards, credits, victory dance, analytics, portal polish, cursor fixes, and multiplayer cleanup work.
 
 ---
 
