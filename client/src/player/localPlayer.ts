@@ -650,7 +650,11 @@ export class LocalPlayer {
     OnlineActorSnapshot,
     'deaths' | 'frozen' | 'kills' | 'leftArm' | 'leftLeg' | 'phase' | 'rightArm' | 'rightLeg'
   >): void {
+    const wasAlreadyFrozen = this.damage.frozen;
     this.damage.frozen = actor.frozen;
+    if (!wasAlreadyFrozen && this.damage.frozen) {
+      this.onFullyFrozen?.();
+    }
     this.damage.leftArm = actor.leftArm;
     this.damage.rightArm = actor.rightArm;
     this.damage.leftLeg = actor.leftLeg;
