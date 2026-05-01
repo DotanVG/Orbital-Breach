@@ -1,4 +1,4 @@
-export const GITHUB_REPO_URL = "https://github.com/DotanVG/Zero-G-Arena";
+export const GITHUB_REPO_URL = "https://github.com/DotanVG/Orbital-Breach";
 export const ITCH_IO_URL = "https://dotanv.itch.io/";
 export const NOAM_SOUNDCLOUD_URL = "https://soundcloud.com/ouzana";
 
