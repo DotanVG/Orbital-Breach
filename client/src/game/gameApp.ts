@@ -565,7 +565,7 @@ export class App {
     const localCentre = this.player.getPosition().clone();
     localCentre.y += HITBOX_OFFSET_Y;
     const localTarget = {
-      active: this.player.phase !== "RESPAWNING" && !this.player.damage.frozen,
+      active: this.player.phase !== "RESPAWNING" && this.player.phase !== "BREACH" && !this.player.damage.frozen,
       id: localActorId,
       pos: localCentre,
       radius: HITBOX_RADIUS,

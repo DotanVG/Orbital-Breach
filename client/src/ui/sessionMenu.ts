@@ -5,6 +5,7 @@ import {
   ITCH_IO_URL,
   NOAM_SOUNDCLOUD_URL,
 } from "./creditsContent";
+import { GITHUB_ICON_SVG, ITCH_ICON_SVG } from "./linkIcons";
 
 export interface SessionSettings {
   mouseSensitivity: number;
@@ -637,11 +638,13 @@ export class SessionMenu {
               <div class="ob-session-note">External pages open in a new tab.</div>
               <div class="ob-session-link-grid">
                 <a class="ob-session-link" href="${GITHUB_REPO_URL}" target="_blank" rel="noreferrer noopener">
-                  <span>GitHub Repository</span>
+                  ${GITHUB_ICON_SVG}
+                  <span>GITHUB REPO</span>
                   <span>&nearr;</span>
                 </a>
                 <a class="ob-session-link" href="${ITCH_IO_URL}" target="_blank" rel="noreferrer noopener">
-                  <span>itch.io Page</span>
+                  ${ITCH_ICON_SVG}
+                  <span>DOTANV.ITCH.IO</span>
                   <span>&nearr;</span>
                 </a>
               </div>
