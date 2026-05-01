@@ -1,170 +1,179 @@
-# ORBITAL BREACH
+# Orbital Breach
 
-**Zero-gravity arena shooter — Vibe Game Jam 2026.**
+**Vibe Jam 2026 submission.** A zero-gravity team shooter about freezing the enemy squad, slingshotting through a debris arena, and physically breaching the opposing portal before they recover their formation.
 
-Two teams fight in a floating debris field. Freeze your enemies with a cryo-pistol. If an entire team is frozen, their breach portal opens. Be the first player to physically float through it to score. First team to five round wins takes the match.
+[Play Orbital Breach](https://orbital-breach.vercel.app) | [Itch.io](https://dotanv.itch.io) | [Source](https://github.com/DotanVG/Orbital-Breach)
 
-No install. No login. [**Play now →**](https://orbital-breach.vercel.app) · [**itch.io →**](https://dotanv.itch.io)
+Orbital Breach runs in the browser with no account or install. The game supports solo bot matches, online multiplayer rooms, mobile touch controls, Vibe Jam portal handoff, debrief stats, credits, Vercel Analytics, and Vercel Speed Insights.
 
----
+## The Match
 
-## How To Play
+Two teams, **Team Cyan** and **Team Magenta**, spawn in opposite breach rooms around a zero-G arena. Each round begins from gravity, then players jump, grab rails, charge a launch, and drift through the arena.
 
-### Objective
+The freeze pistol disables enemies for the rest of the round. Limb hits matter: a damaged right arm blocks firing, damaged legs reduce launch power, and a full freeze strands the pilot. Once a team is frozen, the enemy portal route opens. A player scores by reaching the opposing breach room and crossing the portal volume.
 
-Float through the enemy team's open breach portal to score a round win. A portal only opens when **all enemies on that team are frozen**. Freeze them with your pistol, then breach.
+Matches are first to 5 round wins. Rounds have a 120-second limit and the online server runs authoritative match state at 20 Hz.
 
-### Controls
+## Playlists
+
+Solo and online share the same team sizes, with mode-specific labels in the UI:
+
+| Team size | Online playlist | Solo menu label | Players |
+| --- | --- | --- | --- |
+| 1v1 | 1v1 Duel | 1v1 Skirmish | 2 |
+| 2v2 | 2v2 Duos | 2v2 Duos | 4 |
+| 5v5 | 5v5 Squads | 5v5 Squad Clash | 10 |
+| 10v10 | 10v10 Rush | 10v10 Arena Rush | 20 |
+| 20v20 | 20v20 War | 20v20 Zero-G War | 40 |
+
+Solo fills every empty seat with AI pilots. Online rooms can be played human-only or filled with bots from the lobby.
+
+## Multiplayer
+
+The main menu has two online entry points:
+
+- **Join Online** starts quick matchmaking with a standard `orbital_lobby` room.
+- **Rooms & Invites** opens the server browser for public custom rooms, private/public room creation, invite detection, and direct joins.
+
+Room creation supports:
+
+- Public or private visibility.
+- Custom room names up to 24 characters.
+- Max player caps derived from the playlist sizes: 2, 4, 10, 20, or 40.
+- Shareable invite URLs using the `roomId` query parameter.
+- Copy/share buttons and a QR code for joining the exact room.
+
+The online lobby shows:
+
+- Current phase: `Lobby Open`, `Ready Check`, `Round Live`, or `Round Complete`.
+- Room name, room id, playlist, round number, and score.
+- Team Cyan and Team Magenta rosters with friendly/hostile labels.
+- Human and bot seats, ready state, disconnected state, and your own pilot highlight.
+- Controls for **Ready Check**, **Move To Cyan/Magenta**, **Fill Lobby**, **Humans Only**, **Settings**, and **Main Menu**.
+
+The countdown starts when each connected human is ready and both teams are filled. Bots can fill open seats immediately, and a later human join reclaims a bot seat instead of overfilling the lobby.
+
+## Controls
 
 | Input | Action |
-|---|---|
-| `Mouse` | Look around (zero-G free-look / breach-room yaw+pitch) |
-| `WASD` | Walk inside breach rooms |
-| `E` | Grab a bar / release |
-| `Space` | Jump in breach room · Hold while grabbing to charge launch |
-| `LMB` | Fire freeze pistol |
-| `V` | Toggle third-person view |
-| `B` | Hold for selfie view |
-| `Tab` | Hold to show combat roster / scoreboard |
-| `Esc` | Open session menu / release cursor |
+| --- | --- |
+| Mouse | Look around |
+| WASD | Walk inside breach rooms |
+| E | Grab or release a rail |
+| Space | Jump in breach rooms |
+| Hold Space while grabbing | Charge launch |
+| Mouse movement while charging | Aim launch power |
+| Left mouse button | Fire freeze pistol |
+| V | Toggle first-person / third-person view |
+| B | Hold selfie / look-back view |
+| Tab | Hold combat roster / scoreboard |
+| Esc | Session menu / release cursor |
+| H | Help overlay |
 
-Touch controls are available on mobile — a virtual joystick, grab button, jump/launch button, and fire button appear automatically when a touch device is detected.
+On touch devices, Orbital Breach swaps in mobile controls: a movement joystick in gravity, a look area in zero-G, GRAB, JUMP/LAUNCH, FIRE, and a 1ST/3RD camera toggle.
 
-### Match Modes
+## Player-Facing Features
 
-Choose a size from the main menu then pick **Solo** (bots fill all slots) or **Online** (real players + bot fill):
+- Tutorial mode: an empty arena, bots off, and first-flight guidance.
+- Main menu call signs with profanity filtering and local persistence.
+- Zero-G rail launch movement with power meter and hit-zone penalties.
+- Third-person camera with wall clipping protection.
+- Tab scoreboard with team rosters, bot badges, frozen status, and ping columns online.
+- Session menu with settings, credits, and safe online exit flows.
+- Post-match debrief with final score, pilot stats, and awards.
+- Winning-team victory dance animation at match end.
+- Credits screen and external project links.
+- Vibe Jam portal integration at `https://vibej.am/portal/2026`, including return portals for portal arrivals.
+- Landing attribution via Vercel Web Analytics and performance collection via Vercel Speed Insights.
 
-| Mode | Team size |
-|---|---|
-| 1v1 Skirmish | 1 vs 1 |
-| 2v2 Clash | 2 vs 2 |
-| 5v5 Squad | 5 vs 5 |
-| 10v10 Arena Rush | 10 vs 10 |
-| 20v20 Zero-G War | 20 vs 20 |
+Debrief awards are generated from match stats:
 
-The match ends when one team wins 5 rounds.
-
-### Online Lobby
-
-Click **Play Online** from the main menu to enter the online lobby. You will be placed into a matchmaking room where you can:
-
-- See the full **Team Cyan** and **Team Magenta** rosters update in real time as players join
-- **Switch teams** at any time before the match starts
-- Hit **Fill Bots** to top up empty slots with AI opponents so a match can start immediately
-- Toggle your **Ready** status — the countdown begins once all humans are ready
-- Share the room link to invite friends directly
-
-When the room fills or all players ready up, a 5-second countdown runs and the match begins. Bots fill any remaining slots automatically.
-
----
-
-## Running Locally
-
-**Prerequisites:** Node.js 18+
-
-```bash
-# Server (terminal 1)
-cd server && npm install && npm run dev
-
-# Client (terminal 2)
-cd client && npm install && npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173). The Vite dev server proxies `/ws` → `ws://localhost:3001` automatically.
-
-```bash
-# Tests (from repo root)
-npx vitest run
-
-# TypeScript checks
-(cd client && node_modules/.bin/tsc --noEmit)
-(cd server && node_modules/.bin/tsc --noEmit)
-```
-
-### Build
-
-```bash
-(cd client && npm run build)
-(cd server && npm run build)
-```
-
----
-
-## Architecture
-
-### Client (`client/`)
-
-Vite + Three.js + TypeScript. The top-level `App` in `client/src/game/gameApp.ts` owns the render loop and switches between **menu**, **solo**, and **online** app modes. Match coordination is split into `localMatch` (solo bots, fully client-authoritative) and `onlineMatch` (server-authoritative via Colyseus). The bot brain in `client/src/match/botBrain.ts` runs five AI archetypes with bar routing, enemy targeting, and breach-room navigation. HUD, kill feed, lobby, debrief, and tutorial are all DOM layers injected over the Three.js canvas.
-
-### Server (`server/`)
-
-Express + Colyseus 0.17 + TypeScript. `OrbitalLobbyRoom` manages the full match lifecycle (LOBBY → COUNTDOWN → PLAYING → ROUND_END), authoritative actor sync at 20 Hz, hit validation, breach scoring, and server-side bot AI. Cold-start wake logic is handled client-side via `wakeBackend()`.
-
-### Shared (`shared/`)
-
-Imported by both sides. `schema.ts` is the wire contract. `constants.ts` holds all tuning values. `arena-gen.ts` generates a deterministic obstacle layout from a seed (Mulberry32 RNG). `player-logic.ts` holds transport-neutral hit classification and spawn helpers.
-
----
-
-## Current Status
-
-| Feature | Status |
-|---|---|
-| Zero-G movement — grab bars, charge launch, float | ✅ Done |
-| Breach rooms with gravity + portal doors | ✅ Done |
-| Freeze pistol — hit zones (torso/arms/legs), damage state | ✅ Done |
-| Solo mode with intelligent AI bots (5 archetypes) | ✅ Done |
-| Match sizes — 1v1 / 2v2 / 5v5 / 10v10 / 20v20 | ✅ Done |
-| Best-of-5-rounds match format | ✅ Done |
-| Online multiplayer — Colyseus lobby + live match | ✅ Done |
-| Online bot fill for partial lobbies | ✅ Done |
-| Team-based lobby with ready status | ✅ Done |
-| HUD — kill feed, damage indicators, round timer, launch bar | ✅ Done |
-| Tab scoreboard (friendly frozen status / enemy roster) | ✅ Done |
-| Sound system — music, SFX, 3D positional audio | ✅ Done |
-| Tutorial (first-time guidance prompts) | ✅ Done |
-| Mobile controls — virtual joystick, touch buttons | ✅ Done |
-| Vibe Jam portal integration | ✅ Done |
-| Vercel (frontend) + Render (backend) deployment | ✅ Done |
-| Post-match debrief with stats & awards | ✅ Done |
-| Room browser, private lobbies, invite links | ✅ Done |
-| Credits page + GitHub/itch.io links | ✅ Done |
-| Victory dance animation for winning team | ✅ Done |
-| Vercel Web Analytics + landing attribution | ✅ Done |
-
----
-
-## Vibe Jam 2026 Release
-
-The staging release for main is tracked in [#75](https://github.com/DotanVG/Orbital-Breach/pull/75) as **Vibe Jam 2026 submission**. It consolidates the room browser, private invites, debrief stats and awards, credits, victory dance, analytics, portal polish, cursor fixes, and multiplayer cleanup work.
-
----
+- **Portal Ace** for the top breach scorer.
+- **Deep Freeze** for the top freeze scorer.
+- **Iron Pilot** for a human pilot who avoids being frozen.
+- **Moon Walker** for the most travel distance.
 
 ## Tech Stack
 
 | Layer | Technology |
-|---|---|
-| Renderer | [Three.js](https://threejs.org) 0.179 |
+| --- | --- |
+| Renderer | Three.js 0.179 |
 | Client | TypeScript 5.9, Vite 7 |
-| Multiplayer | [Colyseus](https://colyseus.io) 0.17 |
+| Multiplayer | Colyseus 0.17 |
 | Server | Node.js, Express 5, TypeScript |
-| Testing | Vitest (23 test files) |
+| Testing | Vitest, 33 test files |
 | Frontend hosting | Vercel |
 | Backend hosting | Render |
+| Analytics | Vercel Web Analytics and Speed Insights |
 
----
+## Local Development
 
-## Audio Credits
+Prerequisites: Node.js 18+ and npm.
 
-Music and sound effects by **Noam Ouzana** — [soundcloud.com/ouzana](https://soundcloud.com/ouzana)
+Install dependencies:
 
-- Orbital Breach — Main Theme (Sketch #1)
-- Laser #1, Laser #2
-- Countdown
+```bash
+npm install
+npm install --prefix client
+npm install --prefix server
+```
 
----
+Run the full local stack:
 
-## Docs
+```bash
+npm run dev
+```
 
-- [Architecture](docs/ARCHITECTURE.md) — module map and responsibilities
-- [Testing](docs/TESTING.md) — Vitest setup, patterns, and test conventions
+Or run each service separately:
+
+```bash
+# terminal 1
+npm run dev --prefix server
+
+# terminal 2
+npm run dev --prefix client
+```
+
+Open [http://localhost:5173](http://localhost:5173). In development, the Vite server proxies `/matchmake` and `/ws` to the Colyseus server on `localhost:2567`.
+
+Useful commands:
+
+```bash
+# tests
+npm test
+
+# production builds
+npm run build --prefix client
+npm run build --prefix server
+```
+
+Production online multiplayer requires `VITE_COLYSEUS_ENDPOINT` on the client. The server accepts `PORT`, `CLIENT_ORIGIN`, `PUBLIC_ADDRESS`, and `NODE_ENV`.
+
+## Repository Map
+
+- `client/src/game/gameApp.ts` owns app mode transitions, the render loop, portal flow, solo/online match orchestration, HUD updates, and end-of-match debrief routing.
+- `client/src/ui/roomBrowser.ts` implements public room browsing, private/public room creation, invite detection, and direct joins.
+- `client/src/ui/multiplayerLobby.ts` implements the online lobby, rosters, ready flow, bot fill controls, invite URL, native share, and QR code.
+- `client/src/match/localMatch.ts` runs solo matches with local bots.
+- `client/src/match/onlineMatch.ts` reconciles server-authoritative online snapshots.
+- `server/src/colyseus/OrbitalLobbyRoom.ts` runs the multiplayer room lifecycle, hit validation, scoring, bot fill, and authoritative actor state.
+- `server/src/index.ts` exposes Colyseus rooms plus `/health`, `/wake`, and `/rooms`.
+- `shared/` contains match constants, multiplayer messages, arena generation, spawn logic, player hit logic, and shared schemas.
+- `tests/` covers physics, arena generation, player logic, multiplayer room behavior, online reconciliation, UI helpers, analytics, portal placement, debrief stats, and regression cases.
+
+## Credits
+
+Audio by **Noam Ouzana**: main theme, hit SFX, laser shots, and countdown audio.
+[soundcloud.com/ouzana](https://soundcloud.com/ouzana)
+
+3D assets by **Quaternius**:
+
+- Animated Alien: `Alien.glb` and `Alien_Helmet.glb` for player and bot character rigs.
+  [quaternius.com/packs/animatedalien.html](https://quaternius.com/packs/animatedalien.html)
+- Sci-Fi Gun Pack: `Ray Gun.glb` for the first-person and third-person freeze pistol.
+  [quaternius.com/packs/scifigun.html](https://quaternius.com/packs/scifigun.html)
+
+## More Docs
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Testing](docs/TESTING.md)
