@@ -1703,6 +1703,7 @@ export class App {
   }
 
   private syncDesktopOverlayCursor(gameplayActive: boolean): void {
+    if (!gameplayActive) return;
     if (shouldShowDesktopOverlayCursor({
       gameplayActive,
       mobile: this.mobile,
