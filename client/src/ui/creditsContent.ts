@@ -5,22 +5,25 @@ export const NOAM_SOUNDCLOUD_URL = "https://soundcloud.com/ouzana";
 export interface CreditEntry {
   title: string;
   detail: string;
+  url?: string;
 }
 
 export const ASSET_CREDITS: CreditEntry[] = [
   {
-    title: "Alien Model",
-    detail: "Alien.glb and Alien_Helmet.glb power the player and bot character rigs.",
+    title: "Animated Alien",
+    detail: "Alien.glb and Alien_Helmet.glb — player and bot character rigs. By Quaternius.",
+    url: "https://quaternius.com/packs/animatedalien.html",
   },
   {
-    title: "Freeze Pistol Model",
-    detail: "Ray Gun.glb is used for the first-person and third-person freeze pistol.",
+    title: "Sci-Fi Gun Pack — Pistol",
+    detail: "Ray Gun.glb — first-person and third-person freeze pistol. By Quaternius.",
+    url: "https://quaternius.com/packs/scifigun.html",
   },
 ];
 
 export const AUDIO_CREDITS: CreditEntry[] = [
   {
     title: "Noam Ouzana",
-    detail: "Music and sound effects, including the main theme, laser shots, and countdown audio.",
+    detail: "Main theme, hit SFX, laser shots, and countdown audio.",
   },
 ];

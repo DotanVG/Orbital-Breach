@@ -379,6 +379,17 @@ const CSS = `
     font-size: 16px;
     line-height: 1.45;
   }
+  .ob-session-credit-link {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--ob-cyan, #00e5ff);
+    text-decoration: none;
+    opacity: .7;
+    transition: opacity .2s;
+  }
+  .ob-session-credit-link:hover { opacity: 1; }
 
   .ob-session-link-grid {
     display: grid;
@@ -602,15 +613,19 @@ export class SessionMenu {
 
           <div id="session-menu-credits-view" class="ob-session-view" hidden>
             <section class="ob-session-settings-card">
-              <div class="ob-session-settings-title">Asset Credits</div>
-              <div class="ob-session-note">Bundled 3D model assets used by the current browser build.</div>
-              <div class="ob-session-credit-list">
-                ${ASSET_CREDITS.map((credit) => `
-                  <article class="ob-session-credit-item">
-                    <div class="ob-session-credit-name">${escapeHtml(credit.title)}</div>
-                    <div class="ob-session-credit-detail">${escapeHtml(credit.detail)}</div>
-                  </article>
-                `).join("")}
+              <div class="ob-session-settings-title">Project Links</div>
+              <div class="ob-session-note">External pages open in a new tab.</div>
+              <div class="ob-session-link-grid">
+                <a class="ob-session-link" href="${GITHUB_REPO_URL}" target="_blank" rel="noreferrer noopener">
+                  ${GITHUB_ICON_SVG}
+                  <span>GITHUB REPO</span>
+                  <span>&nearr;</span>
+                </a>
+                <a class="ob-session-link" href="${ITCH_IO_URL}" target="_blank" rel="noreferrer noopener">
+                  ${ITCH_ICON_SVG}
+                  <span>DOTANV.ITCH.IO</span>
+                  <span>&nearr;</span>
+                </a>
               </div>
             </section>
 
@@ -627,31 +642,29 @@ export class SessionMenu {
               </div>
               <div class="ob-session-link-grid">
                 <a class="ob-session-link" href="${NOAM_SOUNDCLOUD_URL}" target="_blank" rel="noreferrer noopener">
-                  <span>Noam Ouzana SoundCloud</span>
+                  <span>NOAM OUZANA — SOUNDCLOUD</span>
                   <span>&nearr;</span>
                 </a>
               </div>
             </section>
 
             <section class="ob-session-settings-card">
-              <div class="ob-session-settings-title">Project Links</div>
-              <div class="ob-session-note">External pages open in a new tab.</div>
-              <div class="ob-session-link-grid">
-                <a class="ob-session-link" href="${GITHUB_REPO_URL}" target="_blank" rel="noreferrer noopener">
-                  ${GITHUB_ICON_SVG}
-                  <span>GITHUB REPO</span>
-                  <span>&nearr;</span>
-                </a>
-                <a class="ob-session-link" href="${ITCH_IO_URL}" target="_blank" rel="noreferrer noopener">
-                  ${ITCH_ICON_SVG}
-                  <span>DOTANV.ITCH.IO</span>
-                  <span>&nearr;</span>
-                </a>
-              </div>
-              <div class="ob-session-card-actions">
-                <button id="session-menu-back-to-settings" type="button" class="ob-session-inline-button ob-session-inline-button--ghost">Back To Settings</button>
+              <div class="ob-session-settings-title">Asset Credits</div>
+              <div class="ob-session-note">3D model assets used by the current browser build.</div>
+              <div class="ob-session-credit-list">
+                ${ASSET_CREDITS.map((credit) => `
+                  <article class="ob-session-credit-item">
+                    <div class="ob-session-credit-name">${escapeHtml(credit.title)}</div>
+                    <div class="ob-session-credit-detail">${escapeHtml(credit.detail)}</div>
+                    ${credit.url ? `<a class="ob-session-credit-link" href="${escapeHtml(credit.url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(credit.url)} &nearr;</a>` : ""}
+                  </article>
+                `).join("")}
               </div>
             </section>
+
+            <div class="ob-session-card-actions">
+              <button id="session-menu-back-to-settings" type="button" class="ob-session-inline-button ob-session-inline-button--ghost">Back To Settings</button>
+            </div>
           </div>
         </div>
       </div>
