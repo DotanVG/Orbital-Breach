@@ -33,7 +33,7 @@ Solo fills every empty seat with AI pilots. Online rooms can be played human-onl
 The main menu has two online entry points:
 
 - **Join Online** starts quick matchmaking with a standard `orbital_lobby` room.
-- **Rooms & Invites** opens the server browser for public custom rooms, private invite-only rooms, and direct room links.
+- **Rooms & Invites** opens the server browser for public custom rooms, private/public room creation, invite detection, and direct joins.
 
 Room creation supports:
 
@@ -93,6 +93,16 @@ Debrief awards are generated from match stats:
 - **Iron Pilot** for a human pilot who avoids being frozen.
 - **Moon Walker** for the most travel distance.
 
+## Current Status
+
+| Feature | Status |
+| --- | --- |
+| Browser game deployment | Done |
+| Solo and online multiplayer | Done |
+| Mobile touch controls | Done |
+| Itch.io landing page | Done |
+| Fullscreen mode with settings toggle | Done; iPhone Safari disables the toggle because non-video fullscreen is unsupported |
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -148,6 +158,18 @@ npm run build --prefix server
 ```
 
 Production online multiplayer requires `VITE_COLYSEUS_ENDPOINT` on the client. The server accepts `PORT`, `CLIENT_ORIGIN`, `PUBLIC_ADDRESS`, and `NODE_ENV`.
+
+## Development Tooling
+
+This repo uses an AI-assisted workflow driven by [Symphony](https://github.com/openai/symphony) and [Claude Code](https://docs.anthropic.com/claude-code).
+
+| File / Dir | Purpose |
+| --- | --- |
+| `WORKFLOW.md` | Symphony orchestration config — defines agents, task routing, and branching rules for [symphony-orchestrator](https://github.com/DotanVG/symphony-orchestrator) |
+| `.codex/` | Codex CLI agent skills for automated code tasks |
+| `.claude/` | Claude Code config: settings, hooks, shared skills, and worktree setup |
+
+The combination of Linear (issue tracking) + Symphony (orchestration) + Claude Code (implementation) lets you assign tasks from any machine and have agents pick them up, branch, implement, and open PRs without a local dev environment.
 
 ## Repository Map
 

@@ -5,12 +5,14 @@ import {
   ITCH_IO_URL,
   NOAM_SOUNDCLOUD_URL,
 } from "./creditsContent";
+import { isFullscreenSupported } from "./fullscreen";
 import { GITHUB_ICON_SVG, ITCH_ICON_SVG } from "./linkIcons";
 
 export interface SessionSettings {
   mouseSensitivity: number;
   musicVolume: number;
   soundtrackEnabled: boolean;
+  fullscreenEnabled: boolean;
   sfxVolume: number;
   defaultCameraMode: "first" | "third";
 }
@@ -30,6 +32,7 @@ const STORAGE_KEYS = {
   mouseSensitivity: "orbital_mouse_sensitivity",
   musicVolume: "orbital_music_volume",
   soundtrackEnabled: "orbital_soundtrack_enabled",
+  fullscreenEnabled: "orbital_fullscreen_enabled",
   sfxVolume: "orbital_sfx_volume",
   defaultCameraMode: "orbital_default_camera_mode",
 } as const;
@@ -37,6 +40,7 @@ const STORAGE_KEYS = {
 const DEFAULT_SETTINGS: SessionSettings = {
   mouseSensitivity: 0.002,
   soundtrackEnabled: true,
+  fullscreenEnabled: true,
   musicVolume: 60,
   sfxVolume: 50,
   defaultCameraMode: "first",
@@ -513,6 +517,8 @@ export class SessionMenu {
   private readonly sensitivityValue: HTMLSpanElement;
   private readonly soundtrackInput: HTMLInputElement;
   private readonly soundtrackValue: HTMLSpanElement;
+  private readonly fullscreenInput: HTMLInputElement;
+  private readonly fullscreenValue: HTMLSpanElement;
   private readonly musicInput: HTMLInputElement;
   private readonly musicValue: HTMLSpanElement;
   private readonly sfxInput: HTMLInputElement;
@@ -574,6 +580,17 @@ export class SessionMenu {
                 <label class="ob-session-toggle">
                   <span class="ob-session-toggle-copy">Keep the soundtrack channel armed once the music pass lands.</span>
                   <input id="session-menu-soundtrack" class="ob-session-checkbox" type="checkbox" />
+                </label>
+              </div>
+
+              <div class="ob-session-field">
+                <div class="ob-session-field-head">
+                  <span class="ob-session-field-label">Fullscreen</span>
+                  <span id="session-menu-fullscreen-value" class="ob-session-value"></span>
+                </div>
+                <label class="ob-session-toggle">
+                  <span class="ob-session-toggle-copy">Enter fullscreen on breach and when toggled from this panel.</span>
+                  <input id="session-menu-fullscreen" class="ob-session-checkbox" type="checkbox" />
                 </label>
               </div>
 
@@ -685,6 +702,8 @@ export class SessionMenu {
     this.sensitivityValue = this.query("#session-menu-sensitivity-value");
     this.soundtrackInput = this.query("#session-menu-soundtrack");
     this.soundtrackValue = this.query("#session-menu-soundtrack-value");
+    this.fullscreenInput = this.query("#session-menu-fullscreen");
+    this.fullscreenValue = this.query("#session-menu-fullscreen-value");
     this.musicInput = this.query("#session-menu-music");
     this.musicValue = this.query("#session-menu-music-value");
     this.sfxInput = this.query("#session-menu-sfx");
@@ -704,6 +723,12 @@ export class SessionMenu {
     });
     this.soundtrackInput.addEventListener("change", () => {
       this.settings.soundtrackEnabled = this.soundtrackInput.checked;
+      this.persistSettings();
+      this.renderSettings();
+      this.onSettingsChange?.(this.getSettings());
+    });
+    this.fullscreenInput.addEventListener("change", () => {
+      this.settings.fullscreenEnabled = this.fullscreenInput.checked;
       this.persistSettings();
       this.renderSettings();
       this.onSettingsChange?.(this.getSettings());
@@ -779,6 +804,7 @@ export class SessionMenu {
   private persistSettings(): void {
     localStorage.setItem(STORAGE_KEYS.mouseSensitivity, String(this.settings.mouseSensitivity));
     localStorage.setItem(STORAGE_KEYS.musicVolume, String(this.settings.musicVolume));
+    localStorage.setItem(STORAGE_KEYS.fullscreenEnabled, String(this.settings.fullscreenEnabled));
     localStorage.setItem(STORAGE_KEYS.sfxVolume, String(this.settings.sfxVolume));
     localStorage.setItem(STORAGE_KEYS.defaultCameraMode, this.settings.defaultCameraMode);
   }
@@ -788,6 +814,12 @@ export class SessionMenu {
     this.sensitivityValue.textContent = `${(this.settings.mouseSensitivity * 1000).toFixed(1)}x`;
     this.soundtrackInput.checked = this.settings.soundtrackEnabled;
     this.soundtrackValue.textContent = this.settings.soundtrackEnabled ? "On" : "Off";
+    const fullscreenSupported = isFullscreenSupported();
+    this.fullscreenInput.checked = this.settings.fullscreenEnabled && fullscreenSupported;
+    this.fullscreenInput.disabled = !fullscreenSupported;
+    this.fullscreenValue.textContent = fullscreenSupported
+      ? (this.settings.fullscreenEnabled ? "On" : "Off")
+      : "Unavailable";
     this.musicInput.value = String(this.settings.musicVolume);
     this.musicValue.textContent = `${Math.round(this.settings.musicVolume)}%`;
     this.sfxInput.value = String(this.settings.sfxVolume);
@@ -834,6 +866,7 @@ function loadSettings(): SessionSettings {
   // Always default music to ON — never persist "off" state across sessions.
   // Stale "0" values from prior sessions would silently gate all audio on mobile.
   localStorage.removeItem(STORAGE_KEYS.soundtrackEnabled);
+  const fullscreenEnabled = localStorage.getItem(STORAGE_KEYS.fullscreenEnabled);
   const musicVolume = Number(localStorage.getItem(STORAGE_KEYS.musicVolume) ?? DEFAULT_SETTINGS.musicVolume);
   const sfxVolume = Number(localStorage.getItem(STORAGE_KEYS.sfxVolume) ?? DEFAULT_SETTINGS.sfxVolume);
   const savedCameraMode = localStorage.getItem(STORAGE_KEYS.defaultCameraMode);
@@ -841,6 +874,7 @@ function loadSettings(): SessionSettings {
   return {
     mouseSensitivity: Number.isFinite(sensitivity) ? clamp(sensitivity, 0.0005, 0.004) : DEFAULT_SETTINGS.mouseSensitivity,
     soundtrackEnabled: true,
+    fullscreenEnabled: fullscreenEnabled == null ? DEFAULT_SETTINGS.fullscreenEnabled : fullscreenEnabled === "true",
     musicVolume: Number.isFinite(musicVolume) ? clamp(musicVolume, 0, 100) : DEFAULT_SETTINGS.musicVolume,
     sfxVolume: Number.isFinite(sfxVolume) ? clamp(sfxVolume, 0, 100) : DEFAULT_SETTINGS.sfxVolume,
     defaultCameraMode: savedCameraMode === "third" ? "third" : "first",

@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Orbital Breach</title>
+  <style>
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: #04060e;
+      overflow: hidden;
+    }
+
+    .wc-root {
+      position: fixed; inset: 0; z-index: 20;
+      background: #04060e;
+      overflow: hidden;
+      cursor: none;
+      touch-action: none;
+      animation: wc-fade-in .6s ease both;
+    }
+    @media (pointer: coarse) { .wc-root { cursor: auto; } }
+
+    @keyframes wc-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes wc-fade-out { from { opacity: 1; } to { opacity: 0; } }
+    .wc-root.wc-fadeout { animation: wc-fade-out .3s ease forwards; }
+
+    .wc-stage { position: fixed; inset: 0; overflow: hidden; }
+
+    .wc-layer {
+      position: absolute;
+      background: url('./orbital-breach-art.png') center / contain no-repeat;
+      background-color: #04060e;
+      will-change: transform;
+      transform-origin: center center;
+      inset: -6%;
+    }
+
+    .wc-ui {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; align-items: flex-end; justify-content: center;
+      padding-bottom: clamp(48px, 22vh, 160px);
+      pointer-events: none;
+    }
+
+    .wc-btn {
+      pointer-events: auto;
+      position: relative;
+      padding: clamp(14px,2vh,22px) clamp(44px,8vw,96px);
+      background: rgba(4, 6, 14, 0.48);
+      border: 1px solid rgba(255,255,255,0.28);
+      color: #fff;
+      font-family: "JetBrains Mono", monospace;
+      font-size: clamp(11px, 1.5vw, 15px);
+      letter-spacing: clamp(4px, 1vw, 9px);
+      text-transform: uppercase;
+      cursor: none;
+      overflow: hidden;
+      touch-action: manipulation;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      transition: border-color .3s, box-shadow .3s, transform .15s;
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    @media (pointer: coarse) { .wc-btn { cursor: pointer; } }
+
+    .wc-btn::before {
+      content: "";
+      position: absolute; inset: 0;
+      background: radial-gradient(
+        circle at var(--bx,50%) var(--by,50%),
+        rgba(0,229,255,.30) 0%,
+        rgba(255,28,255,.22) 45%,
+        transparent 70%
+      );
+      opacity: 0;
+      transition: opacity .35s;
+    }
+
+    .wc-btn:hover::before,
+    .wc-btn:focus::before { opacity: 1; }
+
+    .wc-btn:hover,
+    .wc-btn:focus {
+      border-color: rgba(255,255,255,.7);
+      box-shadow:
+        0 0 0 1px rgba(0,229,255,.25),
+        0 0 40px rgba(0,229,255,.15),
+        0 0 40px rgba(255,28,255,.15);
+    }
+
+    .wc-btn:active { transform: scale(0.975); }
+
+    .wc-c {
+      position: absolute; width: 8px; height: 8px;
+      border: 1px solid rgba(255,255,255,.45);
+      transition: width .3s, height .3s, border-color .3s;
+    }
+    .wc-btn:hover .wc-c { width: 13px; height: 13px; border-color: #fff; }
+    .wc-c.tl { top:    4px; left:  4px; border-right: none; border-bottom: none; }
+    .wc-c.tr { top:    4px; right: 4px; border-left:  none; border-bottom: none; }
+    .wc-c.bl { bottom: 4px; left:  4px; border-right: none; border-top:    none; }
+    .wc-c.br { bottom: 4px; right: 4px; border-left:  none; border-top:    none; }
+
+    .wc-btn-label {
+      position: relative; z-index: 1;
+      display: flex; align-items: center; gap: 12px;
+    }
+
+    .wc-arrow {
+      font-size: 1.3em; letter-spacing: 0;
+      transition: transform .3s cubic-bezier(.2,.8,.2,1);
+    }
+    .wc-btn:hover .wc-arrow { transform: translateX(8px); }
+
+    .embed-root {
+      position: fixed;
+      inset: 0;
+      background: #04060e;
+    }
+
+    .embed-root iframe {
+      display: block;
+      border: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #04060e;
+    }
+
+    .loader-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at center, rgba(0, 229, 255, 0.08), rgba(4, 6, 14, 0.94) 55%),
+        #04060e;
+      color: #effcff;
+      font-family: "JetBrains Mono", monospace;
+      letter-spacing: 0.18em;
+      text-align: center;
+      text-transform: uppercase;
+      transition: opacity .3s ease;
+    }
+
+    .loader-overlay.is-hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .fallback-link {
+      display: none;
+      margin-top: 20px;
+      color: #7ffcff;
+      text-decoration: none;
+    }
+
+    .loader-overlay.show-fallback .fallback-link {
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <div class="wc-root" id="welcome">
+    <div class="wc-stage">
+      <div class="wc-layer" id="wc-layer" data-depth="0.012"></div>
+    </div>
+    <div class="wc-ui">
+      <button class="wc-btn" id="wc-btn">
+        <span class="wc-c tl"></span>
+        <span class="wc-c tr"></span>
+        <span class="wc-c bl"></span>
+        <span class="wc-c br"></span>
+        <span class="wc-btn-label">Click to BREACH <span class="wc-arrow">&rarr;</span></span>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const LIVE_URL = "https://orbital-breach.vercel.app/?embed=1";
+    const welcome = document.getElementById("welcome");
+    const layer = document.getElementById("wc-layer");
+    const btn = document.getElementById("wc-btn");
+    const depth = parseFloat(layer.dataset.depth || "0.012");
+    let mouseNx = 0;
+    let mouseNy = 0;
+
+    function enterFullscreen() {
+      const el = document.documentElement;
+      const requestFullscreen = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (requestFullscreen) requestFullscreen.call(el);
+    }
+
+    function onMove(event) {
+      mouseNx = (event.clientX / window.innerWidth - 0.5) * 2;
+      mouseNy = (event.clientY / window.innerHeight - 0.5) * 2;
+    }
+
+    function onButtonMove(event) {
+      const rect = btn.getBoundingClientRect();
+      btn.style.setProperty("--bx", ((event.clientX - rect.left) / rect.width * 100) + "%");
+      btn.style.setProperty("--by", ((event.clientY - rect.top) / rect.height * 100) + "%");
+    }
+
+    function tick() {
+      const ox = mouseNx * depth * window.innerWidth;
+      const oy = mouseNy * depth * window.innerHeight;
+      layer.style.transform = "translate(" + ox + "px," + oy + "px)";
+      requestAnimationFrame(tick);
+    }
+
+    function loadGame() {
+      enterFullscreen();
+      welcome.classList.add("wc-fadeout");
+      welcome.addEventListener("animationend", replaceWithGame, { once: true });
+    }
+
+    function replaceWithGame() {
+      document.body.innerHTML = [
+        '<div class="embed-root">',
+        '  <iframe src="' + LIVE_URL + '" allow="fullscreen; pointer-lock; autoplay; gamepad; xr-spatial-tracking" allowfullscreen style="border:0;width:100vw;height:100vh"></iframe>',
+        '  <div class="loader-overlay" id="loader">',
+        '    <div>',
+        '      <div>Opening Breach Link</div>',
+        '      <a class="fallback-link" href="' + LIVE_URL + '" target="_blank" rel="noreferrer noopener">Open in new tab &rarr; vercel.app</a>',
+        '    </div>',
+        '  </div>',
+        '</div>'
+      ].join("");
+
+      const iframe = document.querySelector("iframe");
+      const loader = document.getElementById("loader");
+      const fallbackTimer = window.setTimeout(() => loader.classList.add("show-fallback"), 4000);
+      iframe.addEventListener("load", () => {
+        window.clearTimeout(fallbackTimer);
+        loader.classList.add("is-hidden");
+      }, { once: true });
+    }
+
+    window.addEventListener("mousemove", onMove);
+    btn.addEventListener("mousemove", onButtonMove);
+    btn.addEventListener("click", loadGame);
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>
