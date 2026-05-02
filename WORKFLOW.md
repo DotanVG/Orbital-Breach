@@ -1,7 +1,13 @@
 ---
 tracker:
-  kind: github
-  repo: DotanVG/Orbital-Breach
+  kind: linear
+  project_slug: orbital-breach
+  active_states:
+    - Todo
+    - "In Progress"
+  terminal_states:
+    - Done
+    - Cancelled
 polling:
   interval_ms: 30000
 workspace:
@@ -109,7 +115,7 @@ Key commands:
 3. For server changes: verify TypeScript compiles with no errors.
 4. Run `npm test` to confirm no test regressions.
 5. Before pushing: run all required validation, confirm passing.
-6. Push branch, open PR. PR body MUST include `Closes #{{ issue.id }}` so GitHub auto-closes the issue on merge. Attach PR URL to the issue as a comment.
+6. Push branch, open PR. PR body MUST include `Closes #<N>` where N is the linked GitHub issue number (find it in the issue description or URL field — it is the numeric ID of the corresponding Orbital-Breach GitHub issue). Attach PR URL to the issue as a comment via `linear_graphql`.
 7. Move issue to `In Review`.
 
 ## Step 3: Rework
