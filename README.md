@@ -159,6 +159,18 @@ npm run build --prefix server
 
 Production online multiplayer requires `VITE_COLYSEUS_ENDPOINT` on the client. The server accepts `PORT`, `CLIENT_ORIGIN`, `PUBLIC_ADDRESS`, and `NODE_ENV`.
 
+## Development Tooling
+
+This repo uses an AI-assisted workflow driven by [Symphony](https://github.com/openai/symphony) and [Claude Code](https://docs.anthropic.com/claude-code).
+
+| File / Dir | Purpose |
+| --- | --- |
+| `WORKFLOW.md` | Symphony orchestration config — defines agents, task routing, and branching rules for [symphony-orchestrator](https://github.com/DotanVG/symphony-orchestrator) |
+| `.codex/` | Codex CLI agent skills for automated code tasks |
+| `.claude/` | Claude Code config: settings, hooks, shared skills, and worktree setup |
+
+The combination of Linear (issue tracking) + Symphony (orchestration) + Claude Code (implementation) lets you assign tasks from any machine and have agents pick them up, branch, implement, and open PRs without a local dev environment.
+
 ## Repository Map
 
 - `client/src/game/gameApp.ts` owns app mode transitions, the render loop, portal flow, solo/online match orchestration, HUD updates, and end-of-match debrief routing.
