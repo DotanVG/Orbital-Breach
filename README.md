@@ -100,6 +100,7 @@ Debrief awards are generated from match stats:
 | Browser game deployment | Done |
 | Solo and online multiplayer | Done |
 | Mobile touch controls | Done |
+| In-game instructions page | Done |
 | Itch.io landing page | Done |
 | Fullscreen mode with settings toggle | Done; iPhone Safari disables the toggle because non-video fullscreen is unsupported |
 

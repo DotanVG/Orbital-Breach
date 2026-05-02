@@ -6,7 +6,9 @@ import {
   NOAM_SOUNDCLOUD_URL,
 } from "./creditsContent";
 import { isFullscreenSupported } from "./fullscreen";
+import { getInstructionsContent, type InstructionsContent } from "./instructionsContent";
 import { GITHUB_ICON_SVG, ITCH_ICON_SVG } from "./linkIcons";
+import { isTouchDevice } from "../platform";
 
 export interface SessionSettings {
   mouseSensitivity: number;
@@ -24,7 +26,7 @@ export interface SessionMenuConfig {
   title: string;
 }
 
-type SessionMenuView = "settings" | "credits";
+type SessionMenuView = "settings" | "instructions" | "credits";
 
 export const SESSION_MENU_GEAR_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
 
@@ -318,6 +320,80 @@ const CSS = `
     display: none !important;
   }
 
+  .ob-session-instructions-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .ob-session-instruction-item,
+  .ob-session-control-row {
+    min-width: 0;
+    border: 1px solid rgba(210, 220, 240, 0.08);
+    background:
+      radial-gradient(circle at top left, rgba(127, 252, 255, 0.07), transparent 42%),
+      radial-gradient(circle at bottom right, rgba(255, 125, 248, 0.07), transparent 44%),
+      rgba(255, 255, 255, 0.02);
+  }
+
+  .ob-session-instruction-item {
+    padding: 14px 16px;
+  }
+
+  .ob-session-instruction-item--wide {
+    grid-column: 1 / -1;
+  }
+
+  .ob-session-instruction-title,
+  .ob-session-control-key {
+    font-family: "JetBrains Mono", monospace;
+    color: #7ffcff;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .ob-session-instruction-item:nth-child(even) .ob-session-instruction-title,
+  .ob-session-control-row:nth-child(even) .ob-session-control-key {
+    color: #ff9df8;
+  }
+
+  .ob-session-instruction-body {
+    margin-top: 8px;
+    color: #d7e7ee;
+    font-size: 16px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .ob-session-control-list {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr);
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  .ob-session-control-row {
+    display: contents;
+  }
+
+  .ob-session-control-key,
+  .ob-session-control-action {
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid rgba(210, 220, 240, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+    overflow-wrap: anywhere;
+  }
+
+  .ob-session-control-action {
+    color: #cfe3ed;
+    font-size: 15px;
+    line-height: 1.35;
+  }
+
   .ob-session-card-actions {
     display: flex;
     gap: 12px;
@@ -437,6 +513,11 @@ const CSS = `
       grid-template-columns: 1fr;
     }
 
+    .ob-session-instructions-grid,
+    .ob-session-control-list {
+      grid-template-columns: 1fr;
+    }
+
     .ob-session-launcher {
       top: 10px;
       right: 10px;
@@ -510,8 +591,11 @@ export class SessionMenu {
   private readonly resumeButton: HTMLButtonElement;
   private readonly mainMenuButton: HTMLButtonElement;
   private readonly settingsView: HTMLDivElement;
+  private readonly instructionsView: HTMLDivElement;
   private readonly creditsView: HTMLDivElement;
+  private readonly openInstructionsButton: HTMLButtonElement;
   private readonly openCreditsButton: HTMLButtonElement;
+  private readonly backToSettingsFromInstructionsButton: HTMLButtonElement;
   private readonly backToSettingsButton: HTMLButtonElement;
   private readonly sensitivityInput: HTMLInputElement;
   private readonly sensitivityValue: HTMLSpanElement;
@@ -534,6 +618,7 @@ export class SessionMenu {
 
   public constructor() {
     injectStyle();
+    const instructionsContent = getInstructionsContent(isTouchDevice());
 
     this.launcher = document.createElement("button");
     this.launcher.type = "button";
@@ -622,12 +707,28 @@ export class SessionMenu {
             </section>
 
             <section class="ob-session-settings-card">
+              <div class="ob-session-settings-title">Instructions</div>
+              <div class="ob-session-note">Review objective, round flow, and scoring before launch.</div>
+              <div class="ob-session-card-actions">
+                <button id="session-menu-open-instructions" type="button" class="ob-session-inline-button">Open Instructions</button>
+              </div>
+            </section>
+
+            <section class="ob-session-settings-card">
               <div class="ob-session-settings-title">Credits</div>
               <div class="ob-session-note">Review model, audio, and project-link credits without leaving the build.</div>
               <div class="ob-session-card-actions">
                 <button id="session-menu-open-credits" type="button" class="ob-session-inline-button">Open Credits</button>
               </div>
             </section>
+          </div>
+
+          <div id="session-menu-instructions-view" class="ob-session-view" hidden>
+            ${buildInstructionsHtml(instructionsContent)}
+
+            <div class="ob-session-card-actions">
+              <button id="session-menu-back-to-settings-from-instructions" type="button" class="ob-session-inline-button ob-session-inline-button--ghost">Back To Settings</button>
+            </div>
           </div>
 
           <div id="session-menu-credits-view" class="ob-session-view" hidden>
@@ -695,8 +796,11 @@ export class SessionMenu {
     this.resumeButton = this.query("#session-menu-resume");
     this.mainMenuButton = this.query("#session-menu-main");
     this.settingsView = this.query("#session-menu-settings-view");
+    this.instructionsView = this.query("#session-menu-instructions-view");
     this.creditsView = this.query("#session-menu-credits-view");
+    this.openInstructionsButton = this.query("#session-menu-open-instructions");
     this.openCreditsButton = this.query("#session-menu-open-credits");
+    this.backToSettingsFromInstructionsButton = this.query("#session-menu-back-to-settings-from-instructions");
     this.backToSettingsButton = this.query("#session-menu-back-to-settings");
     this.sensitivityInput = this.query("#session-menu-sensitivity");
     this.sensitivityValue = this.query("#session-menu-sensitivity-value");
@@ -712,7 +816,9 @@ export class SessionMenu {
 
     this.resumeButton.addEventListener("click", () => this.onResume?.());
     this.mainMenuButton.addEventListener("click", () => this.onMainMenu?.());
+    this.openInstructionsButton.addEventListener("click", () => this.showView("instructions"));
     this.openCreditsButton.addEventListener("click", () => this.showView("credits"));
+    this.backToSettingsFromInstructionsButton.addEventListener("click", () => this.showView("settings"));
     this.backToSettingsButton.addEventListener("click", () => this.showView("settings"));
 
     this.sensitivityInput.addEventListener("input", () => {
@@ -829,9 +935,17 @@ export class SessionMenu {
 
   private showView(view: SessionMenuView): void {
     this.settingsView.hidden = view !== "settings";
+    this.instructionsView.hidden = view !== "instructions";
     this.creditsView.hidden = view !== "credits";
 
     if (!this.currentConfig) return;
+
+    if (view === "instructions") {
+      const instructionsContent = getInstructionsContent(isTouchDevice());
+      this.title.textContent = instructionsContent.title;
+      this.subtitle.textContent = instructionsContent.subtitle;
+      return;
+    }
 
     if (view === "credits") {
       this.title.textContent = "Credits";
@@ -846,6 +960,62 @@ export class SessionMenu {
   private query<T extends HTMLElement>(selector: string): T {
     return this.root.querySelector<T>(selector) as T;
   }
+}
+
+function buildInstructionsHtml(content: InstructionsContent): string {
+  const controlsHtml = content.controls.length > 0
+    ? `
+      <section class="ob-session-settings-card">
+        <div class="ob-session-settings-title">Desktop Controls</div>
+        <div class="ob-session-note">Keyboard and mouse bindings from the README quick reference.</div>
+        <div class="ob-session-control-list">
+          ${content.controls.map((control) => `
+            <div class="ob-session-control-row">
+              <div class="ob-session-control-key">${escapeHtml(control.input)}</div>
+              <div class="ob-session-control-action">${escapeHtml(control.action)}</div>
+            </div>
+          `).join("")}
+        </div>
+      </section>
+    `
+    : "";
+
+  return `
+    <section class="ob-session-settings-card">
+      <div class="ob-session-settings-title">Objective</div>
+      <div class="ob-session-note">Cyan and Magenta fight to breach the opposing room.</div>
+      <div class="ob-session-instructions-grid">
+        ${content.objective.map((item) => buildInstructionItem(item)).join("")}
+      </div>
+    </section>
+
+    <section class="ob-session-settings-card">
+      <div class="ob-session-settings-title">Round Flow</div>
+      <div class="ob-session-note">From breach-room launch to zero-G freeze fight.</div>
+      <div class="ob-session-instructions-grid">
+        ${content.roundFlow.map((item) => buildInstructionItem(item)).join("")}
+      </div>
+    </section>
+
+    <section class="ob-session-settings-card">
+      <div class="ob-session-settings-title">Winning</div>
+      <div class="ob-session-note">How rounds score, how matches end, and what happens on timeout.</div>
+      <div class="ob-session-instructions-grid">
+        ${content.winningScenarios.map((item) => buildInstructionItem(item, true)).join("")}
+      </div>
+    </section>
+
+    ${controlsHtml}
+  `;
+}
+
+function buildInstructionItem(item: { title: string; body: string }, wide = false): string {
+  return `
+    <article class="ob-session-instruction-item${wide ? " ob-session-instruction-item--wide" : ""}">
+      <div class="ob-session-instruction-title">${escapeHtml(item.title)}</div>
+      <div class="ob-session-instruction-body">${escapeHtml(item.body)}</div>
+    </article>
+  `;
 }
 
 function escapeHtml(raw: string): string {
