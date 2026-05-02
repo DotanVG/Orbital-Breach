@@ -1,23 +1,14 @@
 ---
 tracker:
-  kind: linear
-  project_slug: "fbd2031f549e"
-  active_states:
-    - Todo
-    - In Progress
-  terminal_states:
-    - Closed
-    - Cancelled
-    - Canceled
-    - Duplicate
-    - Done
+  kind: github
+  repo: DotanVG/Orbital-Breach
 polling:
   interval_ms: 30000
 workspace:
   root: ~/code/orbital-breach-workspaces
 hooks:
   after_create: |
-    git clone --depth 1 --branch staging https://github.com/DotanVG/Zero-G-Arena.git .
+    git clone --depth 1 --branch staging https://github.com/DotanVG/Orbital-Breach.git .
     npm install
     npm install --prefix client
     npm install --prefix server
@@ -118,7 +109,7 @@ Key commands:
 3. For server changes: verify TypeScript compiles with no errors.
 4. Run `npm test` to confirm no test regressions.
 5. Before pushing: run all required validation, confirm passing.
-6. Push branch, open PR, attach PR URL to Linear issue.
+6. Push branch, open PR. PR body MUST include `Closes #{{ issue.id }}` so GitHub auto-closes the issue on merge. Attach PR URL to the issue as a comment.
 7. Move issue to `In Review`.
 
 ## Step 3: Rework
