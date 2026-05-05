@@ -20,7 +20,7 @@ export interface InstructionsContent {
 const OBJECTIVE: InstructionTextBlock[] = [
   {
     title: "Objective",
-    body: "Freeze the enemy squad, open their breach portal, and cross it before they recover their formation.",
+    body: "Win each round by breaching the enemy room or freezing every enemy pilot.",
   },
   {
     title: "Teams",
@@ -38,19 +38,23 @@ const ROUND_FLOW: InstructionTextBlock[] = [
     body: "Drift through debris, use rails to redirect, and fire the freeze pistol at enemy pilots.",
   },
   {
-    title: "Open The Portal",
-    body: "Freeze all enemies on the opposing team to open their breach portal route.",
+    title: "FREEZE TO SCORE",
+    body: "Freeze all enemy players to score a round instantly.",
   },
   {
     title: "Breach To Score",
-    body: "Cross the enemy breach portal to score a round for your team.",
+    body: "Cross into the enemy breach room to score a round for your team.",
   },
 ];
 
 const WINNING_SCENARIOS: InstructionTextBlock[] = [
   {
-    title: "Round Win",
-    body: "A round is won when a player crosses the enemy breach portal after the enemy team has been fully frozen.",
+    title: "Breach Win",
+    body: "A round is won when a player breaches the enemy room.",
+  },
+  {
+    title: "Freeze Win",
+    body: "A round is also won when every enemy player is frozen.",
   },
   {
     title: "Match Win",
@@ -79,10 +83,8 @@ const DESKTOP_CONTROLS: InstructionControl[] = [
 
 export function getInstructionsContent(isMobile: boolean): InstructionsContent {
   return {
-    title: isMobile ? "Mobile Instructions" : "Desktop Instructions",
-    subtitle: isMobile
-      ? "Round flow, objective, and scoring rules for touch pilots."
-      : "Controls, objective, round flow, and scoring rules for desktop pilots.",
+    title: "INSTRUCTIONS",
+    subtitle: "Controls, objective, round flow, and scoring rules.",
     objective: OBJECTIVE,
     roundFlow: ROUND_FLOW,
     winningScenarios: WINNING_SCENARIOS,

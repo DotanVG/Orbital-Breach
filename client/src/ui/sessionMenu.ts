@@ -962,12 +962,12 @@ export class SessionMenu {
   }
 }
 
-function buildInstructionsHtml(content: InstructionsContent): string {
+export function buildInstructionsHtml(content: InstructionsContent): string {
   const controlsHtml = content.controls.length > 0
     ? `
       <section class="ob-session-settings-card">
-        <div class="ob-session-settings-title">Desktop Controls</div>
-        <div class="ob-session-note">Keyboard and mouse bindings from the README quick reference.</div>
+        <div class="ob-session-settings-title">Controls</div>
+        <div class="ob-session-note">Keyboard and mouse bindings from the quick reference.</div>
         <div class="ob-session-control-list">
           ${content.controls.map((control) => `
             <div class="ob-session-control-row">
@@ -981,6 +981,8 @@ function buildInstructionsHtml(content: InstructionsContent): string {
     : "";
 
   return `
+    ${controlsHtml}
+
     <section class="ob-session-settings-card">
       <div class="ob-session-settings-title">Objective</div>
       <div class="ob-session-note">Cyan and Magenta fight to breach the opposing room.</div>
@@ -1004,8 +1006,6 @@ function buildInstructionsHtml(content: InstructionsContent): string {
         ${content.winningScenarios.map((item) => buildInstructionItem(item, true)).join("")}
       </div>
     </section>
-
-    ${controlsHtml}
   `;
 }
 
