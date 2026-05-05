@@ -539,6 +539,7 @@ export interface MenuElements {
   playSoloButton: HTMLButtonElement;
   playOnlineButton: HTMLButtonElement;
   browseRoomsButton: HTMLButtonElement;
+  openInstructionsButton: HTMLButtonElement;
   openSettingsButton: HTMLButtonElement;
   openCreditsButton: HTMLButtonElement;
   playTutorialButton: HTMLButtonElement;
@@ -730,6 +731,7 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
         </div>
         <div class="ob-settings-row">
           ${btn("btn-browse-rooms", "utility", "Rooms & Invites")}
+          ${btn("btn-open-instructions", "utility", "Instructions")}
           ${btn("btn-open-settings", "utility", "Settings", SESSION_MENU_GEAR_ICON)}
           ${btn("btn-open-credits", "utility", "Credits")}
         </div>
@@ -779,6 +781,7 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
     playSoloButton:    container.querySelector<HTMLButtonElement>("#btn-play-solo")!,
     playOnlineButton:  container.querySelector<HTMLButtonElement>("#btn-play-online")!,
     browseRoomsButton: container.querySelector<HTMLButtonElement>("#btn-browse-rooms")!,
+    openInstructionsButton: container.querySelector<HTMLButtonElement>("#btn-open-instructions")!,
     openSettingsButton:container.querySelector<HTMLButtonElement>("#btn-open-settings")!,
     openCreditsButton: container.querySelector<HTMLButtonElement>("#btn-open-credits")!,
     playTutorialButton:container.querySelector<HTMLButtonElement>("#btn-play-tutorial")!,
