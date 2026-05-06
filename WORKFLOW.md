@@ -1,13 +1,16 @@
 ---
 tracker:
   kind: linear
-  project_slug: orbital-breach
+  project_slug: "fbd2031f549e"
   active_states:
     - Todo
-    - "In Progress"
+    - In Progress
   terminal_states:
-    - Done
+    - Closed
     - Cancelled
+    - Canceled
+    - Duplicate
+    - Done
 polling:
   interval_ms: 30000
 workspace:
@@ -19,7 +22,6 @@ hooks:
     npm install --prefix client
     npm install --prefix server
   before_run: |
-    set -euo pipefail
     git fetch origin
     git merge --ff-only origin/staging
 agent:
@@ -28,7 +30,8 @@ agent:
 codex:
   command: codex app-server
   approval_policy: never
-  thread_sandbox: workspace-write
+  thread_sandbox: danger-full-access
+  stall_timeout_ms: 1800000
 ---
 
 You are working on Linear ticket `{{ issue.identifier }}` for the **Orbital Breach** project.
@@ -115,7 +118,7 @@ Key commands:
 3. For server changes: verify TypeScript compiles with no errors.
 4. Run `npm test` to confirm no test regressions.
 5. Before pushing: run all required validation, confirm passing.
-6. Push branch, open PR. PR body MUST include `Closes #<N>` where N is the linked GitHub issue number (find it in the issue description or URL field — it is the numeric ID of the corresponding Orbital-Breach GitHub issue). Attach PR URL to the issue as a comment via `linear_graphql`.
+6. Push branch, open PR, attach PR URL to Linear issue.
 7. Move issue to `In Review`.
 
 ## Step 3: Rework
