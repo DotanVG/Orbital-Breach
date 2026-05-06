@@ -24,7 +24,7 @@ import { SceneManager } from "../render/scene";
 import { isEmbedMode } from "../embed";
 import { KillFeed } from "../ui/kill-feed";
 import { initGlobalCursor, type GlobalCursor } from "../ui/globalCursor";
-import { enterFullscreen, exitFullscreen, isFullscreen } from "../ui/fullscreen";
+import { isFullscreen, leaveFullscreen, requestFullscreen } from "../ui/fullscreen";
 import { MainMenu } from "../ui/menu";
 import { MobileControls } from "../ui/mobileControls";
 import { RoomBrowser } from "../ui/roomBrowser";
@@ -189,7 +189,7 @@ export class App {
       this.applySessionSettings(settings);
       if (fullscreenPreferenceChanged) {
         this.fullscreenPreference = settings.fullscreenEnabled;
-        this.applyFullscreenPreference(settings.fullscreenEnabled);
+        void this.applyFullscreenPreference(settings.fullscreenEnabled);
       }
     };
 
@@ -1200,11 +1200,13 @@ export class App {
     this.sound.setMusicEnabled(settings.soundtrackEnabled);
   }
 
-  private applyFullscreenPreference(enabled: boolean): void {
-    if (enabled) {
-      if (!isFullscreen()) enterFullscreen();
-    } else if (isFullscreen()) {
-      exitFullscreen();
+  private async applyFullscreenPreference(enabled: boolean): Promise<void> {
+    const applied = enabled
+      ? (isFullscreen() || await requestFullscreen())
+      : (!isFullscreen() || await leaveFullscreen());
+
+    if (!applied) {
+      this.sessionMenu.syncFullscreenFromBrowser();
     }
   }
 

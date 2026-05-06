@@ -8,17 +8,41 @@ type FullscreenElement = HTMLElement & {
 };
 
 export function enterFullscreen(): void {
-  if (typeof document === "undefined") return;
+  void requestFullscreen();
+}
+
+export async function requestFullscreen(): Promise<boolean> {
+  if (!isFullscreenSupported()) return false;
   const el = document.documentElement as FullscreenElement;
-  const requestFullscreen = el.requestFullscreen ?? el.webkitRequestFullscreen;
-  void requestFullscreen?.call(el);
+  const request = el.requestFullscreen ?? el.webkitRequestFullscreen;
+  if (!request) return false;
+
+  try {
+    await request.call(el);
+    return isFullscreen();
+  } catch {
+    return false;
+  }
 }
 
 export function exitFullscreen(): void {
-  if (typeof document === "undefined") return;
+  void leaveFullscreen();
+}
+
+export async function leaveFullscreen(): Promise<boolean> {
+  if (typeof document === "undefined") return false;
+  if (!isFullscreen()) return true;
+
   const fullscreenDocument = document as FullscreenDocument;
   const exit = fullscreenDocument.exitFullscreen ?? fullscreenDocument.webkitExitFullscreen;
-  void exit?.call(fullscreenDocument);
+  if (!exit) return false;
+
+  try {
+    await exit.call(fullscreenDocument);
+    return !isFullscreen();
+  } catch {
+    return false;
+  }
 }
 
 export function isFullscreen(): boolean {
@@ -39,6 +63,12 @@ export function onFullscreenChange(cb: () => void): () => void {
 
 export function isFullscreenSupported(): boolean {
   if (typeof document === "undefined") return false;
+  const fullscreenDocument = document as FullscreenDocument & {
+    fullscreenEnabled?: boolean;
+    webkitFullscreenEnabled?: boolean;
+  };
+  const enabled = fullscreenDocument.fullscreenEnabled ?? fullscreenDocument.webkitFullscreenEnabled;
+  if (enabled === false) return false;
   const el = document.documentElement as FullscreenElement | undefined;
   return Boolean(el?.requestFullscreen ?? el?.webkitRequestFullscreen);
 }
