@@ -1,3 +1,5 @@
+![Orbital Breach](client/public/assets/marketing/orbital-breach-banner.png)
+
 # Orbital Breach
 
 **Vibe Jam 2026 submission.** A zero-gravity team shooter about freezing the enemy squad, slingshotting through a debris arena, and physically breaching the opposing portal before they recover their formation.

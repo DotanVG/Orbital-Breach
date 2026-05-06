@@ -32,13 +32,36 @@ const CSS = `
     z-index: 350;
     color: #e8ecf4;
     font-family: "Cormorant Garamond", serif;
+    overflow: hidden;
   }
 
   .ob-mp-root * {
     box-sizing: border-box;
   }
 
+  .ob-mp-root::before,
+  .ob-mp-root::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+  }
+
+  .ob-mp-root::before {
+    inset: -28px;
+    background: url("/assets/marketing/orbital-breach-bg.png") center / cover no-repeat;
+    filter: blur(18px);
+    opacity: 0.34;
+    transform: scale(1.04);
+  }
+
+  .ob-mp-root::after {
+    inset: 0;
+    background: rgba(1, 4, 8, 0.56);
+  }
+
   .ob-mp-shell {
+    position: relative;
+    z-index: 1;
     width: min(1120px, calc(100vw - 32px));
     max-height: calc(100dvh - 32px);
     overflow: auto;
