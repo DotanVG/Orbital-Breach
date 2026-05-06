@@ -138,7 +138,11 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   }
 
   public onJoin(client: RoomClient, options?: { name?: string }): void {
-    const joinTeam = this.getJoinTeamForHuman();
+    const playerName = sanitizePlayerName(options?.name);
+    const reclaimedTeam = this.removeStaleHumanPresenceForName(playerName, client.sessionId);
+    const joinTeam = reclaimedTeam !== null && this.hasSeatForHuman(reclaimedTeam)
+      ? reclaimedTeam
+      : this.getJoinTeamForHuman();
     if (joinTeam === null) {
       throw new Error("That room is full right now.");
     }
@@ -147,7 +151,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     const member = new LobbyMemberState();
     member.id = client.sessionId;
     member.sessionId = client.sessionId;
-    member.name = sanitizePlayerName(options?.name);
+    member.name = playerName;
     member.team = joinTeam;
     member.ready = false;
     member.connected = true;
@@ -165,10 +169,16 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     const member = this.state.members.get(client.sessionId);
     if (member) {
       const leavingName = member.name;
+      const leavingTeam = member.team;
       this.state.members.delete(client.sessionId);
       this.broadcast("lobby_event", {
         type: "info",
         text: `${leavingName} left the room.`,
+      });
+      this.broadcast("player_leave_event", {
+        playerId: client.sessionId,
+        playerName: leavingName,
+        playerTeam: leavingTeam,
       });
     }
 
@@ -184,6 +194,8 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       this.state.countdownRemaining = 0;
       this.state.roundTimeRemaining = 0;
       this.clearActors();
+    } else {
+      this.checkTeamDisconnectWin();
     }
 
     this.syncLobbyFlow();
@@ -542,11 +554,29 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }
   }
 
+  private checkTeamDisconnectWin(): void {
+    if (this.roundResolved || this.state.phase !== "PLAYING") return;
+
+    const actors = Array.from(this.state.actors.values());
+    const team0Active = actors.some((actor) => actor.team === 0);
+    const team1Active = actors.some((actor) => actor.team === 1);
+
+    if (team0Active === team1Active) return;
+
+    const winningTeam = team0Active ? 0 : 1;
+    this.awardOnlineRoundPoint(
+      winningTeam,
+      null,
+      winningTeam === 0 ? "Cyan Team" : "Magenta Team",
+      "disconnect",
+    );
+  }
+
   private awardOnlineRoundPoint(
     team: 0 | 1,
     scorerId: string | null,
     scorerName: string,
-    reason: "breach" | "fullFreeze",
+    reason: "breach" | "fullFreeze" | "disconnect",
   ): void {
     if (this.roundResolved) return;
     this.roundResolved = true;
@@ -671,6 +701,22 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.botAI.delete(id);
     this.botFireTimers.delete(id);
     this.lastPlayerUpdate.delete(id);
+  }
+
+  private removeStaleHumanPresenceForName(name: string, sessionId: string): LobbyTeam | null {
+    let reclaimedTeam: LobbyTeam | null = null;
+
+    for (const member of Array.from(this.state.members.values())) {
+      if (member.isBot || member.id === sessionId || member.name !== name) {
+        continue;
+      }
+
+      reclaimedTeam = member.team;
+      this.state.members.delete(member.id);
+      this.removePresence(member.id);
+    }
+
+    return reclaimedTeam;
   }
 
   private tickBots(dt: number): void {
@@ -879,6 +925,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }
 
     this.state.members.delete(removableBot.id);
+    this.removePresence(removableBot.id);
     return true;
   }
 

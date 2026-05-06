@@ -16,6 +16,7 @@ import {
   type MultiplayerJoinOptions,
   type MultiplayerRoomSnapshot,
   type OnlineActorSnapshot,
+  type PlayerLeaveEventMessage,
   type PlayerUpdateMessage,
   type RoundResultEventMessage,
   type SetReadyMessage,
@@ -54,6 +55,7 @@ export class NetClient {
   public onLobbyEvent: ((event: LobbyEventMessage) => void) | null = null;
   public onLeave: (() => void) | null = null;
   public onFreezeEvent: ((event: FreezeEventMessage) => void) | null = null;
+  public onPlayerLeaveEvent: ((event: PlayerLeaveEventMessage) => void) | null = null;
   public onRoundResultEvent: ((event: RoundResultEventMessage) => void) | null = null;
   public onShotEvent: ((event: ShotEventMessage) => void) | null = null;
 
@@ -77,6 +79,9 @@ export class NetClient {
     });
     room.onMessage("freeze_event", (event: FreezeEventMessage) => {
       this.onFreezeEvent?.(event);
+    });
+    room.onMessage("player_leave_event", (event: PlayerLeaveEventMessage) => {
+      this.onPlayerLeaveEvent?.(event);
     });
     room.onMessage("round_result_event", (event: RoundResultEventMessage) => {
       this.onRoundResultEvent?.(event);

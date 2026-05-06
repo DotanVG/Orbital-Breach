@@ -150,11 +150,17 @@ export interface FreezeEventMessage {
   victimTeam: 0 | 1;
 }
 
+export interface PlayerLeaveEventMessage {
+  playerId: string;
+  playerName: string;
+  playerTeam: 0 | 1;
+}
+
 export interface RoundResultEventMessage {
   outcome: "tie" | "win";
   winningTeam: 0 | 1 | null;
   matchWinner: 0 | 1 | null;
-  reason: "breach" | "fullFreeze" | "timeout";
+  reason: "breach" | "fullFreeze" | "disconnect" | "timeout";
   scorerId?: string;
   scorerName: string;
   finalScore?: {
