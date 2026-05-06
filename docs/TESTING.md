@@ -1,156 +1,223 @@
 # Testing Guide
 
-## Setup
+Orbital Breach combines a [vitest](https://vitest.dev/) unit suite with a
+manual smoke checklist for browser-only behavior. The unit suite runs from the
+repo root in a Node environment; smoke tests cover the surfaces that need a
+real browser, multiplayer server, mobile device, or analytics backend.
 
-Tests run from the **repo root** using [vitest](https://vitest.dev/).
-vitest is in root `devDependencies` — no extra install needed.
+---
+
+## Commands
+
+All commands run from the **repo root** unless noted. Use the local
+`node_modules/.bin/tsc` binary — TypeScript is not installed globally.
 
 ```bash
-npm test              # run all tests once (CI-style)
-npm run test:watch    # re-run on file save (development)
+# Unit tests (vitest)
+npm test                   # single run, CI-style
+npm run test:watch         # watch mode
+
+# TypeScript typecheck (run before any commit)
+cd client && node_modules/.bin/tsc --noEmit
+cd server && node_modules/.bin/tsc --noEmit
+
+# Production builds (mirror what Vercel + Render run)
+npm run build --prefix client
+npm run build --prefix server
+
+# Local dev stack (server on :2567, client on :5173, Vite proxies /matchmake + /ws)
+npm run dev
 ```
 
-Config files at repo root:
-- `vitest.config.ts` — test environment, file patterns, Three.js alias
-- `tsconfig.test.json` — TypeScript config scoped to tests + shared/
+The `client` build script also runs `tsc --noEmit` before invoking Vite, so a
+clean `npm run build --prefix client` is a stricter check than typecheck alone.
 
 ---
 
-## How it works
+## Vitest harness
 
-The test environment is **Node.js** (`environment: 'node'` in vitest.config.ts).
-There is no DOM and no browser APIs. Three.js is aliased to
-`client/node_modules/three/build/three.module.js` so geometry math can be
-imported in tests without a WebGL context.
+Config at the repo root:
+- `vitest.config.ts` — `environment: 'node'`, includes `tests/**/*.test.ts` and
+  `shared/**/*.test.ts`, `globals: false`, aliases `three` to
+  `client/node_modules/three/build/three.module.js`.
+- `tsconfig.test.json` — TypeScript scope for the test compile.
 
-```
-tests/                      ← test files live here
-  smoke.test.ts             ← vitest sanity check
-  arena-gen.test.ts         ← shared/arena-gen.ts
-  breachRoomQueries.test.ts ← client/src/arena/breachRoomQueries.ts
-  cameraYawFromBreach.test.ts ← client/src/game/cameraYawFromBreach.ts
-  bulletCollision.test.ts    ← client/src/game/bulletCollision.ts
-shared/**/*.test.ts         ← co-located tests for shared/ modules (also discovered)
-```
+Conventions:
+- Explicit imports — `import { describe, it, expect } from 'vitest';`
+- Import paths are relative to the **repo root**:
+  `import { foo } from '../shared/foo';` /
+  `import { bar } from '../client/src/match/bar';`
+- One `describe` per exported function; tests named as plain statements
+  (`'is deterministic for the same seed'`).
 
----
+### What to unit-test
 
-## What to test
+Pure (side-effect-free) helpers only — no DOM, no scene graph, no socket I/O.
+Good fits include `shared/` utilities, arena geometry, hit math, match-flow,
+roster shaping, parsers, and pure UI builders.
 
-Only **pure (side-effect-free) functions** — those with no DOM, no Three.js scene
-graph, and no WebSocket. These are the best candidates:
+### What to skip
 
-| Category | Examples |
+| Surface | Why |
 |---|---|
-| `shared/` utilities | `generateArenaLayout`, `applyShotSpread`, vec3 math |
-| Arena geometry | `isInBreachRoom`, `isDeepInBreachRoom`, `bounceAgainstBoxes` |
-| Game math helpers | `cameraYawFacingBreachOpening`, `buildShotFromCamera` |
-| Hit classification | `classifyHitZone` in `player/playerCombat.ts` |
+| Three.js `Mesh` / `Scene` / `Renderer` | Needs WebGL |
+| HUD / menu DOM mutation | Node has no `document` |
+| Live Colyseus rooms | Needs a running server + WebSocket |
+| `InputManager`, pointer-lock APIs | Browser-only |
+| GLB animation crossfades | Needs a loaded GLTF + renderer |
 
-### What NOT to test
+For these, rely on the manual smoke checklist below.
 
-| Category | Reason |
+---
+
+## Current coverage (37 test files)
+
+The suite covers physics, arena generation, both win paths, bot AI, online
+reconciliation, portal placement, debrief stats, mobile input logic, embed
+detection, fullscreen behavior, analytics events, room directory, profanity
+filtering, scoreboard / kill-feed builders, and regression cases. The exact
+file list lives in `tests/` and `shared/**/*.test.ts`; run `npm test` to see
+counts and timing.
+
+Notable groups:
+
+| Area | Tests |
 |---|---|
-| Three.js `Mesh` / `Scene` / `Renderer` | Requires browser WebGL context |
-| HUD / menu DOM manipulation | Node environment has no `document` |
-| WebSocket connections | Integration-level; needs a running server |
-| `InputManager` | Coupled to pointer-lock browser APIs |
-| `AnimationMixer` crossfades | Requires a loaded GLTF + Three.js renderer |
-
-For these, rely on the manual golden-path browser check in `CLAUDE.md`.
-
----
-
-## Writing a new test
-
-1. Create `tests/<module-name>.test.ts` (or co-locate as `shared/my-module.test.ts`).
-
-2. Import vitest explicitly — globals are disabled:
-   ```typescript
-   import { describe, it, expect } from 'vitest';
-   ```
-
-3. Import the function under test using a path **relative to the repo root**:
-   ```typescript
-   import { myHelper } from '../shared/my-module';
-   import { isInBreachRoom } from '../client/src/arena/breachRoomQueries';
-   ```
-
-4. One `describe` block per exported function. Name tests as plain statements:
-   ```typescript
-   describe('myHelper', () => {
-     it('returns 0 for empty input', () => { ... });
-     it('handles negative values', () => { ... });
-   });
-   ```
+| Shared logic | `arena-gen`, `physics`, `playerLogic`, `match`, `matchFlow`, `multiplayer`, `profanity` |
+| Solo runtime | `localMatch`, `botBrain`, `roundController`, `matchStatsTracker` |
+| Online runtime | `onlineMatch`, `onlineActorDamage`, `onlineBotTargeting`, `onlineGrabSync`, `onlineRoomLeave`, `reconciliation`, `roomDirectory` |
+| Geometry / collision | `breachRoomQueries`, `bulletCollision`, `projectileActorCollision`, `cameraYawFromBreach` |
+| Vibe Jam | `vibeJamPortal`, `portalPlacement` |
+| UI / platform | `scoreboard`, `scoreboardCursor`, `overlayCursor`, `creditsContent`, `instructionsContent`, `linkIcons`, `teamPresentation`, `firstTimeTutorial`, `embedMode`, `fullscreen`, `mobileInputLogic`, `analytics` |
+| Sanity | `smoke` |
 
 ---
 
-## Example test
+## Adding a test
+
+1. Create `tests/<module>.test.ts` (or co-locate as `shared/<module>.test.ts`).
+2. Import vitest explicitly and the function under test by repo-relative path.
+3. One `describe` per export; statement-style `it` names.
+4. Keep the test pure — no real Colyseus rooms, real renderer, or real DOM.
+
+Example:
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { isInBreachRoom } from '../client/src/arena/breachRoomQueries';
-import { BREACH_ROOM_D, BREACH_ROOM_W, BREACH_ROOM_H } from '../shared/constants';
+import { findMatchWinner } from '../shared/match-flow';
 
-const roomZ = { center: { x: 0, y: 0, z: 23 }, openAxis: 'z' as const };
-
-describe('isInBreachRoom', () => {
-  it('accepts room center', () => {
-    expect(isInBreachRoom({ x: 0, y: 0, z: 23 }, roomZ)).toBe(true);
+describe('findMatchWinner', () => {
+  it('returns null while neither team has hit the target', () => {
+    expect(findMatchWinner({ team0: 4, team1: 4 }, 5)).toBeNull();
   });
 
-  it('rejects points past the depth face', () => {
-    const edge = 23 + BREACH_ROOM_D / 2;
-    expect(isInBreachRoom({ x: 0, y: 0, z: edge + 0.01 }, roomZ)).toBe(false);
-    expect(isInBreachRoom({ x: 0, y: 0, z: edge - 0.01 }, roomZ)).toBe(true);
-  });
-
-  it('rejects points outside width or height', () => {
-    expect(isInBreachRoom({ x: BREACH_ROOM_W / 2, y: 0, z: 23 }, roomZ)).toBe(false);
-    expect(isInBreachRoom({ x: 0, y: BREACH_ROOM_H / 2, z: 23 }, roomZ)).toBe(false);
+  it('returns the team that reaches the target first', () => {
+    expect(findMatchWinner({ team0: 5, team1: 3 }, 5)).toBe(0);
   });
 });
 ```
 
----
-
-## Testing Three.js math (without a scene)
-
-Functions that use `THREE.Vector3`, `THREE.Quaternion`, or `THREE.Euler` for pure
-math (no mesh instantiation, no renderer) work fine in tests. The vitest alias
-resolves `three` to the ES module build.
-
-```typescript
-// Fine to test — pure math, no scene
-import * as THREE from 'three';
-import { computeSomething } from '../shared/physics';
-
-it('applies spread correctly', () => {
-  const dir = new THREE.Vector3(0, 0, -1);
-  const result = computeSomething(dir, 0.1);
-  expect(result.length()).toBeCloseTo(1.0);
-});
-```
-
-Anything that calls `new THREE.Mesh(...)`, `scene.add(...)`, or `renderer.render(...)`
-will fail in Node — keep those out of tests.
+Three.js math is fine in tests (the alias resolves `three` to its ES module
+build) as long as you avoid `new THREE.Mesh(...)`, `scene.add(...)`, or
+`renderer.render(...)`.
 
 ---
 
-## Test requirement policy
+## Test policy
 
-Every new feature that adds a pure (side-effect-free) function **must** include vitest
-tests before commit. Extract the math into a standalone function and test it. Visual/scene
-code is exempt (no WebGL in Node), but the logic it delegates to is not.
+Every new feature that adds a pure helper **must** ship with vitest coverage
+for that helper. Extract math and decision logic into pure functions so they
+are testable; keep the WebGL / DOM / socket side at the edges.
 
-## Current test coverage
+---
 
-| Test file | Function(s) covered | Tests |
-|---|---|---|
-| `smoke.test.ts` | — (vitest sanity) | 1 |
-| `arena-gen.test.ts` | `generateArenaLayout` | 7 |
-| `breachRoomQueries.test.ts` | `isInBreachRoom`, `isDeepInBreachRoom` | 6 |
-| `cameraYawFromBreach.test.ts` | `cameraYawFacingBreachOpening` | 3 |
-| `bulletCollision.test.ts` | `bulletHitsBox`, `bulletHitPoint` (swept collision + surface point) | 12 |
-| **Total** | | **30** |
+## Manual smoke checklist
+
+Run before any release-bound merge to `main`. The unit suite cannot exercise
+these paths.
+
+### Desktop browser (Chrome + Firefox at minimum)
+
+- [ ] Boot loads, welcome / call-sign capture works on first visit.
+- [ ] Solo: 1v1, 2v2, 5v5, 10v10, 20v20 — bots fill empty seats; LMB fires; E
+      grabs; Space launches with mouse-Y aim power.
+- [ ] **Win path A — Breach**: float through enemy portal while at least one
+      enemy is unfrozen; round point awarded.
+- [ ] **Win path B — Full freeze**: freeze every enemy; round point awarded
+      even with no breach.
+- [ ] First team to 5 round wins triggers match-end + debrief + victory dance.
+- [ ] HUD: power meter, hit-zone damage state, frozen status, kill feed.
+- [ ] Tab roster shows team rosters with bot badges, frozen status, ping
+      column when online.
+- [ ] Session menu (Esc) → settings, credits, safe-exit. Esc releases cursor.
+- [ ] Help overlay (H) renders.
+
+### Mobile portrait + landscape (iOS Safari + Android Chrome)
+
+- [ ] Touch joystick + look area appear; GRAB / JUMP-LAUNCH / FIRE / 1ST-3RD
+      buttons respond.
+- [ ] Orientation change does not break the layout or the canvas size.
+- [ ] Fullscreen toggle works on Android. On iPhone Safari it is disabled
+      (non-video fullscreen unsupported).
+
+### Online lobby + room browser
+
+- [ ] **Join Online** quick-matches into `orbital_lobby`; ready check starts
+      countdown when both teams are full and humans are ready.
+- [ ] **Rooms & Invites** lists current public rooms from `/rooms`.
+- [ ] Create public + private rooms with custom name, max-player cap from the
+      playlist sizes (2 / 4 / 10 / 20 / 40).
+- [ ] **Fill Lobby** adds bots; **Humans Only** drops them; later human join
+      reclaims a bot seat.
+- [ ] Move To Cyan / Magenta works; ready state, disconnected state, own-pilot
+      highlight all visible.
+
+### Private invite + QR join
+
+- [ ] Invite URL with `?roomId=…` opens directly into the right room.
+- [ ] Copy / Share buttons populate the system share sheet on mobile.
+- [ ] QR code scans into the same room on a second device.
+
+### Vibe Jam portals
+
+- [ ] Outbound portal in the arena opens `https://vibej.am/portal/2026` in a
+      new tab.
+- [ ] Inbound: visit with `?portal=true&ref=<url>` — return portal renders in
+      the breach room and points back at `ref`. Console logs the detected
+      params and ref.
+- [ ] Other portal params (`username`, `color`, etc.) are reflected if used.
+
+### Fullscreen / itch.io embed
+
+- [ ] Direct Vercel URL: fullscreen toggle works on supported browsers.
+- [ ] itch.io page: game runs inside the iframe. The embed shell does not
+      double up controls. Fullscreen via the toggle (where supported) or the
+      itch fullscreen button works.
+
+### Analytics presence
+
+- [ ] DevTools Network shows requests to `_vercel/insights/*` for both
+      Web Analytics and Speed Insights on a fresh page load.
+- [ ] Custom `track()` events fire for the documented landing / match events
+      (see `client/src/analytics/analytics.ts`).
+
+### Disconnect / rejoin cleanup
+
+- [ ] Hard-close the tab mid-round → bot fills the seat at round end.
+- [ ] Rejoin from the same browser into the same room → seat is reclaimed
+      from the bot, not added on top.
+- [ ] Render cold start: first join after idle hits `/wake`; UI shows the
+      warm-up state instead of erroring.
+
+---
+
+## Debugging tips
+
+- Server logs on Render include join / leave / round-result lines from
+  `OrbitalLobbyRoom` — start there for online-only bugs.
+- `/rooms` returns the live public room directory; useful when the browser UI
+  disagrees with the server.
+- `client/src/featureFlags.ts` toggles dev overlays (gun-tune, float-arm-tune,
+  scoreboard cursor) without rebuilding.
+- `?portal=true&ref=…` URL params are the only way to exercise the inbound
+  Vibe Jam path locally.
