@@ -30,6 +30,7 @@ export class SoundEngine {
 
   private loadPromise: Promise<void> | null = null;
   private unlocked = false;
+  private unlockPromise: Promise<void> | null = null;
   private musicSource: AudioBufferSourceNode | null = null;
   private musicEnabled = true;
   private musicVolumePct = 60;
@@ -45,23 +46,38 @@ export class SoundEngine {
 
   public async unlock(): Promise<void> {
     if (this.unlocked) return;
-    this.unlocked = true;
+    if (this.unlockPromise) return this.unlockPromise;
 
+    this.unlockPromise = this.performUnlock();
+    try {
+      await this.unlockPromise;
+      this.unlocked = true;
+    } catch (err) {
+      this.unlockPromise = null;
+      throw err;
+    }
+  }
+
+  private async performUnlock(): Promise<void> {
     const ctx = this.listener.context as AudioContext;
     this.ctx = ctx;
 
-    this.musicGain = ctx.createGain();
-    this.musicGain.connect(ctx.destination);
+    if (!this.musicGain) {
+      this.musicGain = ctx.createGain();
+      this.musicGain.connect(ctx.destination);
+    }
 
-    this.sfx2dGain = ctx.createGain();
-    this.sfx2dGain.connect(ctx.destination);
+    if (!this.sfx2dGain) {
+      this.sfx2dGain = ctx.createGain();
+      this.sfx2dGain.connect(ctx.destination);
+    }
 
     this.applyMusicGain();
     this.applySfxGain();
 
     // Always resume — on iOS 13+ context starts 'running' but skipping resume
     // leaves audio gated behind the user-gesture policy for async src.start() calls.
-    await ctx.resume();
+    const resumePromise = ctx.resume();
 
     // Play a 1-frame silent buffer synchronously to satisfy iOS's "first playback
     // must originate from a user gesture" requirement before async buffer loads.
@@ -71,6 +87,7 @@ export class SoundEngine {
     primer.connect(ctx.destination);
     primer.start();
 
+    await resumePromise;
     await this.loadBuffers();
   }
 
