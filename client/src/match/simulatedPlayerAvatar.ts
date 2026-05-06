@@ -13,7 +13,7 @@ import {
 import { PlayerDamageGlow } from "../player/playerDamageGlow";
 import { applyBarHoldPose } from "../player/playerGrabPose";
 import { applyArmRecoil, RECOIL_DURATION } from "../player/playerAimPose";
-import { applyVictoryDancePose } from "../player/playerVictoryDance";
+import { applyVictoryDancePose, resetVictoryDancePose } from "../player/playerVictoryDance";
 import { ThirdPersonGun } from "../player/playerThirdPersonGun";
 import { PlayerNameTag } from "../render/playerNameTag";
 
@@ -95,6 +95,7 @@ export class SimulatedPlayerAvatar {
 
     if (!shouldCelebrate) {
       this.victoryDanceElapsed = 0;
+      resetVictoryDancePose(this.animation.getRigs());
     }
 
     if (!shouldCelebrate && (phase === "GRABBING" || phase === "AIMING")) {
