@@ -43,7 +43,6 @@ import { ProjectileSystem } from "./projectileSystem";
 import { RoundController } from "./roundController";
 import { GunTuneOverlay } from "./gunTuneOverlay";
 import { shouldShowDesktopOverlayCursor } from "./overlayCursor";
-import { shouldUseVictoryRearView } from "./victoryCelebration";
 import { buildShotFromCamera } from "./weaponFire";
 import { NetClient } from "../net/client";
 import { MultiplayerLobby } from "../ui/multiplayerLobby";
@@ -123,6 +122,7 @@ export class App {
   private fullscreenPreference = false;
   private thirdPerson = false;
   private selectedCameraViewMode: CameraViewMode;
+  private victoryOrbitAngle = 0;
   private tutorial = new FirstTimeTutorial();
 
   public constructor() {
@@ -573,13 +573,23 @@ export class App {
     if (FEATURE_FLAGS.thirdPersonLookBehind && this.input.consumeThirdPersonToggle()) {
       this.toggleCameraView();
     }
-    const isSelfie = this.isRearViewCameraActive();
 
-    const cameraCollisionBoxes = this.thirdPerson
-      ? this.arena.getThirdPersonCameraCollisionAABBs()
-      : [];
-    this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
-    this.updateGunVisibility(isSelfie);
+    if (this.player.isVictoryDanceActive()) {
+      this.victoryOrbitAngle += 0.35 * dt;
+      this.cam.applyVictoryOrbit(
+        this.player.getPosition(),
+        this.victoryOrbitAngle,
+        this.arena.getThirdPersonCameraCollisionAABBs(),
+      );
+      this.updateGunVisibility(false);
+    } else {
+      const isSelfie = this.isRearViewCameraActive();
+      const cameraCollisionBoxes = this.thirdPerson
+        ? this.arena.getThirdPersonCameraCollisionAABBs()
+        : [];
+      this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
+      this.updateGunVisibility(isSelfie);
+    }
     this.updateSoloHud(dt);
     this.renderDebugTuningOverlay();
   }
@@ -634,12 +644,23 @@ export class App {
     if (FEATURE_FLAGS.thirdPersonLookBehind && this.input.consumeThirdPersonToggle()) {
       this.toggleCameraView();
     }
-    const isSelfie = this.isRearViewCameraActive();
-    const cameraCollisionBoxes = this.thirdPerson
-      ? this.arena.getThirdPersonCameraCollisionAABBs()
-      : [];
-    this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
-    this.updateGunVisibility(isSelfie);
+
+    if (this.player.isVictoryDanceActive()) {
+      this.victoryOrbitAngle += 0.35 * dt;
+      this.cam.applyVictoryOrbit(
+        this.player.getPosition(),
+        this.victoryOrbitAngle,
+        this.arena.getThirdPersonCameraCollisionAABBs(),
+      );
+      this.updateGunVisibility(false);
+    } else {
+      const isSelfie = this.isRearViewCameraActive();
+      const cameraCollisionBoxes = this.thirdPerson
+        ? this.arena.getThirdPersonCameraCollisionAABBs()
+        : [];
+      this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
+      this.updateGunVisibility(isSelfie);
+    }
     this.updateOnlineHud(dt);
   }
 
@@ -1587,19 +1608,23 @@ export class App {
 
   private setCelebratingTeam(team: 0 | 1): void {
     this.player.setVictoryDanceActive(this.player.team === team && !this.player.damage.frozen);
+    if (this.player.isVictoryDanceActive()) {
+      this.thirdPerson = true;
+    }
     this.match.setCelebratingTeam(team);
     this.onlineMatch.setCelebratingTeam(team);
   }
 
   private clearCelebrationState(): void {
     this.player.setVictoryDanceActive(false);
+    this.thirdPerson = isThirdPersonCameraView(this.selectedCameraViewMode);
+    this.victoryOrbitAngle = 0;
     this.match.setCelebratingTeam(null);
     this.onlineMatch.setCelebratingTeam(null);
   }
 
   private isRearViewCameraActive(): boolean {
-    return FEATURE_FLAGS.thirdPersonLookBehind
-      && shouldUseVictoryRearView(this.input.isSelfieHeld(), this.player.isVictoryDanceActive());
+    return FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld();
   }
 
   private applySelectedCameraViewMode(mode: CameraViewMode): void {
