@@ -22,6 +22,8 @@ const THIRD_PERSON_CAMERA_RADIUS = 0.2;
 const THIRD_PERSON_CAMERA_PADDING = 0.05;
 const THIRD_PERSON_MIN_DISTANCE = 0.9;
 
+const VICTORY_ORBIT_HEIGHT = 1.2;
+
 export class CameraController {
   // ── Gravity mode state ────────────────────────────────────────────
   private yaw   = 0;
@@ -194,6 +196,21 @@ export class CameraController {
       this.camera.position.copy(position);
       this.camera.quaternion.copy(quat);
     }
+  }
+
+  public applyVictoryOrbit(
+    position: THREE.Vector3,
+    orbitAngle: number,
+    collisionBoxes: readonly THREE.Box3[] = [],
+  ): void {
+    const desired = new THREE.Vector3(
+      position.x + Math.sin(orbitAngle) * THIRD_PERSON_DISTANCE,
+      position.y + VICTORY_ORBIT_HEIGHT,
+      position.z + Math.cos(orbitAngle) * THIRD_PERSON_DISTANCE,
+    );
+    const camPos = this.resolveThirdPersonCameraPosition(position, desired, collisionBoxes);
+    this.camera.position.copy(camPos);
+    this.camera.lookAt(position);
   }
 
   // ── Explicit setters (used by App to orient camera at round start) ──

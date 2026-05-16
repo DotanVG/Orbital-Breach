@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GRAB_RADIUS, HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_POINT_TARGET } from "../../../shared/constants";
 import { generateArenaLayout } from "../../../shared/arena-gen";
+import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { findMatchWinner } from "../../../shared/match-flow";
 import {
   getInviteRoomIdFromSearch,
@@ -24,13 +25,19 @@ import { SceneManager } from "../render/scene";
 import { isEmbedMode } from "../embed";
 import { KillFeed } from "../ui/kill-feed";
 import { initGlobalCursor, type GlobalCursor } from "../ui/globalCursor";
-import { enterFullscreen, exitFullscreen, isFullscreen } from "../ui/fullscreen";
+import { isApparentFullscreen, isFullscreen, leaveFullscreen, requestFullscreen } from "../ui/fullscreen";
 import { MainMenu } from "../ui/menu";
 import { MobileControls } from "../ui/mobileControls";
 import { RoomBrowser } from "../ui/roomBrowser";
 import { WelcomeScreen } from "../ui/welcome";
 import { SessionMenu, type SessionSettings } from "../ui/sessionMenu";
 import { SoundEngine } from "../audio/SoundEngine";
+import {
+  isThirdPersonCameraView,
+  resolveCameraViewModeForRound,
+  toggleCameraViewMode,
+  type CameraViewMode,
+} from "./cameraViewMode";
 import { cameraYawFacingBreachOpening } from "./cameraYawFromBreach";
 import { FloatArmTuneOverlay } from "./floatArmTuneOverlay";
 import { ProjectileSystem } from "./projectileSystem";
@@ -77,7 +84,7 @@ export class App {
   private playerUpdateTimer = 0;
   private latestOnlineSnapshot: MultiplayerRoomSnapshot | null = null;
   private previousOnlinePhase: MultiplayerRoomSnapshot["phase"] | null = null;
-  private onlinePlayerName = "Pilot";
+  private onlinePlayerName = DEFAULT_PLAYER_NAME;
   private onlineBreachReported = false;
   private combatPresentationActive = false;
   private embedMode = false;
@@ -115,6 +122,8 @@ export class App {
   private sound!: SoundEngine;
   private fullscreenPreference = false;
   private thirdPerson = false;
+  private selectedCameraViewMode: CameraViewMode;
+  private victoryOrbitAngle = 0;
   private tutorial = new FirstTimeTutorial();
 
   public constructor() {
@@ -127,6 +136,7 @@ export class App {
     this.input.onTabHoldChange = (held) => {
       this.handleScoreboardTabHoldChange(held);
     };
+    this.syncBackgroundInputPolicy();
     this.cam = new CameraController(this.sceneMgr.getCamera());
     this.arena = new Arena(this.sceneMgr.getScene());
     this.player = new LocalPlayer(this.sceneMgr.getScene());
@@ -142,7 +152,12 @@ export class App {
     this.killFeed.setVisible(false);
     this.sessionMenu.setLauncherVisible(false);
     const initialSettings = this.sessionMenu.getSettings();
+    this.selectedCameraViewMode = resolveCameraViewModeForRound(
+      initialSettings.defaultCameraMode,
+      null,
+    );
     this.fullscreenPreference = initialSettings.fullscreenEnabled;
+    this.applySelectedCameraViewMode(this.selectedCameraViewMode);
     this.applySessionSettings(initialSettings);
 
     this.sceneMgr.getScene().add(this.sceneMgr.getCamera());
@@ -189,7 +204,7 @@ export class App {
       this.applySessionSettings(settings);
       if (fullscreenPreferenceChanged) {
         this.fullscreenPreference = settings.fullscreenEnabled;
-        this.applyFullscreenPreference(settings.fullscreenEnabled);
+        void this.applyFullscreenPreference(settings.fullscreenEnabled);
       }
     };
 
@@ -272,6 +287,11 @@ export class App {
       this.killFeed.addKill(event.killerName, event.killerTeam, event.victimName, event.victimTeam);
     };
 
+    this.net.onPlayerLeaveEvent = (event) => {
+      if (this.isUserExitingOnline || this.appMode !== "online") return;
+      this.killFeed.addLeave(event.playerName, event.playerTeam);
+    };
+
     this.net.onRoundResultEvent = (event) => {
       if (this.isUserExitingOnline || this.appMode !== "online") return;
       if (!this.onlineGameActive) return;
@@ -334,7 +354,9 @@ export class App {
               kind: "freeze",
               enemyTeam: (1 - event.winningTeam) as 0 | 1,
             })
-            : buildRoundEndHtml({ team: event.winningTeam }),
+            : event.reason === "disconnect"
+              ? buildRoundEndHtml({ team: event.winningTeam, kind: "disconnect" })
+              : buildRoundEndHtml({ team: event.winningTeam }),
         );
       }
     };
@@ -401,7 +423,7 @@ export class App {
       this.mobileControls.mount();
       this.mobileControls.hide();
       this.mobileControls.onViewToggle = () => {
-        this.thirdPerson = !this.thirdPerson;
+        this.toggleCameraView();
       };
     } else {
       this.sceneMgr.getRenderer().domElement.addEventListener("mousedown", () => {
@@ -443,7 +465,7 @@ export class App {
     if (this.portalArrivalPending) {
       this.cursor.hide();
       this.startSoloMatch({
-        name: this.portalParams.username?.trim() || "Portal Pilot",
+        name: this.portalParams.username?.trim() || DEFAULT_PLAYER_NAME,
         teamSize: 1,
         noBots: true,
       });
@@ -457,10 +479,14 @@ export class App {
     }
 
     const unlockAudio = (): void => {
-      void this.sound.unlock().then(() => { this.sound.startMusic(); });
-      document.removeEventListener('pointerdown', unlockAudio);
-      document.removeEventListener('keydown', unlockAudio);
-      document.removeEventListener('touchstart', unlockAudio);
+      void this.sound.unlock().then(() => {
+        this.sound.startMusic();
+        document.removeEventListener('pointerdown', unlockAudio);
+        document.removeEventListener('keydown', unlockAudio);
+        document.removeEventListener('touchstart', unlockAudio);
+      }).catch((err) => {
+        console.warn("[GameApp] Audio unlock failed:", err);
+      });
     };
     document.addEventListener('pointerdown', unlockAudio);
     document.addEventListener('keydown', unlockAudio);
@@ -468,7 +494,10 @@ export class App {
 
     // Resume music when user returns to tab/app (AudioContext suspends on hide)
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) this.sound.tryResumeMusic();
+      if (!document.hidden) {
+        this.sound.tryResumeMusic();
+        this.resyncLocalOnlineActorFromLatestSnapshot();
+      }
     });
     // iOS back/forward cache restore — context is suspended on bfcache restore
     window.addEventListener('pageshow', (e) => {
@@ -549,15 +578,25 @@ export class App {
     updateVibeJamPortals(this.sceneMgr.getCamera().position, dt);
 
     if (FEATURE_FLAGS.thirdPersonLookBehind && this.input.consumeThirdPersonToggle()) {
-      this.thirdPerson = !this.thirdPerson;
+      this.toggleCameraView();
     }
-    const isSelfie = FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld();
 
-    const cameraCollisionBoxes = this.thirdPerson
-      ? this.arena.getThirdPersonCameraCollisionAABBs()
-      : [];
-    this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
-    this.updateGunVisibility(isSelfie);
+    if (this.player.isVictoryDanceActive()) {
+      this.victoryOrbitAngle += 0.7 * dt;
+      this.cam.applyVictoryOrbit(
+        this.player.getPosition(),
+        this.victoryOrbitAngle,
+        this.arena.getThirdPersonCameraCollisionAABBs(),
+      );
+      this.updateGunVisibility(false);
+    } else {
+      const isSelfie = this.isRearViewCameraActive();
+      const cameraCollisionBoxes = this.thirdPerson
+        ? this.arena.getThirdPersonCameraCollisionAABBs()
+        : [];
+      this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
+      this.updateGunVisibility(isSelfie);
+    }
     this.updateSoloHud(dt);
     this.renderDebugTuningOverlay();
   }
@@ -610,14 +649,25 @@ export class App {
     }
 
     if (FEATURE_FLAGS.thirdPersonLookBehind && this.input.consumeThirdPersonToggle()) {
-      this.thirdPerson = !this.thirdPerson;
+      this.toggleCameraView();
     }
-    const isSelfie = FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld();
-    const cameraCollisionBoxes = this.thirdPerson
-      ? this.arena.getThirdPersonCameraCollisionAABBs()
-      : [];
-    this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
-    this.updateGunVisibility(isSelfie);
+
+    if (this.player.isVictoryDanceActive()) {
+      this.victoryOrbitAngle += 0.7 * dt;
+      this.cam.applyVictoryOrbit(
+        this.player.getPosition(),
+        this.victoryOrbitAngle,
+        this.arena.getThirdPersonCameraCollisionAABBs(),
+      );
+      this.updateGunVisibility(false);
+    } else {
+      const isSelfie = this.isRearViewCameraActive();
+      const cameraCollisionBoxes = this.thirdPerson
+        ? this.arena.getThirdPersonCameraCollisionAABBs()
+        : [];
+      this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
+      this.updateGunVisibility(isSelfie);
+    }
     this.updateOnlineHud(dt);
   }
 
@@ -753,6 +803,7 @@ export class App {
       && snapshot.score.team1 === 0
     ) {
       this.matchStats.reset();
+      this.thirdPerson = this.sessionMenu.getSettings().defaultCameraMode === "third";
     }
 
 
@@ -762,7 +813,10 @@ export class App {
     this.playerUpdateTimer = 0;
     this.tutorial.beginRun();
     this.cursor.hide();
-    this.thirdPerson = this.sessionMenu.getSettings().defaultCameraMode === "third";
+    this.applySelectedCameraViewMode(resolveCameraViewModeForRound(
+      this.sessionMenu.getSettings().defaultCameraMode,
+      this.selectedCameraViewMode,
+    ));
 
     if (!this.mobile) {
       this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
@@ -826,8 +880,10 @@ export class App {
     this.killFeed.setVisible(false);
     this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
+    this.input.setUiBlocked(false);
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
+    this.cursor.show();
 
     const snap = this.latestOnlineSnapshot;
     if (snap) {
@@ -1062,6 +1118,7 @@ export class App {
     this.clearCelebrationState();
     this.debrief.hide();
     this.appMode = "menu";
+    this.syncBackgroundInputPolicy();
     this.cursor.show();
     this.matchOver = false;
     this.projectiles.clear();
@@ -1200,11 +1257,22 @@ export class App {
     this.sound.setMusicEnabled(settings.soundtrackEnabled);
   }
 
-  private applyFullscreenPreference(enabled: boolean): void {
-    if (enabled) {
-      if (!isFullscreen()) enterFullscreen();
-    } else if (isFullscreen()) {
-      exitFullscreen();
+  private async applyFullscreenPreference(enabled: boolean): Promise<void> {
+    const inApiFullscreen = isFullscreen();
+
+    if (!enabled && !inApiFullscreen && isApparentFullscreen()) {
+      // F11 fullscreen can't be exited via the Fullscreen API — revert the checkbox and hint the user.
+      this.sessionMenu.syncFullscreenFromBrowser(false);
+      showF11ExitHint();
+      return;
+    }
+
+    const applied = enabled
+      ? (inApiFullscreen || await requestFullscreen())
+      : (!inApiFullscreen || await leaveFullscreen());
+
+    if (!applied) {
+      this.sessionMenu.syncFullscreenFromBrowser();
     }
   }
 
@@ -1237,6 +1305,7 @@ export class App {
     this.debrief.hide();
     this.clearCelebrationState();
     this.appMode = "solo";
+    this.syncBackgroundInputPolicy();
     this.cursor.hide();
     this.matchOver = false;
     this.onlineBreachReported = false;
@@ -1244,7 +1313,7 @@ export class App {
     this.matchStats.reset();
     this.tutorial.beginRun();
     this.killFeed.setLocalPlayerName(selection.name);
-    this.thirdPerson = this.sessionMenu.getSettings().defaultCameraMode === "third";
+    this.resetCameraViewModeToDefault();
     if (this.matchEndHandle) {
       clearTimeout(this.matchEndHandle);
       this.matchEndHandle = null;
@@ -1294,6 +1363,7 @@ export class App {
       && inviteRoomId !== null
       && resolvedTarget.roomId === inviteRoomId;
     this.appMode = "online";
+    this.syncBackgroundInputPolicy();
     this.onlinePlayerName = selection.name;
     this.killFeed.setLocalPlayerName(selection.name);
     this.onlineGameActive = false;
@@ -1314,6 +1384,7 @@ export class App {
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
     this.sessionMenu.setLauncherVisible(true);
+    this.resetCameraViewModeToDefault();
     this.multiplayer.showConnecting(selection.name);
 
     this.isUserExitingOnline = false;
@@ -1362,6 +1433,7 @@ export class App {
     this.clearCelebrationState();
     this.matchStats.reset();
     this.appMode = "menu";
+    this.syncBackgroundInputPolicy();
     this.onlineGameActive = false;
     this.onlineRoundActive = false;
     this.cursor.show();
@@ -1549,15 +1621,41 @@ export class App {
   }
 
   private setCelebratingTeam(team: 0 | 1): void {
-    this.player.setVictoryDanceActive(this.player.team === team && !this.player.damage.frozen);
+    const playerWins = this.player.team === team && !this.player.damage.frozen;
+    this.player.setVictoryDanceActive(playerWins);
+    if (playerWins) {
+      this.thirdPerson = true;
+    }
     this.match.setCelebratingTeam(team);
     this.onlineMatch.setCelebratingTeam(team);
   }
 
   private clearCelebrationState(): void {
     this.player.setVictoryDanceActive(false);
+    this.thirdPerson = isThirdPersonCameraView(this.selectedCameraViewMode);
+    this.victoryOrbitAngle = 0;
     this.match.setCelebratingTeam(null);
     this.onlineMatch.setCelebratingTeam(null);
+  }
+
+  private isRearViewCameraActive(): boolean {
+    return FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld();
+  }
+
+  private applySelectedCameraViewMode(mode: CameraViewMode): void {
+    this.selectedCameraViewMode = mode;
+    this.thirdPerson = isThirdPersonCameraView(mode);
+  }
+
+  private resetCameraViewModeToDefault(): void {
+    this.applySelectedCameraViewMode(resolveCameraViewModeForRound(
+      this.sessionMenu.getSettings().defaultCameraMode,
+      null,
+    ));
+  }
+
+  private toggleCameraView(): void {
+    this.applySelectedCameraViewMode(toggleCameraViewMode(this.selectedCameraViewMode));
   }
 
   // ── Gun tuning overlays ─────────────────────────────────────────────────────
@@ -1688,7 +1786,26 @@ export class App {
   private syncLocalOnlineActor(snapshot: MultiplayerRoomSnapshot): void {
     const selfActor = snapshot.actors.find((actor) => actor.id === snapshot.sessionId);
     if (!selfActor) return;
+    if (document.hidden) {
+      this.player.applyAuthoritativeOnlineMotion(selfActor);
+    }
     this.player.applyAuthoritativeOnlineState(selfActor);
+  }
+
+  private resyncLocalOnlineActorFromLatestSnapshot(): void {
+    if (this.appMode !== "online" || !this.onlineGameActive) return;
+    const snapshot = this.latestOnlineSnapshot;
+    if (!snapshot) return;
+
+    const selfActor = snapshot.actors.find((actor) => actor.id === snapshot.sessionId);
+    if (!selfActor) return;
+
+    this.player.applyAuthoritativeOnlineMotion(selfActor);
+    this.player.applyAuthoritativeOnlineState(selfActor);
+  }
+
+  private syncBackgroundInputPolicy(): void {
+    this.input.setBackgroundStateClearingEnabled(this.appMode !== "online");
   }
 
   private isGameplaySceneActive(): boolean {
@@ -1753,4 +1870,41 @@ export class App {
       this.cursor.hide();
     }
   }
+}
+
+let f11HintTimer: ReturnType<typeof setTimeout> | null = null;
+
+function showF11ExitHint(): void {
+  const existing = document.getElementById("ob-f11-hint");
+  if (existing) return;
+
+  const el = document.createElement("div");
+  el.id = "ob-f11-hint";
+  el.textContent = "Press F11 to exit fullscreen";
+  Object.assign(el.style, {
+    position: "fixed",
+    top: "72px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: "99999",
+    padding: "8px 20px",
+    background: "rgba(4,6,14,0.88)",
+    border: "1px solid rgba(0,229,255,0.4)",
+    color: "#00e5ff",
+    fontFamily: '"JetBrains Mono", monospace',
+    fontSize: "12px",
+    letterSpacing: "0.12em",
+    borderRadius: "4px",
+    pointerEvents: "none",
+    transition: "opacity 0.4s ease",
+    opacity: "1",
+  });
+  document.body.appendChild(el);
+
+  if (f11HintTimer !== null) clearTimeout(f11HintTimer);
+  f11HintTimer = setTimeout(() => {
+    el.style.opacity = "0";
+    setTimeout(() => el.remove(), 400);
+    f11HintTimer = null;
+  }, 3000);
 }

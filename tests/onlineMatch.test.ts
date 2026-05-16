@@ -3,6 +3,7 @@ import * as THREE from "three";
 import type { OnlineActorSnapshot } from "../shared/multiplayer";
 
 const avatarUpdate = vi.fn();
+const avatarDispose = vi.fn();
 
 vi.mock("../client/src/match/simulatedPlayerAvatar", () => ({
   SimulatedPlayerAvatar: class {
@@ -10,7 +11,9 @@ vi.mock("../client/src/match/simulatedPlayerAvatar", () => ({
     public constructor(_scene: THREE.Scene, team: 0 | 1) {
       this.team = team;
     }
-    public dispose(): void {}
+    public dispose(): void {
+      avatarDispose(this.team);
+    }
     public triggerArmRecoil(): void {}
     public update(...args: unknown[]): void {
       avatarUpdate(this.team, ...args);
@@ -23,6 +26,7 @@ import { OnlineMatch } from "../client/src/match/onlineMatch";
 describe("OnlineMatch", () => {
   beforeEach(() => {
     avatarUpdate.mockClear();
+    avatarDispose.mockClear();
   });
 
   it("routes celebration only to remote actors on the winning team", () => {
@@ -48,6 +52,28 @@ describe("OnlineMatch", () => {
 
     expect(team0Flags).toEqual([false]);
     expect(team1Flags).toEqual([true]);
+
+    match.dispose();
+  });
+
+  it("disposes remote actors that disappear from the authoritative snapshot", () => {
+    const match = new OnlineMatch(new THREE.Scene());
+    match.applySnapshot(
+      [
+        createActor("remote-cyan", 0),
+        createActor("remote-magenta", 1),
+      ],
+      "local-player",
+    );
+
+    match.applySnapshot([createActor("remote-magenta", 1)], "local-player");
+
+    expect(avatarDispose).toHaveBeenCalledTimes(1);
+    expect(avatarDispose).toHaveBeenCalledWith(0);
+
+    avatarUpdate.mockClear();
+    match.update(1 / 60);
+    expect(avatarUpdate.mock.calls.map(([team]) => team)).toEqual([1]);
 
     match.dispose();
   });

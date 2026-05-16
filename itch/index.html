@@ -14,15 +14,46 @@
       overflow: hidden;
     }
 
+    * { cursor: none !important; }
+    @media (pointer: coarse) { * { cursor: auto !important; } }
+
+    #ob-cursor {
+      position: fixed;
+      top: 0; left: 0;
+      z-index: 99999;
+      width: 28px; height: 28px;
+      pointer-events: none;
+      mix-blend-mode: screen;
+      color: #00e5ff;
+    }
+    #ob-cursor::before {
+      content: "";
+      position: absolute; inset: 0; border-radius: 50%;
+      border: 1px solid #00e5ff;
+      transition: transform .2s ease, border-color .2s ease;
+    }
+    #ob-cursor::after {
+      content: "";
+      position: absolute;
+      width: 3px; height: 3px;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: #00e5ff;
+      box-shadow: 0 0 8px #00e5ff;
+    }
+    #ob-cursor.ob-hot::before { transform: scale(1.7); border-color: #ff00ff; }
+    #ob-cursor.ob-hot::after  { background: #ff00ff; box-shadow: 0 0 10px #ff00ff; }
+    #ob-cursor.ob-hidden { display: none; }
+
     .wc-root {
       position: fixed; inset: 0; z-index: 20;
       background: #04060e;
       overflow: hidden;
-      cursor: none;
+      cursor: auto !important;
       touch-action: none;
       animation: wc-fade-in .6s ease both;
     }
-    @media (pointer: coarse) { .wc-root { cursor: auto; } }
 
     @keyframes wc-fade-in  { from { opacity: 0; } to { opacity: 1; } }
     @keyframes wc-fade-out { from { opacity: 1; } to { opacity: 0; } }
@@ -49,6 +80,7 @@
     .wc-btn {
       pointer-events: auto;
       position: relative;
+      cursor: pointer !important;
       padding: clamp(14px,2vh,22px) clamp(44px,8vw,96px);
       background: rgba(4, 6, 14, 0.48);
       border: 1px solid rgba(255,255,255,0.28);
@@ -57,7 +89,7 @@
       font-size: clamp(11px, 1.5vw, 15px);
       letter-spacing: clamp(4px, 1vw, 9px);
       text-transform: uppercase;
-      cursor: none;
+      cursor: pointer;
       overflow: hidden;
       touch-action: manipulation;
       backdrop-filter: blur(14px);
@@ -66,7 +98,6 @@
       outline: none;
       -webkit-tap-highlight-color: transparent;
     }
-    @media (pointer: coarse) { .wc-btn { cursor: pointer; } }
 
     .wc-btn::before {
       content: "";
@@ -183,38 +214,75 @@
   </div>
 
   <script>
-    const LIVE_URL = "https://orbital-breach.vercel.app/?embed=1";
-    const welcome = document.getElementById("welcome");
-    const layer = document.getElementById("wc-layer");
-    const btn = document.getElementById("wc-btn");
-    const depth = parseFloat(layer.dataset.depth || "0.012");
-    let mouseNx = 0;
-    let mouseNy = 0;
+    var LIVE_URL = "https://orbital-breach.vercel.app/?embed=1";
+    var welcome = document.getElementById("welcome");
+    var layer   = document.getElementById("wc-layer");
+    var btn     = document.getElementById("wc-btn");
+    var depth   = parseFloat(layer.dataset.depth || "0.012");
 
+    var mouseNx = 0;
+    var mouseNy = 0;
+
+    // ── Custom cursor ────────────────────────────────────────────────────────
+    var curEl = null;
+    var curMx = window.innerWidth  / 2;
+    var curMy = window.innerHeight / 2;
+    var curCx = curMx;
+    var curCy = curMy;
+
+    function initCursor() {
+      if (window.matchMedia("(pointer: coarse)").matches) return;
+      curEl = document.createElement("div");
+      curEl.id = "ob-cursor";
+      curEl.innerHTML =
+        '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width=".8"' +
+        ' style="position:absolute;inset:-6px;width:40px;height:40px;opacity:.6">' +
+        '<line x1="20" y1="0"  x2="20" y2="10"/>' +
+        '<line x1="20" y1="30" x2="20" y2="40"/>' +
+        '<line x1="0"  y1="20" x2="10" y2="20"/>' +
+        '<line x1="30" y1="20" x2="40" y2="20"/>' +
+        '</svg>';
+      document.body.appendChild(curEl);
+    }
+
+    function cursorTick() {
+      if (curEl) {
+        curCx += (curMx - curCx) * 0.25;
+        curCy += (curMy - curCy) * 0.25;
+        curEl.style.transform =
+          "translate(" + curCx + "px," + curCy + "px) translate(-50%,-50%)";
+      }
+      requestAnimationFrame(cursorTick);
+    }
+
+    // ── Parallax ─────────────────────────────────────────────────────────────
     function enterFullscreen() {
-      const el = document.documentElement;
-      const requestFullscreen = el.requestFullscreen || el.webkitRequestFullscreen;
-      if (requestFullscreen) requestFullscreen.call(el);
+      var el = document.documentElement;
+      var req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (req) req.call(el);
     }
 
     function onMove(event) {
-      mouseNx = (event.clientX / window.innerWidth - 0.5) * 2;
+      mouseNx = (event.clientX / window.innerWidth  - 0.5) * 2;
       mouseNy = (event.clientY / window.innerHeight - 0.5) * 2;
+      curMx   = event.clientX;
+      curMy   = event.clientY;
     }
 
     function onButtonMove(event) {
-      const rect = btn.getBoundingClientRect();
-      btn.style.setProperty("--bx", ((event.clientX - rect.left) / rect.width * 100) + "%");
-      btn.style.setProperty("--by", ((event.clientY - rect.top) / rect.height * 100) + "%");
+      var rect = btn.getBoundingClientRect();
+      btn.style.setProperty("--bx", ((event.clientX - rect.left) / rect.width  * 100) + "%");
+      btn.style.setProperty("--by", ((event.clientY - rect.top)  / rect.height * 100) + "%");
     }
 
     function tick() {
-      const ox = mouseNx * depth * window.innerWidth;
-      const oy = mouseNy * depth * window.innerHeight;
+      var ox = mouseNx * depth * window.innerWidth;
+      var oy = mouseNy * depth * window.innerHeight;
       layer.style.transform = "translate(" + ox + "px," + oy + "px)";
       requestAnimationFrame(tick);
     }
 
+    // ── Game load ─────────────────────────────────────────────────────────────
     function loadGame() {
       enterFullscreen();
       welcome.classList.add("wc-fadeout");
@@ -234,19 +302,34 @@
         '</div>'
       ].join("");
 
-      const iframe = document.querySelector("iframe");
-      const loader = document.getElementById("loader");
-      const fallbackTimer = window.setTimeout(() => loader.classList.add("show-fallback"), 4000);
-      iframe.addEventListener("load", () => {
+      // Re-attach cursor to the new DOM (body.innerHTML was replaced)
+      curEl = null;
+      initCursor();
+
+      var iframe = document.querySelector("iframe");
+      var loader = document.getElementById("loader");
+      var fallbackTimer = window.setTimeout(function() {
+        loader.classList.add("show-fallback");
+      }, 4000);
+
+      iframe.addEventListener("load", function() {
         window.clearTimeout(fallbackTimer);
         loader.classList.add("is-hidden");
+        // Game iframe loaded — its own cursor system takes over; hide ours
+        if (curEl) curEl.classList.add("ob-hidden");
       }, { once: true });
     }
 
+    // ── Boot ──────────────────────────────────────────────────────────────────
     window.addEventListener("mousemove", onMove);
     btn.addEventListener("mousemove", onButtonMove);
-    btn.addEventListener("click", loadGame);
+    btn.addEventListener("click",      loadGame);
+    btn.addEventListener("mouseenter", function() { if (curEl) curEl.classList.add("ob-hot");    });
+    btn.addEventListener("mouseleave", function() { if (curEl) curEl.classList.remove("ob-hot"); });
+
+    initCursor();
     requestAnimationFrame(tick);
+    requestAnimationFrame(cursorTick);
   </script>
 </body>
 </html>

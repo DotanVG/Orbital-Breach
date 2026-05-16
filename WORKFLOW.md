@@ -19,7 +19,6 @@ hooks:
     npm install --prefix client
     npm install --prefix server
   before_run: |
-    set -euo pipefail
     git fetch origin
     git merge --ff-only origin/staging
 agent:
@@ -28,7 +27,8 @@ agent:
 codex:
   command: codex app-server
   approval_policy: never
-  thread_sandbox: workspace-write
+  thread_sandbox: danger-full-access
+  stall_timeout_ms: 1800000
 ---
 
 You are working on Linear ticket `{{ issue.identifier }}` for the **Orbital Breach** project.

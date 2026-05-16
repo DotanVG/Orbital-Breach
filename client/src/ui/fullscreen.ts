@@ -8,17 +8,41 @@ type FullscreenElement = HTMLElement & {
 };
 
 export function enterFullscreen(): void {
-  if (typeof document === "undefined") return;
+  void requestFullscreen();
+}
+
+export async function requestFullscreen(): Promise<boolean> {
+  if (!isFullscreenSupported()) return false;
   const el = document.documentElement as FullscreenElement;
-  const requestFullscreen = el.requestFullscreen ?? el.webkitRequestFullscreen;
-  void requestFullscreen?.call(el);
+  const request = el.requestFullscreen ?? el.webkitRequestFullscreen;
+  if (!request) return false;
+
+  try {
+    await request.call(el);
+    return isFullscreen();
+  } catch {
+    return false;
+  }
 }
 
 export function exitFullscreen(): void {
-  if (typeof document === "undefined") return;
+  void leaveFullscreen();
+}
+
+export async function leaveFullscreen(): Promise<boolean> {
+  if (typeof document === "undefined") return false;
+  if (!isFullscreen()) return true;
+
   const fullscreenDocument = document as FullscreenDocument;
   const exit = fullscreenDocument.exitFullscreen ?? fullscreenDocument.webkitExitFullscreen;
-  void exit?.call(fullscreenDocument);
+  if (!exit) return false;
+
+  try {
+    await exit.call(fullscreenDocument);
+    return !isFullscreen();
+  } catch {
+    return false;
+  }
 }
 
 export function isFullscreen(): boolean {
@@ -27,18 +51,42 @@ export function isFullscreen(): boolean {
   return Boolean(fullscreenDocument.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement);
 }
 
+// Returns true for both API fullscreen and F11 fullscreen (which bypasses the Fullscreen API).
+export function isApparentFullscreen(): boolean {
+  return isFullscreen() || (window.innerWidth === screen.width && window.innerHeight === screen.height);
+}
+
 export function onFullscreenChange(cb: () => void): () => void {
   if (typeof document === "undefined") return () => {};
   document.addEventListener("fullscreenchange", cb);
   document.addEventListener("webkitfullscreenchange", cb);
+
+  // F11 fallback: fires resize but not fullscreenchange on Chrome/Edge/Firefox.
+  let prevF11State = window.innerWidth === screen.width && window.innerHeight === screen.height;
+  const onResize = () => {
+    const next = window.innerWidth === screen.width && window.innerHeight === screen.height;
+    if (next !== prevF11State) {
+      prevF11State = next;
+      cb();
+    }
+  };
+  window.addEventListener("resize", onResize);
+
   return () => {
     document.removeEventListener("fullscreenchange", cb);
     document.removeEventListener("webkitfullscreenchange", cb);
+    window.removeEventListener("resize", onResize);
   };
 }
 
 export function isFullscreenSupported(): boolean {
   if (typeof document === "undefined") return false;
+  const fullscreenDocument = document as FullscreenDocument & {
+    fullscreenEnabled?: boolean;
+    webkitFullscreenEnabled?: boolean;
+  };
+  const enabled = fullscreenDocument.fullscreenEnabled ?? fullscreenDocument.webkitFullscreenEnabled;
+  if (enabled === false) return false;
   const el = document.documentElement as FullscreenElement | undefined;
   return Boolean(el?.requestFullscreen ?? el?.webkitRequestFullscreen);
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BOT_CALL_SIGN_POOL, DEFAULT_PLAYER_NAME } from "../shared/callSigns";
 import {
   buildBotName,
   canJoinMultiplayerRoom,
@@ -34,9 +35,14 @@ describe("canStartLobbyRound", () => {
 });
 
 describe("buildBotName", () => {
-  it("uses readable team-prefixed bot names", () => {
-    expect(buildBotName(0, 0)).toBe("CY-BOT-01");
-    expect(buildBotName(2, 1)).toBe("MG-BOT-03");
+  it("uses the approved space-themed call sign pool without numbers or reserved game terms", () => {
+    expect(buildBotName(0, 0)).toBe("Pulsar");
+    expect(buildBotName(2, 1)).toBe("Quasar");
+    expect(BOT_CALL_SIGN_POOL.length).toBeGreaterThanOrEqual(39);
+    expect(new Set(BOT_CALL_SIGN_POOL).size).toBe(BOT_CALL_SIGN_POOL.length);
+    expect(BOT_CALL_SIGN_POOL.every((name) => !/\d/.test(name))).toBe(true);
+    expect(BOT_CALL_SIGN_POOL.every((name) => !/(orbit|breacher)/i.test(name))).toBe(true);
+    expect(DEFAULT_PLAYER_NAME).toBe("Nova");
   });
 });
 

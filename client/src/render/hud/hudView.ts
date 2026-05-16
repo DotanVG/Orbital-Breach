@@ -66,6 +66,9 @@ const HUD_CSS = `
     --hud-cyan-soft: oklch(0.82 0.15 210 / 0.14);
     --hud-magenta: oklch(0.72 0.25 330);
     --hud-magenta-soft: oklch(0.72 0.25 330 / 0.22);
+    --hud-team: var(--hud-cyan);
+    --hud-team-soft: var(--hud-cyan-soft);
+    --hud-team-glow: oklch(0.82 0.15 210 / 0.38);
     --hud-text: #e8ecf4;
     --hud-muted: #9aa5b8;
     --hud-panel: rgba(7, 10, 18, 0.76);
@@ -83,6 +86,18 @@ const HUD_CSS = `
 
   .ob-hud-root * {
     box-sizing: border-box;
+  }
+
+  .ob-hud-root--cyan {
+    --hud-team: var(--hud-cyan);
+    --hud-team-soft: var(--hud-cyan-soft);
+    --hud-team-glow: oklch(0.82 0.15 210 / 0.38);
+  }
+
+  .ob-hud-root--magenta {
+    --hud-team: var(--hud-magenta);
+    --hud-team-soft: var(--hud-magenta-soft);
+    --hud-team-glow: oklch(0.72 0.25 330 / 0.42);
   }
 
   .ob-score-cluster {
@@ -247,12 +262,13 @@ const HUD_CSS = `
 
   .ob-power-label {
     margin-top: 7px;
-    color: #e3fbff;
+    color: var(--hud-team);
     font-family: "JetBrains Mono", monospace;
     font-size: 11px;
     letter-spacing: 0.12em;
     text-align: center;
     text-transform: uppercase;
+    text-shadow: 0 0 8px var(--hud-team-glow);
   }
 
   .ob-damage-panel {
@@ -323,7 +339,7 @@ const HUD_CSS = `
   }
 
   .ob-tutorial__eyebrow {
-    color: var(--hud-muted);
+    color: var(--hud-team);
     font-family: "JetBrains Mono", monospace;
     font-size: 10px;
     font-weight: 700;
@@ -333,6 +349,7 @@ const HUD_CSS = `
 
   .ob-tutorial__title {
     margin-top: 6px;
+    color: var(--hud-team);
     font-family: "Cormorant Garamond", serif;
     font-size: 22px;
     font-weight: 400;
@@ -341,17 +358,20 @@ const HUD_CSS = `
 
   .ob-tutorial__body {
     margin-top: 6px;
-    color: #d6edf5;
+    color: var(--hud-team);
     font-size: 13px;
     line-height: 1.55;
+    text-shadow: 0 0 10px var(--hud-team-glow);
   }
 
   .ob-round-end {
     display: none;
     position: absolute;
     inset: 0;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 0.18em;
     padding: 24px;
     background: linear-gradient(180deg, rgba(2, 8, 14, 0.38), rgba(2, 8, 14, 0.64));
     font-size: clamp(34px, 5vw, 56px);

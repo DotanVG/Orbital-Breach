@@ -78,4 +78,45 @@ export class KillFeed {
     setTimeout(() => { entry.style.opacity = "0"; }, 4500);
     setTimeout(() => { entry.remove(); }, 5000);
   }
+
+  public addLeave(playerName: string, playerTeam: 0 | 1): void {
+    const color = playerTeam === 0 ? "#00ffff" : "#ff00ff";
+    const entry = document.createElement("div");
+    const displayName = this.localPlayerName && playerName === this.localPlayerName ? "YOU" : playerName;
+    entry.innerHTML =
+      `<span style="color:${color};text-shadow:0 0 6px ${color};font-weight:bold">${escapeHtml(displayName)}</span>`
+      + `<span style="color:#c8c8c8;margin-left:6px">Player left</span>`;
+
+    Object.assign(entry.style, {
+      background: "rgba(88,92,99,0.78)",
+      border: "1px solid rgba(180,185,194,0.45)",
+      borderRadius: "4px",
+      padding: "3px 10px",
+      transition: "opacity 0.5s ease",
+      opacity: "1",
+    });
+
+    this.container.prepend(entry);
+    setTimeout(() => { entry.style.opacity = "0"; }, 4500);
+    setTimeout(() => { entry.remove(); }, 5000);
+  }
+}
+
+function escapeHtml(raw: string): string {
+  return raw.replace(/[&<>"']/g, (ch) => {
+    switch (ch) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return ch;
+    }
+  });
 }

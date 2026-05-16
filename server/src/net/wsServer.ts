@@ -1,4 +1,5 @@
 import { WebSocketServer, WebSocket } from "ws";
+import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { Room } from "../room";
 import { parseClientMsg, sendState } from "./messageCodec";
 
@@ -13,7 +14,7 @@ export function startWsServer(port: number, room: Room): WebSocketServer {
 
   wss.on("connection", (ws: WebSocket, req) => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    const name = url.searchParams.get("name") ?? "Player";
+    const name = url.searchParams.get("name") ?? DEFAULT_PLAYER_NAME;
     room.addClient(ws, name);
     sendState(ws, room.sim.getSnapshot());
 

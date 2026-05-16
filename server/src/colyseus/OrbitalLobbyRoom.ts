@@ -28,6 +28,7 @@ import {
 } from "../../../shared/multiplayer";
 import type { MatchTeamSize } from "../../../shared/match";
 import { findMatchWinner } from "../../../shared/match-flow";
+import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { generateArenaLayout } from "../../../shared/arena-gen";
 import { isCallSignClean } from "../../../shared/profanity";
 import {
@@ -44,6 +45,12 @@ import {
 import type { PlayerPhase } from "../../../shared/schema";
 import { generateSpawnPositions, resolveActorCollisions, type CollisionBody } from "../../../shared/player-logic";
 import { applyHitToOnlineActor, isHitZone, normalizeAuthoritativePhase } from "./actorDamage";
+import {
+  bounceActorInArena,
+  integrateZeroGActor,
+  isActorInEnemyBreachRoom,
+  shouldServerSimulateHumanActor,
+} from "./onlineActorSimulation";
 import type { OrbitalRoomMetadata } from "./roomDirectory";
 import { ActorState, LobbyMemberState, OrbitalLobbyState } from "./state";
 
@@ -138,6 +145,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   }
 
   public onJoin(client: RoomClient, options?: { name?: string }): void {
+    const playerName = sanitizePlayerName(options?.name);
     const joinTeam = this.getJoinTeamForHuman();
     if (joinTeam === null) {
       throw new Error("That room is full right now.");
@@ -147,7 +155,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     const member = new LobbyMemberState();
     member.id = client.sessionId;
     member.sessionId = client.sessionId;
-    member.name = sanitizePlayerName(options?.name);
+    member.name = playerName;
     member.team = joinTeam;
     member.ready = false;
     member.connected = true;
@@ -165,10 +173,16 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     const member = this.state.members.get(client.sessionId);
     if (member) {
       const leavingName = member.name;
+      const leavingTeam = member.team;
       this.state.members.delete(client.sessionId);
       this.broadcast("lobby_event", {
         type: "info",
         text: `${leavingName} left the room.`,
+      });
+      this.broadcast("player_leave_event", {
+        playerId: client.sessionId,
+        playerName: leavingName,
+        playerTeam: leavingTeam,
       });
     }
 
@@ -184,6 +198,8 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       this.state.countdownRemaining = 0;
       this.state.roundTimeRemaining = 0;
       this.clearActors();
+    } else {
+      this.checkTeamDisconnectWin();
     }
 
     this.syncLobbyFlow();
@@ -485,6 +501,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
     this.matchTick = setInterval(() => {
       this.tickBots(MATCH_TICK_MS / 1000);
+      this.tickStaleHumanActors(MATCH_TICK_MS / 1000);
       this.resolveOnlineBotCollisions();
     }, MATCH_TICK_MS);
   }
@@ -542,11 +559,29 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }
   }
 
+  private checkTeamDisconnectWin(): void {
+    if (this.roundResolved || this.state.phase !== "PLAYING") return;
+
+    const actors = Array.from(this.state.actors.values());
+    const team0HumanActive = actors.some((actor) => actor.team === 0 && !actor.isBot);
+    const team1HumanActive = actors.some((actor) => actor.team === 1 && !actor.isBot);
+
+    if (team0HumanActive === team1HumanActive) return;
+
+    const winningTeam = team0HumanActive ? 0 : 1;
+    this.awardOnlineRoundPoint(
+      winningTeam,
+      null,
+      winningTeam === 0 ? "Cyan Team" : "Magenta Team",
+      "disconnect",
+    );
+  }
+
   private awardOnlineRoundPoint(
     team: 0 | 1,
     scorerId: string | null,
     scorerName: string,
-    reason: "breach" | "fullFreeze",
+    reason: "breach" | "fullFreeze" | "disconnect",
   ): void {
     if (this.roundResolved) return;
     this.roundResolved = true;
@@ -729,6 +764,26 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }
   }
 
+  private tickStaleHumanActors(dt: number): void {
+    if (this.state.phase !== "PLAYING") return;
+
+    const now = Date.now();
+    for (const actor of this.state.actors.values()) {
+      const lastUpdate = this.lastPlayerUpdate.get(actor.id) ?? now;
+      if (!shouldServerSimulateHumanActor(actor, now - lastUpdate)) {
+        continue;
+      }
+
+      integrateZeroGActor(actor, dt);
+      bounceActorInArena(actor, this.botGoalAxis);
+
+      if (!this.roundResolved && isActorInEnemyBreachRoom(actor, this.botGoalAxis, this.botGoalSigns)) {
+        actor.phase = "BREACH";
+        this.awardOnlineRoundPoint(actor.team, actor.id, actor.name, "breach");
+      }
+    }
+  }
+
   private resolveOnlineBotCollisions(): void {
     if (this.state.phase !== "PLAYING") return;
 
@@ -879,6 +934,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }
 
     this.state.members.delete(removableBot.id);
+    this.removePresence(removableBot.id);
     return true;
   }
 
@@ -1036,8 +1092,8 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
 function sanitizePlayerName(rawName?: string): string {
   const trimmed = rawName?.trim().replace(/[^\x20-\x7E]/g, "").slice(0, 16);
-  if (!trimmed || trimmed.length === 0) return "Pilot";
-  return isCallSignClean(trimmed) ? trimmed : "Pilot";
+  if (!trimmed || trimmed.length === 0) return DEFAULT_PLAYER_NAME;
+  return isCallSignClean(trimmed) ? trimmed : DEFAULT_PLAYER_NAME;
 }
 
 function clampFinite(value: number, min: number, max: number): number {
@@ -1114,19 +1170,12 @@ function botIdHash(id: string): number {
 }
 
 function botIntegrateZeroG(actor: ActorState, dt: number): void {
-  const speed = Math.hypot(actor.velX, actor.velY, actor.velZ);
-  if (speed > MAX_LAUNCH_SPEED) {
-    const scale = MAX_LAUNCH_SPEED / speed;
-    actor.velX *= scale;
-    actor.velY *= scale;
-    actor.velZ *= scale;
-  }
-  actor.posX += actor.velX * dt;
-  actor.posY += actor.velY * dt;
-  actor.posZ += actor.velZ * dt;
+  integrateZeroGActor(actor, dt);
 }
 
 function botBounceArena(actor: ActorState, goalAxis: "x" | "z"): void {
+  bounceActorInArena(actor, goalAxis);
+  return;
   const half = ARENA_SIZE / 2 - PLAYER_RADIUS;
   const perpAxis: "x" | "z" = goalAxis === "x" ? "z" : "x";
 

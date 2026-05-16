@@ -40,9 +40,10 @@ import {
   measureLeftHandGripOffset,
 } from './playerGrabPose';
 import { PlayerDamageGlow } from './playerDamageGlow';
-import { applyVictoryDancePose } from './playerVictoryDance';
+import { applyVictoryDancePose, resetVictoryDancePose } from './playerVictoryDance';
 import { loadAlienRenderClone } from './alienRenderAsset';
 import { applyTeamAccent } from './teamAccent';
+import { getVictoryDanceFacing } from '../game/victoryCelebration';
 import {
   applyFloatArmTilt,
   applyArmRecoil,
@@ -121,6 +122,8 @@ export class LocalPlayer {
   private floatLimbTuningEnabled = false;
   private victoryDanceActive = false;
   private victoryDanceElapsed = 0;
+  private victoryDanceFacingLocked = false;
+  private readonly victoryDanceFacing = new THREE.Quaternion();
 
   public constructor(scene: THREE.Scene) {
     this.mesh = new THREE.Group();
@@ -523,10 +526,18 @@ export class LocalPlayer {
   private computeVisualQuaternion(cam: CameraController, dt: number): THREE.Quaternion {
     const cameraQuat = cam.getQuaternion();
 
-    if (
-      this.victoryDanceActive
-      || (this.phase !== 'GRABBING' && this.phase !== 'AIMING')
-    ) {
+    if (this.victoryDanceActive) {
+      if (!this.victoryDanceFacingLocked) {
+        this.victoryDanceFacing.copy(getVictoryDanceFacing(cameraQuat));
+        this.victoryDanceFacingLocked = true;
+      }
+      this.visualQuaternion.copy(this.victoryDanceFacing);
+      return this.visualQuaternion;
+    }
+
+    this.victoryDanceFacingLocked = false;
+
+    if (this.phase !== 'GRABBING' && this.phase !== 'AIMING') {
       this.visualQuaternion.copy(cameraQuat);
       return this.visualQuaternion;
     }
@@ -635,6 +646,7 @@ export class LocalPlayer {
     this.phys.vel.set(0, 0, 0);
     this.victoryDanceActive = false;
     this.victoryDanceElapsed = 0;
+    this.victoryDanceFacingLocked = false;
 
     const spawn = spawnOverride ?? (() => {
       const center = arena.getBreachRoomCenter(this.team);
@@ -684,6 +696,14 @@ export class LocalPlayer {
     this.phase = nextPhase;
   }
 
+  public applyAuthoritativeOnlineMotion(actor: Pick<
+    OnlineActorSnapshot,
+    'posX' | 'posY' | 'posZ' | 'velX' | 'velY' | 'velZ'
+  >): void {
+    this.phys.pos.set(actor.posX, actor.posY, actor.posZ);
+    this.phys.vel.set(actor.velX, actor.velY, actor.velZ);
+  }
+
   public getPosition(): THREE.Vector3 {
     return this.phys.pos;
   }
@@ -699,7 +719,11 @@ export class LocalPlayer {
   }
 
   public setVictoryDanceActive(active: boolean): void {
+    if (active !== this.victoryDanceActive) {
+      resetVictoryDancePose(this.animation.getRigs());
+    }
     this.victoryDanceActive = active;
+    this.victoryDanceFacingLocked = false;
     if (active) {
       this.victoryDanceElapsed = 0;
       this.launchPower = 0;
@@ -712,6 +736,10 @@ export class LocalPlayer {
     } else {
       this.victoryDanceElapsed = 0;
     }
+  }
+
+  public isVictoryDanceActive(): boolean {
+    return this.victoryDanceActive && !this.damage.frozen;
   }
 
   public setWorldModelVisible(visible: boolean): void {

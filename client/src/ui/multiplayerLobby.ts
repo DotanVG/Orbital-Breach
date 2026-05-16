@@ -32,13 +32,36 @@ const CSS = `
     z-index: 350;
     color: #e8ecf4;
     font-family: "Cormorant Garamond", serif;
+    overflow: hidden;
   }
 
   .ob-mp-root * {
     box-sizing: border-box;
   }
 
+  .ob-mp-root::before,
+  .ob-mp-root::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+  }
+
+  .ob-mp-root::before {
+    inset: -28px;
+    background: url("/assets/marketing/orbital-breach-bg.png") center / cover no-repeat;
+    filter: blur(18px);
+    opacity: 0.34;
+    transform: scale(1.04);
+  }
+
+  .ob-mp-root::after {
+    inset: 0;
+    background: rgba(1, 4, 8, 0.56);
+  }
+
   .ob-mp-shell {
+    position: relative;
+    z-index: 1;
     width: min(1120px, calc(100vw - 32px));
     max-height: calc(100dvh - 32px);
     overflow: auto;
@@ -150,10 +173,32 @@ const CSS = `
   }
 
   .ob-mp-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     padding: 13px 15px;
     border-radius: 0;
     font-size: 14px;
     line-height: 1.5;
+  }
+
+  .ob-mp-status::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 14px currentColor;
+    opacity: 0.72;
+  }
+
+  .ob-mp-status--connecting {
+    animation: ob-mp-status-pulse 1.8s ease-in-out infinite;
+  }
+
+  .ob-mp-status--connecting::before {
+    animation: ob-mp-status-dot 1.1s ease-in-out infinite;
   }
 
   .ob-mp-controls {
@@ -224,9 +269,12 @@ const CSS = `
   }
 
   .ob-mp-qr-card {
+    position: relative;
     display: grid;
     gap: 10px;
     justify-items: center;
+    align-items: center;
+    min-height: 162px;
     padding: 10px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: rgba(255, 255, 255, 0.03);
@@ -236,6 +284,50 @@ const CSS = `
     width: 140px;
     height: 140px;
     background: white;
+  }
+
+  .ob-mp-qr-card--loading img {
+    opacity: 0;
+  }
+
+  .ob-mp-qr-loader {
+    position: absolute;
+    inset: 10px;
+    display: none;
+    place-items: center;
+    background:
+      linear-gradient(180deg, rgba(7, 10, 18, 0.76), rgba(7, 10, 18, 0.9)),
+      repeating-linear-gradient(135deg, rgba(127, 252, 255, 0.09) 0 1px, transparent 1px 9px);
+    border: 1px dashed rgba(127, 252, 255, 0.22);
+  }
+
+  .ob-mp-qr-card--loading .ob-mp-qr-loader {
+    display: grid;
+  }
+
+  .ob-mp-qr-spinner {
+    width: 40px;
+    height: 40px;
+    border: 2px solid rgba(127, 252, 255, 0.16);
+    border-top-color: #7ffcff;
+    border-right-color: rgba(255, 125, 248, 0.78);
+    border-radius: 50%;
+    animation: ob-mp-spin 0.9s linear infinite;
+    box-shadow: 0 0 18px rgba(127, 252, 255, 0.12);
+  }
+
+  @keyframes ob-mp-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes ob-mp-status-pulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.28); }
+  }
+
+  @keyframes ob-mp-status-dot {
+    0%, 100% { transform: scale(0.82); opacity: 0.42; }
+    50% { transform: scale(1.18); opacity: 1; }
   }
 
   .ob-mp-select-wrap {
@@ -742,6 +834,7 @@ export class MultiplayerLobby {
   private inviteUrlInput: HTMLInputElement;
   private copyInviteButton: HTMLButtonElement;
   private shareInviteButton: HTMLButtonElement;
+  private inviteQrCard: HTMLDivElement;
   private inviteQrImage: HTMLImageElement;
   private inviteNote: HTMLDivElement;
   private inviteQrMeta: HTMLDivElement;
@@ -791,6 +884,7 @@ export class MultiplayerLobby {
     this.inviteUrlInput = this.query("#mp-invite-url");
     this.copyInviteButton = this.query("#mp-copy-invite");
     this.shareInviteButton = this.query("#mp-share-invite");
+    this.inviteQrCard = this.query("#mp-qr-card");
     this.inviteQrImage = this.query("#mp-invite-qr");
     this.inviteNote = this.query("#mp-invite-note");
     this.inviteQrMeta = this.query("#mp-invite-qr-meta");
@@ -854,11 +948,12 @@ export class MultiplayerLobby {
     this.team1Roster.innerHTML = `<div class="ob-mp-empty">Joining room...</div>`;
     this.inviteUrlInput.value = "";
     this.inviteQrImage.removeAttribute("src");
+    this.inviteQrCard.classList.add("ob-mp-qr-card--loading");
     this.inviteNote.textContent = "Invite tools will activate as soon as the room session is established.";
-    this.inviteQrMeta.textContent = "Waiting for room id";
+    this.inviteQrMeta.textContent = "QR pending connection";
     this.copyInviteButton.disabled = true;
     this.shareInviteButton.disabled = true;
-    this.setStatus(`Connecting ${escapeHtml(playerName)} to the live queue...`, "info");
+    this.setStatus(`Connecting ${playerName} to the live queue...`, "info", true);
   }
 
   public show(): void {
@@ -870,8 +965,9 @@ export class MultiplayerLobby {
     this.latestState = null;
   }
 
-  public setStatus(text: string, kind: LobbyEventMessage["type"]): void {
+  public setStatus(text: string, kind: LobbyEventMessage["type"], connecting = false): void {
     this.status.textContent = text;
+    this.status.classList.toggle("ob-mp-status--connecting", connecting);
     this.status.style.color = kind === "error" ? "#ffb1c0" : "#dffcff";
     this.status.style.borderColor = kind === "error"
       ? "rgba(255, 120, 150, 0.38)"
@@ -884,7 +980,6 @@ export class MultiplayerLobby {
   public render(state: MultiplayerRoomSnapshot): void {
     this.latestState = state;
     this.show();
-
     const counts = getLobbyMemberCounts(state.members);
     const self = this.getSelf(state);
     const isLobby = state.phase === "LOBBY";
@@ -936,7 +1031,7 @@ export class MultiplayerLobby {
     } else if (state.matchComplete) {
       this.setStatus("Match complete. Review the debrief, then ready up to launch the next match.", "info");
     } else {
-      this.setStatus("Form up, balance the squads, and lock ready when both sides are full.", "info");
+      this.setStatus("Connected. Form up, balance the squads, and lock ready when both sides are full.", "info");
     }
 
     const team0Members = state.members.filter((member) => member.team === 0);
@@ -969,6 +1064,7 @@ export class MultiplayerLobby {
     this.shareInviteButton.disabled = false;
 
     if (this.inviteQrForUrl === inviteUrl && this.inviteQrImage.getAttribute("src")) {
+      this.inviteQrCard.classList.remove("ob-mp-qr-card--loading");
       return;
     }
     if (this.inviteQrPendingUrl === inviteUrl) {
@@ -977,6 +1073,7 @@ export class MultiplayerLobby {
 
     const requestId = ++this.inviteQrRequestId;
     this.inviteQrPendingUrl = inviteUrl;
+    this.inviteQrCard.classList.add("ob-mp-qr-card--loading");
 
     try {
       const qrSrc = await QRCode.toDataURL(inviteUrl, {
@@ -992,6 +1089,7 @@ export class MultiplayerLobby {
       }
       this.inviteQrForUrl = inviteUrl;
       this.inviteQrImage.src = qrSrc;
+      this.inviteQrCard.classList.remove("ob-mp-qr-card--loading");
     } catch {
       if (requestId !== this.inviteQrRequestId || this.latestInviteUrl !== inviteUrl) {
         return;
@@ -999,6 +1097,7 @@ export class MultiplayerLobby {
       this.inviteQrForUrl = "";
       this.inviteQrImage.removeAttribute("src");
       this.inviteQrMeta.textContent = "QR generation unavailable";
+      this.inviteQrCard.classList.remove("ob-mp-qr-card--loading");
     } finally {
       if (this.inviteQrPendingUrl === inviteUrl) {
         this.inviteQrPendingUrl = "";
@@ -1102,8 +1201,11 @@ function buildMarkup(): string {
               <div id="mp-invite-note" class="ob-mp-invite-note"></div>
             </div>
 
-            <div class="ob-mp-qr-card">
+            <div id="mp-qr-card" class="ob-mp-qr-card">
               <img id="mp-invite-qr" alt="Room invite QR code" />
+              <div class="ob-mp-qr-loader" aria-hidden="true">
+                <div class="ob-mp-qr-spinner"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -1267,7 +1369,7 @@ function describeQueueState(state: MultiplayerRoomSnapshot, humans: number): str
     return "Both squads are full and the ready check passed.";
   }
   if (state.phase === "PLAYING") {
-    return "Match is deployed. Menu access and settings stay available between points.";
+    return "Match is live. Menu access and settings stay available between points.";
   }
   if (state.phase === "ROUND_END") {
     return "Point resolved. The next round will auto-cycle while the room stays checked in.";

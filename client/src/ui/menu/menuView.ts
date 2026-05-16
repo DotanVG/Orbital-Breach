@@ -328,6 +328,7 @@ const CSS = `
   }
   .ob-btn-primary::before  { background: radial-gradient(circle at var(--mx,50%) var(--my,50%), var(--ob-magenta-soft), transparent 60%); }
   .ob-btn-secondary::before{ background: radial-gradient(circle at var(--mx,50%) var(--my,50%), var(--ob-cyan-soft),    transparent 60%); }
+  .ob-btn-online::before   { background: radial-gradient(circle at var(--mx,50%) var(--my,50%), rgba(255, 210, 112, .2), rgba(255, 92, 208, .1) 42%, transparent 68%); }
   .ob-btn-utility::before  { background: radial-gradient(circle at var(--mx,50%) var(--my,50%), rgba(140,225,255,.12), transparent 62%); }
   .ob-btn:hover { border-color: rgba(255,255,255,.4); transform: translateY(-1px); }
   .ob-btn:hover::before { opacity: 1; }
@@ -335,6 +336,16 @@ const CSS = `
   .ob-btn:hover .ob-btn-icon { transform: rotate(18deg) scale(1.06); }
   .ob-btn-primary:hover  { color: oklch(0.88 0.12 60);  border-color: var(--ob-magenta); }
   .ob-btn-secondary:hover{ color: var(--ob-cyan); border-color: var(--ob-cyan); }
+  .ob-btn-online:hover {
+    color: #ffd670;
+    border-color: rgba(255, 214, 112, .82);
+    background:
+      linear-gradient(135deg, rgba(255, 92, 208, .14), rgba(255, 214, 112, .08)),
+      rgba(18, 12, 24, .72);
+    box-shadow:
+      0 0 0 1px rgba(255, 92, 208, .26) inset,
+      0 14px 34px rgba(255, 92, 208, .14);
+  }
   .ob-btn-utility:hover  { color: var(--ob-cyan); border-color: rgba(140,225,255,.42); }
   .ob-btn:focus-visible { outline: 2px solid var(--ob-cyan); outline-offset: 3px; }
   .ob-btn-corner {
@@ -582,8 +593,9 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
     const adornment = iconHtml
       ? `<span class="ob-btn-icon">${iconHtml}</span>`
       : `<span class="ob-btn-arrow">&rarr;</span>`;
+    const onlineClass = id === "btn-play-online" ? " ob-btn-online" : "";
     return `
-      <button class="ob-btn ob-btn-${mod}" id="${id}">
+      <button class="ob-btn ob-btn-${mod}${onlineClass}" id="${id}">
         <span class="ob-btn-corner ob-tl"></span><span class="ob-btn-corner ob-tr"></span>
         <span class="ob-btn-corner ob-bl"></span><span class="ob-btn-corner ob-br"></span>
         <span class="ob-btn-label">${label} ${adornment}</span>

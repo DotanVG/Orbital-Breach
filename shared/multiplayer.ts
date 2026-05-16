@@ -1,5 +1,6 @@
 import { MATCH_TEAM_SIZES, type MatchTeamSize } from "./match";
 import type { HitZone } from "./player-logic";
+import { getBotCallSign } from "./callSigns";
 
 export const MULTIPLAYER_ROOM_NAME = "orbital_lobby";
 export const MULTIPLAYER_BROWSER_ROOM_NAME = "orbital_browser_lobby";
@@ -150,11 +151,17 @@ export interface FreezeEventMessage {
   victimTeam: 0 | 1;
 }
 
+export interface PlayerLeaveEventMessage {
+  playerId: string;
+  playerName: string;
+  playerTeam: 0 | 1;
+}
+
 export interface RoundResultEventMessage {
   outcome: "tie" | "win";
   winningTeam: 0 | 1 | null;
   matchWinner: 0 | 1 | null;
-  reason: "breach" | "fullFreeze" | "timeout";
+  reason: "breach" | "fullFreeze" | "disconnect" | "timeout";
   scorerId?: string;
   scorerName: string;
   finalScore?: {
@@ -249,8 +256,8 @@ export function clampLobbyBotFill(memberCount: number, teamSize: MatchTeamSize):
 }
 
 export function buildBotName(botIndex: number, team: LobbyTeam): string {
-  const prefix = team === 0 ? "CY" : "MG";
-  return `${prefix}-BOT-${String(botIndex + 1).padStart(2, "0")}`;
+  void team;
+  return getBotCallSign(botIndex);
 }
 
 export function canJoinMultiplayerRoom(phase: MultiplayerRoomPhase): boolean {

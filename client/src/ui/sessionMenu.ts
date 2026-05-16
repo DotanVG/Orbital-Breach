@@ -5,7 +5,7 @@ import {
   ITCH_IO_URL,
   NOAM_SOUNDCLOUD_URL,
 } from "./creditsContent";
-import { isFullscreenSupported } from "./fullscreen";
+import { isApparentFullscreen, isFullscreenSupported, onFullscreenChange } from "./fullscreen";
 import { getInstructionsContent, type InstructionsContent } from "./instructionsContent";
 import { GITHUB_ICON_SVG, ITCH_ICON_SVG } from "./linkIcons";
 import { isTouchDevice } from "../platform";
@@ -93,10 +93,36 @@ const CSS = `
       linear-gradient(180deg, rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.6));
     color: #effcff;
     font-family: "Cormorant Garamond", serif;
+    overflow: hidden;
   }
 
   .ob-session-root * {
     box-sizing: border-box;
+  }
+
+  .ob-session-root::before,
+  .ob-session-root::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+  }
+
+  .ob-session-root::before {
+    inset: -28px;
+    background: url("/assets/marketing/orbital-breach-bg.png") center / cover no-repeat;
+    filter: blur(18px);
+    opacity: 0.34;
+    transform: scale(1.04);
+  }
+
+  .ob-session-root::after {
+    inset: 0;
+    background: rgba(1, 4, 8, 0.54);
+  }
+
+  .ob-session-panel {
+    position: relative;
+    z-index: 1;
   }
 
   .ob-session-panel {
@@ -608,6 +634,7 @@ export class SessionMenu {
   private readonly sfxInput: HTMLInputElement;
   private readonly sfxValue: HTMLSpanElement;
   private readonly cameraSelect: HTMLSelectElement;
+  private readonly disposeFullscreenListener: () => void;
   private settings = loadSettings();
   private currentConfig: SessionMenuConfig | null = null;
 
@@ -647,7 +674,7 @@ export class SessionMenu {
           <div id="session-menu-settings-view" class="ob-session-view">
             <section class="ob-session-settings-card">
               <div class="ob-session-settings-title">Flight Settings</div>
-              <div class="ob-session-note">Changes apply immediately. Soundtrack toggle mutes music while preserving the level setting.</div>
+              <div class="ob-session-note">Changes apply immediately.</div>
 
               <div class="ob-session-field">
                 <div class="ob-session-field-head">
@@ -663,7 +690,7 @@ export class SessionMenu {
                   <span id="session-menu-soundtrack-value" class="ob-session-value"></span>
                 </div>
                 <label class="ob-session-toggle">
-                  <span class="ob-session-toggle-copy">Keep the soundtrack channel armed once the music pass lands.</span>
+                  <span class="ob-session-toggle-copy">Play music during menus and matches.</span>
                   <input id="session-menu-soundtrack" class="ob-session-checkbox" type="checkbox" />
                 </label>
               </div>
@@ -674,7 +701,7 @@ export class SessionMenu {
                   <span id="session-menu-fullscreen-value" class="ob-session-value"></span>
                 </div>
                 <label class="ob-session-toggle">
-                  <span class="ob-session-toggle-copy">Enter fullscreen on breach and when toggled from this panel.</span>
+                  <span class="ob-session-toggle-copy">Use fullscreen when this browser allows it.</span>
                   <input id="session-menu-fullscreen" class="ob-session-checkbox" type="checkbox" />
                 </label>
               </div>
@@ -716,7 +743,7 @@ export class SessionMenu {
 
             <section class="ob-session-settings-card">
               <div class="ob-session-settings-title">Credits</div>
-              <div class="ob-session-note">Review model, audio, and project-link credits without leaving the build.</div>
+              <div class="ob-session-note">View music, sound, asset, and project credits.</div>
               <div class="ob-session-card-actions">
                 <button id="session-menu-open-credits" type="button" class="ob-session-inline-button">Open Credits</button>
               </div>
@@ -770,7 +797,7 @@ export class SessionMenu {
 
             <section class="ob-session-settings-card">
               <div class="ob-session-settings-title">Asset Credits</div>
-              <div class="ob-session-note">3D model assets used by the current browser build.</div>
+              <div class="ob-session-note">3D assets featured in Orbital Breach.</div>
               <div class="ob-session-credit-list">
                 ${ASSET_CREDITS.map((credit) => `
                   <article class="ob-session-credit-item">
@@ -857,6 +884,9 @@ export class SessionMenu {
       this.renderSettings();
       this.onSettingsChange?.(this.getSettings());
     });
+    this.disposeFullscreenListener = onFullscreenChange(() => {
+      this.syncFullscreenFromBrowser();
+    });
 
     this.renderSettings();
   }
@@ -907,6 +937,25 @@ export class SessionMenu {
     this.launcher.style.display = visible ? "inline-flex" : "none";
   }
 
+  public syncFullscreenFromBrowser(notify = true): void {
+    const fullscreenEnabled = isFullscreenSupported() && isApparentFullscreen();
+    if (this.settings.fullscreenEnabled === fullscreenEnabled) {
+      this.renderSettings();
+      return;
+    }
+
+    this.settings.fullscreenEnabled = fullscreenEnabled;
+    this.persistSettings();
+    this.renderSettings();
+    if (notify) this.onSettingsChange?.(this.getSettings());
+  }
+
+  public dispose(): void {
+    this.disposeFullscreenListener();
+    this.root.remove();
+    this.launcher.remove();
+  }
+
   private persistSettings(): void {
     localStorage.setItem(STORAGE_KEYS.mouseSensitivity, String(this.settings.mouseSensitivity));
     localStorage.setItem(STORAGE_KEYS.musicVolume, String(this.settings.musicVolume));
@@ -949,7 +998,7 @@ export class SessionMenu {
 
     if (view === "credits") {
       this.title.textContent = "Credits";
-      this.subtitle.textContent = "Asset, audio, and external-link acknowledgements for Orbital Breach.";
+      this.subtitle.textContent = "Music, sound, asset, and project credits for Orbital Breach.";
       return;
     }
 
@@ -962,12 +1011,12 @@ export class SessionMenu {
   }
 }
 
-function buildInstructionsHtml(content: InstructionsContent): string {
+export function buildInstructionsHtml(content: InstructionsContent): string {
   const controlsHtml = content.controls.length > 0
     ? `
       <section class="ob-session-settings-card">
-        <div class="ob-session-settings-title">Desktop Controls</div>
-        <div class="ob-session-note">Keyboard and mouse bindings from the README quick reference.</div>
+        <div class="ob-session-settings-title">Controls</div>
+        <div class="ob-session-note">Keyboard and mouse bindings from the quick reference.</div>
         <div class="ob-session-control-list">
           ${content.controls.map((control) => `
             <div class="ob-session-control-row">
@@ -981,6 +1030,8 @@ function buildInstructionsHtml(content: InstructionsContent): string {
     : "";
 
   return `
+    ${controlsHtml}
+
     <section class="ob-session-settings-card">
       <div class="ob-session-settings-title">Objective</div>
       <div class="ob-session-note">Cyan and Magenta fight to breach the opposing room.</div>
@@ -1004,8 +1055,6 @@ function buildInstructionsHtml(content: InstructionsContent): string {
         ${content.winningScenarios.map((item) => buildInstructionItem(item, true)).join("")}
       </div>
     </section>
-
-    ${controlsHtml}
   `;
 }
 
@@ -1036,7 +1085,9 @@ function loadSettings(): SessionSettings {
   // Always default music to ON — never persist "off" state across sessions.
   // Stale "0" values from prior sessions would silently gate all audio on mobile.
   localStorage.removeItem(STORAGE_KEYS.soundtrackEnabled);
-  const fullscreenEnabled = localStorage.getItem(STORAGE_KEYS.fullscreenEnabled);
+  const fullscreenEnabled = isFullscreenSupported()
+    ? localStorage.getItem(STORAGE_KEYS.fullscreenEnabled)
+    : "false";
   const musicVolume = Number(localStorage.getItem(STORAGE_KEYS.musicVolume) ?? DEFAULT_SETTINGS.musicVolume);
   const sfxVolume = Number(localStorage.getItem(STORAGE_KEYS.sfxVolume) ?? DEFAULT_SETTINGS.sfxVolume);
   const savedCameraMode = localStorage.getItem(STORAGE_KEYS.defaultCameraMode);

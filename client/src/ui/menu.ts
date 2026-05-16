@@ -2,6 +2,7 @@ import { createMenuView, injectMenuStyle, type MenuElements } from './menu/menuV
 import { isTouchDevice } from '../platform';
 import { isMatchTeamSize, type MatchTeamSize } from '../../../shared/match';
 import { validateCallSign } from '../../../shared/profanity';
+import { DEFAULT_PLAYER_NAME } from '../../../shared/callSigns';
 
 const STORAGE_KEY = 'orbital_player_name';
 const MATCH_SIZE_STORAGE_KEY = 'orbital_match_size';
@@ -76,7 +77,7 @@ export class MainMenu {
     });
     elements.playTutorialButton.addEventListener('click', () => {
       if (!this.checkNameBeforePlay(elements)) return;
-      const name = this.menu?.nameInput.value.trim() || 'Pilot';
+      const name = this.menu?.nameInput.value.trim() || DEFAULT_PLAYER_NAME;
       this.fadeOut(() => this.onPlayTutorial?.({ name, teamSize: 1, noBots: true }));
     });
 
@@ -138,7 +139,7 @@ export class MainMenu {
   /** Returns true when the name is acceptable and play can proceed. */
   private checkNameBeforePlay(elements: MenuElements): boolean {
     const raw = elements.nameInput.value.trim();
-    const nameForValidation = raw.length === 0 ? 'Pilot' : raw;
+    const nameForValidation = raw.length === 0 ? DEFAULT_PLAYER_NAME : raw;
     const err = validateCallSign(nameForValidation);
     if (err) {
       elements.nameError.textContent = err;
@@ -155,7 +156,7 @@ export class MainMenu {
     const name = this.menu?.nameInput.value.trim();
     const matchSizeValue = Number(this.menu?.matchSizeSelect.value ?? '1');
     const teamSize = isMatchTeamSize(matchSizeValue) ? matchSizeValue : 1;
-    const finalName = name || 'Pilot';
+    const finalName = name || DEFAULT_PLAYER_NAME;
     localStorage.setItem(STORAGE_KEY, finalName);
     localStorage.setItem(MATCH_SIZE_STORAGE_KEY, String(teamSize));
     return { name: finalName, teamSize };
