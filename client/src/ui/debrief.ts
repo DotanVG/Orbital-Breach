@@ -47,9 +47,27 @@ const CSS = `
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
+    overflow: hidden;
     transition: opacity 320ms ease, visibility 320ms ease;
   }
   .ob-debrief-root * { box-sizing: border-box; }
+  .ob-debrief-root::before,
+  .ob-debrief-root::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+  }
+  .ob-debrief-root::before {
+    inset: -28px;
+    background: url("/assets/marketing/orbital-breach-bg.png") center / cover no-repeat;
+    filter: blur(18px);
+    opacity: 0.32;
+    transform: scale(1.04);
+  }
+  .ob-debrief-root::after {
+    inset: 0;
+    background: rgba(1, 4, 8, 0.52);
+  }
   .ob-debrief-root.ob-debrief-visible {
     opacity: 1;
     visibility: visible;
@@ -71,6 +89,8 @@ const CSS = `
   }
 
   .ob-debrief-wrap {
+    position: relative;
+    z-index: 1;
     width: min(1100px, 94vw);
     max-height: calc(100dvh - 36px);
     overflow: auto;

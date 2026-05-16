@@ -93,10 +93,36 @@ const CSS = `
       linear-gradient(180deg, rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.6));
     color: #effcff;
     font-family: "Cormorant Garamond", serif;
+    overflow: hidden;
   }
 
   .ob-session-root * {
     box-sizing: border-box;
+  }
+
+  .ob-session-root::before,
+  .ob-session-root::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+  }
+
+  .ob-session-root::before {
+    inset: -28px;
+    background: url("/assets/marketing/orbital-breach-bg.png") center / cover no-repeat;
+    filter: blur(18px);
+    opacity: 0.34;
+    transform: scale(1.04);
+  }
+
+  .ob-session-root::after {
+    inset: 0;
+    background: rgba(1, 4, 8, 0.54);
+  }
+
+  .ob-session-panel {
+    position: relative;
+    z-index: 1;
   }
 
   .ob-session-panel {

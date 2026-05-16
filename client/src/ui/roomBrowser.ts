@@ -25,13 +25,36 @@ const CSS = `
     background: rgba(2, 6, 16, 0.78);
     backdrop-filter: blur(16px);
     color: #ebf7ff;
+    overflow: hidden;
   }
 
   .ob-rb-root * {
     box-sizing: border-box;
   }
 
+  .ob-rb-root::before,
+  .ob-rb-root::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+  }
+
+  .ob-rb-root::before {
+    inset: -28px;
+    background: url("/assets/marketing/orbital-breach-bg.png") center / cover no-repeat;
+    filter: blur(18px);
+    opacity: 0.36;
+    transform: scale(1.04);
+  }
+
+  .ob-rb-root::after {
+    inset: 0;
+    background: rgba(1, 4, 8, 0.58);
+  }
+
   .ob-rb-shell {
+    position: relative;
+    z-index: 1;
     width: min(1100px, calc(100vw - 36px));
     max-height: calc(100dvh - 28px);
     overflow: auto;
