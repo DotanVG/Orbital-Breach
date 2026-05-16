@@ -368,8 +368,10 @@ const HUD_CSS = `
     display: none;
     position: absolute;
     inset: 0;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 0.18em;
     padding: 24px;
     background: linear-gradient(180deg, rgba(2, 8, 14, 0.38), rgba(2, 8, 14, 0.64));
     font-size: clamp(34px, 5vw, 56px);
