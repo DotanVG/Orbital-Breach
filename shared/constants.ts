@@ -50,20 +50,6 @@ export const ROUND_DURATION_SECONDS = 120;   // hard cap so every round ends
 export const MATCH_POINT_TARGET     = 5;     // first team to this many rounds wins the match
 export const MATCH_END_DELAY        = 7;     // seconds showing MATCH result before returning to menu
 
-// Solo bot roster
-export const BOT_NAMES = [
-  'UNIT-7',
-  'GHOST-3',
-  'NOVA-5',
-  'DRIFT-1',
-  'ECHO-9',
-  'RIFT-2',
-  'LANCER-4',
-  'ORBIT-6',
-  'VOID-8',
-  'PULSE-0',
-] as const;
-
 // Obstacles
 export const OBSTACLE_MIN           = 14;
 export const OBSTACLE_MAX           = 22;

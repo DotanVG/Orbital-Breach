@@ -52,7 +52,7 @@ describe("getInstructionsContent", () => {
       expect(text).toContain("Freeze all enemy players to score a round instantly");
       expect(text).toContain("A round is won when a player breaches the enemy room");
       expect(text).toContain("A round is also won when every enemy player is frozen");
-      expect(text).toContain("first team to 5 round wins");
+      expect(text).toContain("First team to score 5 wins the match");
       expect(text).toContain("120-second round timer expires");
       expect(text).toContain("tie and no point is awarded");
       expect(text).not.toContain("open their breach portal");

@@ -1,4 +1,5 @@
 import { Client as ColyseusClient, type Room } from "@colyseus/sdk";
+import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { getColyseusEndpoint } from "./endpoint";
 import { isMatchTeamSize, type MatchTeamSize } from "../../../shared/match";
 import {
@@ -255,7 +256,7 @@ function getActors(rawActors: unknown): OnlineActorSnapshot[] {
 function toLobbyMember(value: Record<string, unknown>): LobbyMemberSnapshot {
   return {
     id: String(value.id ?? ""),
-    name: String(value.name ?? "Pilot"),
+    name: String(value.name ?? DEFAULT_PLAYER_NAME),
     team: value.team === 1 ? 1 : 0,
     ready: Boolean(value.ready),
     connected: Boolean(value.connected),
@@ -266,7 +267,7 @@ function toLobbyMember(value: Record<string, unknown>): LobbyMemberSnapshot {
 function toActorSnapshot(value: Record<string, unknown>): OnlineActorSnapshot {
   return {
     id: String(value.id ?? ""),
-    name: String(value.name ?? "Pilot"),
+    name: String(value.name ?? DEFAULT_PLAYER_NAME),
     team: value.team === 1 ? 1 : 0,
     isBot: Boolean(value.isBot),
     posX: Number(value.posX ?? 0),
