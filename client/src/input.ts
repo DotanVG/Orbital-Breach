@@ -26,6 +26,7 @@ export class InputManager {
   private mobileMoveZ = 0;
   private mobileControlsActive = false;
   private uiBlocked = false;
+  private clearStateOnBackground = true;
 
   public mouseSensitivity = 0.002;
 
@@ -89,11 +90,13 @@ export class InputManager {
     });
 
     window.addEventListener('blur', () => {
-      this.clearState();
+      if (this.clearStateOnBackground) {
+        this.clearState();
+      }
     });
 
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
+      if (document.hidden && this.clearStateOnBackground) {
         this.clearState();
       }
     });
@@ -154,6 +157,10 @@ export class InputManager {
   /** Returns true when the player can control the game (pointer locked on desktop, or mobile controls active). */
   public canControlGame(): boolean {
     return !this.uiBlocked && (this.mobileControlsActive || this.isLocked());
+  }
+
+  public setBackgroundStateClearingEnabled(enabled: boolean): void {
+    this.clearStateOnBackground = enabled;
   }
 
   // ── Mouse delta ───────────────────────────────────────────────────
