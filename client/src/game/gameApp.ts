@@ -272,6 +272,11 @@ export class App {
       this.killFeed.addKill(event.killerName, event.killerTeam, event.victimName, event.victimTeam);
     };
 
+    this.net.onPlayerLeaveEvent = (event) => {
+      if (this.isUserExitingOnline || this.appMode !== "online") return;
+      this.killFeed.addLeave(event.playerName, event.playerTeam);
+    };
+
     this.net.onRoundResultEvent = (event) => {
       if (this.isUserExitingOnline || this.appMode !== "online") return;
       if (!this.onlineGameActive) return;
