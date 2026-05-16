@@ -48,16 +48,31 @@ export async function leaveFullscreen(): Promise<boolean> {
 export function isFullscreen(): boolean {
   if (typeof document === "undefined") return false;
   const fullscreenDocument = document as FullscreenDocument;
-  return Boolean(fullscreenDocument.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement);
+  if (fullscreenDocument.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement) return true;
+  // F11 on most desktop browsers bypasses the Fullscreen API — detect via viewport dimensions.
+  return window.innerWidth === screen.width && window.innerHeight === screen.height;
 }
 
 export function onFullscreenChange(cb: () => void): () => void {
   if (typeof document === "undefined") return () => {};
   document.addEventListener("fullscreenchange", cb);
   document.addEventListener("webkitfullscreenchange", cb);
+
+  // F11 fallback: fires resize but not fullscreenchange on Chrome/Edge/Firefox.
+  let prevF11State = window.innerWidth === screen.width && window.innerHeight === screen.height;
+  const onResize = () => {
+    const next = window.innerWidth === screen.width && window.innerHeight === screen.height;
+    if (next !== prevF11State) {
+      prevF11State = next;
+      cb();
+    }
+  };
+  window.addEventListener("resize", onResize);
+
   return () => {
     document.removeEventListener("fullscreenchange", cb);
     document.removeEventListener("webkitfullscreenchange", cb);
+    window.removeEventListener("resize", onResize);
   };
 }
 
