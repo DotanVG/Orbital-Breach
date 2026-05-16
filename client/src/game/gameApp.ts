@@ -136,6 +136,7 @@ export class App {
     this.input.onTabHoldChange = (held) => {
       this.handleScoreboardTabHoldChange(held);
     };
+    this.syncBackgroundInputPolicy();
     this.cam = new CameraController(this.sceneMgr.getCamera());
     this.arena = new Arena(this.sceneMgr.getScene());
     this.player = new LocalPlayer(this.sceneMgr.getScene());
@@ -493,7 +494,10 @@ export class App {
 
     // Resume music when user returns to tab/app (AudioContext suspends on hide)
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) this.sound.tryResumeMusic();
+      if (!document.hidden) {
+        this.sound.tryResumeMusic();
+        this.resyncLocalOnlineActorFromLatestSnapshot();
+      }
     });
     // iOS back/forward cache restore — context is suspended on bfcache restore
     window.addEventListener('pageshow', (e) => {
@@ -1114,6 +1118,7 @@ export class App {
     this.clearCelebrationState();
     this.debrief.hide();
     this.appMode = "menu";
+    this.syncBackgroundInputPolicy();
     this.cursor.show();
     this.matchOver = false;
     this.projectiles.clear();
@@ -1300,6 +1305,7 @@ export class App {
     this.debrief.hide();
     this.clearCelebrationState();
     this.appMode = "solo";
+    this.syncBackgroundInputPolicy();
     this.cursor.hide();
     this.matchOver = false;
     this.onlineBreachReported = false;
@@ -1357,6 +1363,7 @@ export class App {
       && inviteRoomId !== null
       && resolvedTarget.roomId === inviteRoomId;
     this.appMode = "online";
+    this.syncBackgroundInputPolicy();
     this.onlinePlayerName = selection.name;
     this.killFeed.setLocalPlayerName(selection.name);
     this.onlineGameActive = false;
@@ -1426,6 +1433,7 @@ export class App {
     this.clearCelebrationState();
     this.matchStats.reset();
     this.appMode = "menu";
+    this.syncBackgroundInputPolicy();
     this.onlineGameActive = false;
     this.onlineRoundActive = false;
     this.cursor.show();
@@ -1778,7 +1786,26 @@ export class App {
   private syncLocalOnlineActor(snapshot: MultiplayerRoomSnapshot): void {
     const selfActor = snapshot.actors.find((actor) => actor.id === snapshot.sessionId);
     if (!selfActor) return;
+    if (document.hidden) {
+      this.player.applyAuthoritativeOnlineMotion(selfActor);
+    }
     this.player.applyAuthoritativeOnlineState(selfActor);
+  }
+
+  private resyncLocalOnlineActorFromLatestSnapshot(): void {
+    if (this.appMode !== "online" || !this.onlineGameActive) return;
+    const snapshot = this.latestOnlineSnapshot;
+    if (!snapshot) return;
+
+    const selfActor = snapshot.actors.find((actor) => actor.id === snapshot.sessionId);
+    if (!selfActor) return;
+
+    this.player.applyAuthoritativeOnlineMotion(selfActor);
+    this.player.applyAuthoritativeOnlineState(selfActor);
+  }
+
+  private syncBackgroundInputPolicy(): void {
+    this.input.setBackgroundStateClearingEnabled(this.appMode !== "online");
   }
 
   private isGameplaySceneActive(): boolean {

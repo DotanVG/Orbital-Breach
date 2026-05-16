@@ -696,6 +696,14 @@ export class LocalPlayer {
     this.phase = nextPhase;
   }
 
+  public applyAuthoritativeOnlineMotion(actor: Pick<
+    OnlineActorSnapshot,
+    'posX' | 'posY' | 'posZ' | 'velX' | 'velY' | 'velZ'
+  >): void {
+    this.phys.pos.set(actor.posX, actor.posY, actor.posZ);
+    this.phys.vel.set(actor.velX, actor.velY, actor.velZ);
+  }
+
   public getPosition(): THREE.Vector3 {
     return this.phys.pos;
   }

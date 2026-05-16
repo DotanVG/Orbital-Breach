@@ -45,6 +45,12 @@ import {
 import type { PlayerPhase } from "../../../shared/schema";
 import { generateSpawnPositions, resolveActorCollisions, type CollisionBody } from "../../../shared/player-logic";
 import { applyHitToOnlineActor, isHitZone, normalizeAuthoritativePhase } from "./actorDamage";
+import {
+  bounceActorInArena,
+  integrateZeroGActor,
+  isActorInEnemyBreachRoom,
+  shouldServerSimulateHumanActor,
+} from "./onlineActorSimulation";
 import type { OrbitalRoomMetadata } from "./roomDirectory";
 import { ActorState, LobbyMemberState, OrbitalLobbyState } from "./state";
 
@@ -495,6 +501,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
     this.matchTick = setInterval(() => {
       this.tickBots(MATCH_TICK_MS / 1000);
+      this.tickStaleHumanActors(MATCH_TICK_MS / 1000);
       this.resolveOnlineBotCollisions();
     }, MATCH_TICK_MS);
   }
@@ -753,6 +760,26 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
         } else {
           this.botFireTimers.set(actor.id, nextFireTimer);
         }
+      }
+    }
+  }
+
+  private tickStaleHumanActors(dt: number): void {
+    if (this.state.phase !== "PLAYING") return;
+
+    const now = Date.now();
+    for (const actor of this.state.actors.values()) {
+      const lastUpdate = this.lastPlayerUpdate.get(actor.id) ?? now;
+      if (!shouldServerSimulateHumanActor(actor, now - lastUpdate)) {
+        continue;
+      }
+
+      integrateZeroGActor(actor, dt);
+      bounceActorInArena(actor, this.botGoalAxis);
+
+      if (!this.roundResolved && isActorInEnemyBreachRoom(actor, this.botGoalAxis, this.botGoalSigns)) {
+        actor.phase = "BREACH";
+        this.awardOnlineRoundPoint(actor.team, actor.id, actor.name, "breach");
       }
     }
   }
@@ -1143,19 +1170,12 @@ function botIdHash(id: string): number {
 }
 
 function botIntegrateZeroG(actor: ActorState, dt: number): void {
-  const speed = Math.hypot(actor.velX, actor.velY, actor.velZ);
-  if (speed > MAX_LAUNCH_SPEED) {
-    const scale = MAX_LAUNCH_SPEED / speed;
-    actor.velX *= scale;
-    actor.velY *= scale;
-    actor.velZ *= scale;
-  }
-  actor.posX += actor.velX * dt;
-  actor.posY += actor.velY * dt;
-  actor.posZ += actor.velZ * dt;
+  integrateZeroGActor(actor, dt);
 }
 
 function botBounceArena(actor: ActorState, goalAxis: "x" | "z"): void {
+  bounceActorInArena(actor, goalAxis);
+  return;
   const half = ARENA_SIZE / 2 - PLAYER_RADIUS;
   const perpAxis: "x" | "z" = goalAxis === "x" ? "z" : "x";
 
