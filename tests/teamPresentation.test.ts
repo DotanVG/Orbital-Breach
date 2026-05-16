@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { applyTeamAccent } from "../client/src/player/teamAccent";
@@ -7,7 +8,7 @@ import {
   sortDebriefPlayers,
   type DebriefPlayer,
 } from "../client/src/ui/debrief";
-import { buildRoundEndHtml } from "../client/src/render/hud";
+import { buildRoundEndHtml, getTeamHintPalette } from "../client/src/render/hud";
 import { getTeamRelationLabel } from "../client/src/ui/multiplayerLobby";
 
 describe("applyTeamAccent", () => {
@@ -49,6 +50,28 @@ describe("applyTeamAccent", () => {
 });
 
 describe("player-relative team UI helpers", () => {
+  it("uses team-colored palettes for in-game hint text", () => {
+    const cyan = getTeamHintPalette(0);
+    const magenta = getTeamHintPalette(1);
+
+    expect(cyan.textColor).toBe("#aaffff");
+    expect(cyan.glowColor).toBe("#00ffff");
+    expect(cyan.panelBg).toContain("rgba(0,8,8");
+    expect(magenta.textColor).toBe("#ffaaff");
+    expect(magenta.glowColor).toBe("#ff00ff");
+    expect(magenta.panelBg).toContain("rgba(8,0,8");
+    expect(magenta.powerGradient).toContain("255, 130, 239");
+  });
+
+  it("gives Play Online a dedicated hover style instead of generic secondary cyan only", () => {
+    const menuView = readFileSync(new URL("../client/src/ui/menu/menuView.ts", import.meta.url), "utf8");
+
+    expect(menuView).toContain("ob-btn-online::before");
+    expect(menuView).toContain(".ob-btn-online:hover");
+    expect(menuView).toContain('id === "btn-play-online" ? " ob-btn-online"');
+    expect(menuView).toContain("#ffd670");
+  });
+
   it("marks friendly and hostile teams relative to the local player", () => {
     expect(getTeamRelationLabel(0, 0)).toBe("Friendly");
     expect(getTeamRelationLabel(0, 1)).toBe("Hostile");

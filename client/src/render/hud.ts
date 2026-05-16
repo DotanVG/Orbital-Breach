@@ -9,6 +9,29 @@ const IS_MOBILE = isTouchDevice();
 
 export type GamePhase = 'LOBBY' | 'COUNTDOWN' | 'PLAYING' | 'ROUND_END';
 
+export interface TeamHintPalette {
+  textColor: string;
+  glowColor: string;
+  panelBg: string;
+  powerGradient: string;
+}
+
+export function getTeamHintPalette(team: 0 | 1): TeamHintPalette {
+  return team === 0
+    ? {
+        textColor: '#aaffff',
+        glowColor: '#00ffff',
+        panelBg: 'rgba(0,8,8,0.72)',
+        powerGradient: 'linear-gradient(90deg, rgba(116, 245, 255, 0.98), rgba(255, 223, 127, 0.92))',
+      }
+    : {
+        textColor: '#ffaaff',
+        glowColor: '#ff00ff',
+        panelBg: 'rgba(8,0,8,0.72)',
+        powerGradient: 'linear-gradient(90deg, rgba(255, 130, 239, 0.98), rgba(255, 214, 122, 0.92))',
+      };
+}
+
 export function buildRoundEndHtml(
   result:
     | "tie"
@@ -94,6 +117,9 @@ export class HUD {
   }
 
   public update(state: HudState): void {
+    this.view.root.classList.toggle("ob-hud-root--cyan", state.team === 0);
+    this.view.root.classList.toggle("ob-hud-root--magenta", state.team === 1);
+
     if (state.phase !== this.prevPhase) {
       if (this.prevPhase === 'ROUND_END' && state.phase === 'COUNTDOWN') {
         this.isFirstRound = false;
@@ -106,8 +132,8 @@ export class HUD {
     this.renderCountdown(state.phase, state.countdown);
     this.renderObjectiveTypewriter(state.phase, state.dt, state.team);
     this.renderCrosshair(state.dt);
-    this.renderGrabPrompt(state.playerPhase, state.nearBar, state.damage);
-    this.renderPowerBar(state.playerPhase, state.launchPower, state.maxLaunchPower);
+    this.renderGrabPrompt(state.playerPhase, state.nearBar, state.damage, state.team);
+    this.renderPowerBar(state.playerPhase, state.launchPower, state.maxLaunchPower, state.team);
     this.renderDamage(state.damage);
     this.renderTutorial(state.phase, state.tutorialPrompt, state.team);
     this.renderScoreboard(state.tabHeld, state.ownTeam, state.enemyTeam, state.showPing, state.team);
@@ -167,13 +193,11 @@ export class HUD {
   private renderObjectiveTypewriter(phase: GamePhase, dt: number, team: 0 | 1): void {
     const el = this.view.objective;
     if (this.isFirstRound && phase === 'COUNTDOWN') {
-      const textColor = team === 0 ? '#aaffff' : '#ffaaff';
-      const glowColor = team === 0 ? '#00ffff' : '#ff00ff';
-      const backdropBg = team === 0 ? 'rgba(0,8,8,0.72)' : 'rgba(8,0,8,0.72)';
+      const palette = getTeamHintPalette(team);
 
-      el.style.color = textColor;
-      el.style.textShadow = `0 0 12px ${glowColor}`;
-      el.style.background = backdropBg;
+      el.style.color = palette.textColor;
+      el.style.textShadow = `0 0 12px ${palette.glowColor}`;
+      el.style.background = palette.panelBg;
       el.style.padding = '4px 14px';
       el.style.borderRadius = '4px';
       el.style.display = 'block';
@@ -198,8 +222,10 @@ export class HUD {
     playerPhase: string,
     nearBar: boolean,
     damage: DamageState,
+    team: 0 | 1,
   ): void {
     const el = this.view.grab;
+    const palette = getTeamHintPalette(team);
     let promptText = '';
     let show = false;
 
@@ -208,8 +234,8 @@ export class HUD {
         show = true;
         promptText = 'Pull mouse down to charge power - release [SPACE] to launch';
         el.style.fontSize = '14px';
-        el.style.color = '#ffff88';
-        el.style.textShadow = '0 0 8px #ffaa00';
+        el.style.color = palette.textColor;
+        el.style.textShadow = `0 0 8px ${palette.glowColor}`;
       }
     } else if (playerPhase === 'GRABBING') {
       show = true;
@@ -217,8 +243,8 @@ export class HUD {
         ? 'Hold LAUNCH and drag down to charge'
         : 'Hold [SPACE] to aim';
       el.style.fontSize = IS_MOBILE ? '13px' : '15px';
-      el.style.color = '#aaffff';
-      el.style.textShadow = '0 0 8px #00ffff';
+      el.style.color = palette.textColor;
+      el.style.textShadow = `0 0 8px ${palette.glowColor}`;
     } else if (
       nearBar
       && (playerPhase === 'FLOATING' || playerPhase === 'BREACH')
@@ -229,8 +255,8 @@ export class HUD {
         show = true;
         promptText = '[E]  GRAB BAR';
         el.style.fontSize = '17px';
-        el.style.color = '#aaffff';
-        el.style.textShadow = '0 0 8px #00ffff';
+        el.style.color = palette.textColor;
+        el.style.textShadow = `0 0 8px ${palette.glowColor}`;
       }
     }
 
@@ -242,6 +268,7 @@ export class HUD {
     playerPhase: string,
     launchPower: number,
     maxLaunchPower: number,
+    team: 0 | 1,
   ): void {
     if (IS_MOBILE) {
       this.view.powerWrap.style.display = 'none';
@@ -261,8 +288,10 @@ export class HUD {
     this.view.powerLabel.textContent = capPct < 99.9
       ? `POWER  ${Math.round(pct)}% (CAP ${Math.round(capPct)}%)`
       : `POWER  ${Math.round(pct)}%`;
-    const hue = 120 - pct * 1.2;
-    this.view.powerBar.style.background = `hsl(${hue},90%,55%)`;
+    const palette = getTeamHintPalette(team);
+    this.view.powerBar.style.background = palette.powerGradient;
+    this.view.powerLabel.style.color = palette.textColor;
+    this.view.powerLabel.style.textShadow = `0 0 8px ${palette.glowColor}`;
   }
 
   private renderDamage(damage: DamageState): void {
