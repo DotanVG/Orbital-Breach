@@ -43,6 +43,7 @@ import { PlayerDamageGlow } from './playerDamageGlow';
 import { applyVictoryDancePose, resetVictoryDancePose } from './playerVictoryDance';
 import { loadAlienRenderClone } from './alienRenderAsset';
 import { applyTeamAccent } from './teamAccent';
+import { getVictoryDanceFacing } from '../game/victoryCelebration';
 import {
   applyFloatArmTilt,
   applyArmRecoil,
@@ -121,6 +122,8 @@ export class LocalPlayer {
   private floatLimbTuningEnabled = false;
   private victoryDanceActive = false;
   private victoryDanceElapsed = 0;
+  private victoryDanceFacingLocked = false;
+  private readonly victoryDanceFacing = new THREE.Quaternion();
 
   public constructor(scene: THREE.Scene) {
     this.mesh = new THREE.Group();
@@ -523,10 +526,18 @@ export class LocalPlayer {
   private computeVisualQuaternion(cam: CameraController, dt: number): THREE.Quaternion {
     const cameraQuat = cam.getQuaternion();
 
-    if (
-      this.victoryDanceActive
-      || (this.phase !== 'GRABBING' && this.phase !== 'AIMING')
-    ) {
+    if (this.victoryDanceActive) {
+      if (!this.victoryDanceFacingLocked) {
+        this.victoryDanceFacing.copy(getVictoryDanceFacing(cameraQuat));
+        this.victoryDanceFacingLocked = true;
+      }
+      this.visualQuaternion.copy(this.victoryDanceFacing);
+      return this.visualQuaternion;
+    }
+
+    this.victoryDanceFacingLocked = false;
+
+    if (this.phase !== 'GRABBING' && this.phase !== 'AIMING') {
       this.visualQuaternion.copy(cameraQuat);
       return this.visualQuaternion;
     }
@@ -635,6 +646,7 @@ export class LocalPlayer {
     this.phys.vel.set(0, 0, 0);
     this.victoryDanceActive = false;
     this.victoryDanceElapsed = 0;
+    this.victoryDanceFacingLocked = false;
 
     const spawn = spawnOverride ?? (() => {
       const center = arena.getBreachRoomCenter(this.team);
@@ -703,6 +715,7 @@ export class LocalPlayer {
       resetVictoryDancePose(this.animation.getRigs());
     }
     this.victoryDanceActive = active;
+    this.victoryDanceFacingLocked = false;
     if (active) {
       this.victoryDanceElapsed = 0;
       this.launchPower = 0;
@@ -715,6 +728,10 @@ export class LocalPlayer {
     } else {
       this.victoryDanceElapsed = 0;
     }
+  }
+
+  public isVictoryDanceActive(): boolean {
+    return this.victoryDanceActive && !this.damage.frozen;
   }
 
   public setWorldModelVisible(visible: boolean): void {
