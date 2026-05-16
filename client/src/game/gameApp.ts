@@ -764,6 +764,7 @@ export class App {
       && snapshot.score.team1 === 0
     ) {
       this.matchStats.reset();
+      this.thirdPerson = this.sessionMenu.getSettings().defaultCameraMode === "third";
     }
 
 
@@ -773,7 +774,6 @@ export class App {
     this.playerUpdateTimer = 0;
     this.tutorial.beginRun();
     this.cursor.hide();
-    this.thirdPerson = this.sessionMenu.getSettings().defaultCameraMode === "third";
 
     if (!this.mobile) {
       this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
@@ -1573,7 +1573,11 @@ export class App {
   }
 
   private setCelebratingTeam(team: 0 | 1): void {
-    this.player.setVictoryDanceActive(this.player.team === team && !this.player.damage.frozen);
+    const playerWins = this.player.team === team && !this.player.damage.frozen;
+    this.player.setVictoryDanceActive(playerWins);
+    if (playerWins) {
+      this.thirdPerson = true;
+    }
     this.match.setCelebratingTeam(team);
     this.onlineMatch.setCelebratingTeam(team);
   }
