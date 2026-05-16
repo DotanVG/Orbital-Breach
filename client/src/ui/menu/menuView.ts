@@ -670,7 +670,7 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
 
       <!-- TOPBAR -->
       <div class="ob-topbar">
-        <div class="ob-topbar-brand">ORBITAL BREACH <em>v0.4 · ZERO-G ARENA</em></div>
+        <div class="ob-topbar-brand">ORBITAL BREACH <em>v0.6 · ZERO-G ARENA</em></div>
         <div class="ob-topbar-right">
           <span><span class="ob-topbar-dot"></span>LINK SYNC</span>
           <span class="ob-clock" id="ob-clock">00:00:00 UTC</span>
