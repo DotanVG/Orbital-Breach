@@ -36,13 +36,19 @@ export function buildRoundEndHtml(
   result:
     | "tie"
     | { team: 0 | 1; kind?: "breach"; matchScore?: { team0: number; team1: number } }
-    | { team: 0 | 1; kind: "freeze"; enemyTeam: 0 | 1; matchScore?: { team0: number; team1: number } },
+    | { team: 0 | 1; kind: "freeze"; enemyTeam: 0 | 1; matchScore?: { team0: number; team1: number } }
+    | { team: 0 | 1; kind: "disconnect" },
 ): string {
   if (result === "tie") {
     return `<span class="ob-round-end__line"><span class="ob-round-end__text">TIE</span></span>`;
   }
 
   const teamHtml = buildRoundEndTeamSpan(result.team);
+
+  if (result.kind === "disconnect") {
+    const disconnectedTeam = (1 - result.team) as 0 | 1;
+    return `<span class="ob-round-end__line"><span class="ob-round-end__text">TECHNICAL WIN!</span></span><span class="ob-round-end__line"><span class="ob-round-end__text">All humans on </span>${buildRoundEndTeamSpan(disconnectedTeam)}<span class="ob-round-end__text"> disconnected</span></span>`;
+  }
 
   if (result.matchScore) {
     return `<span class="ob-round-end__line">${teamHtml}<span class="ob-round-end__text">WINS</span><span class="ob-round-end__score">${result.matchScore.team0} - ${result.matchScore.team1}</span></span>`;

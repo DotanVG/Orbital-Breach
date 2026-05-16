@@ -558,12 +558,12 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     if (this.roundResolved || this.state.phase !== "PLAYING") return;
 
     const actors = Array.from(this.state.actors.values());
-    const team0Active = actors.some((actor) => actor.team === 0);
-    const team1Active = actors.some((actor) => actor.team === 1);
+    const team0HumanActive = actors.some((actor) => actor.team === 0 && !actor.isBot);
+    const team1HumanActive = actors.some((actor) => actor.team === 1 && !actor.isBot);
 
-    if (team0Active === team1Active) return;
+    if (team0HumanActive === team1HumanActive) return;
 
-    const winningTeam = team0Active ? 0 : 1;
+    const winningTeam = team0HumanActive ? 0 : 1;
     this.awardOnlineRoundPoint(
       winningTeam,
       null,

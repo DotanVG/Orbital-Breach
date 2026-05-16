@@ -339,7 +339,9 @@ export class App {
               kind: "freeze",
               enemyTeam: (1 - event.winningTeam) as 0 | 1,
             })
-            : buildRoundEndHtml({ team: event.winningTeam }),
+            : event.reason === "disconnect"
+              ? buildRoundEndHtml({ team: event.winningTeam, kind: "disconnect" })
+              : buildRoundEndHtml({ team: event.winningTeam }),
         );
       }
     };
@@ -835,8 +837,10 @@ export class App {
     this.killFeed.setVisible(false);
     this.restorePointerLockAfterScoreboard = false;
     this.input.exitPointerLock();
+    this.input.setUiBlocked(false);
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
+    this.cursor.show();
 
     const snap = this.latestOnlineSnapshot;
     if (snap) {
