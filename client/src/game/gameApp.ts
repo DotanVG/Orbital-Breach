@@ -24,7 +24,7 @@ import { SceneManager } from "../render/scene";
 import { isEmbedMode } from "../embed";
 import { KillFeed } from "../ui/kill-feed";
 import { initGlobalCursor, type GlobalCursor } from "../ui/globalCursor";
-import { isFullscreen, leaveFullscreen, requestFullscreen } from "../ui/fullscreen";
+import { isApparentFullscreen, isFullscreen, leaveFullscreen, requestFullscreen } from "../ui/fullscreen";
 import { MainMenu } from "../ui/menu";
 import { MobileControls } from "../ui/mobileControls";
 import { RoomBrowser } from "../ui/roomBrowser";
@@ -1210,9 +1210,18 @@ export class App {
   }
 
   private async applyFullscreenPreference(enabled: boolean): Promise<void> {
+    const inApiFullscreen = isFullscreen();
+
+    if (!enabled && !inApiFullscreen && isApparentFullscreen()) {
+      // F11 fullscreen can't be exited via the Fullscreen API — revert the checkbox and hint the user.
+      this.sessionMenu.syncFullscreenFromBrowser(false);
+      showF11ExitHint();
+      return;
+    }
+
     const applied = enabled
-      ? (isFullscreen() || await requestFullscreen())
-      : (!isFullscreen() || await leaveFullscreen());
+      ? (inApiFullscreen || await requestFullscreen())
+      : (!inApiFullscreen || await leaveFullscreen());
 
     if (!applied) {
       this.sessionMenu.syncFullscreenFromBrowser();
@@ -1764,4 +1773,41 @@ export class App {
       this.cursor.hide();
     }
   }
+}
+
+let f11HintTimer: ReturnType<typeof setTimeout> | null = null;
+
+function showF11ExitHint(): void {
+  const existing = document.getElementById("ob-f11-hint");
+  if (existing) return;
+
+  const el = document.createElement("div");
+  el.id = "ob-f11-hint";
+  el.textContent = "Press F11 to exit fullscreen";
+  Object.assign(el.style, {
+    position: "fixed",
+    top: "72px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: "99999",
+    padding: "8px 20px",
+    background: "rgba(4,6,14,0.88)",
+    border: "1px solid rgba(0,229,255,0.4)",
+    color: "#00e5ff",
+    fontFamily: '"JetBrains Mono", monospace',
+    fontSize: "12px",
+    letterSpacing: "0.12em",
+    borderRadius: "4px",
+    pointerEvents: "none",
+    transition: "opacity 0.4s ease",
+    opacity: "1",
+  });
+  document.body.appendChild(el);
+
+  if (f11HintTimer !== null) clearTimeout(f11HintTimer);
+  f11HintTimer = setTimeout(() => {
+    el.style.opacity = "0";
+    setTimeout(() => el.remove(), 400);
+    f11HintTimer = null;
+  }, 3000);
 }
