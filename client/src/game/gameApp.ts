@@ -577,7 +577,7 @@ export class App {
     }
 
     if (this.player.isVictoryDanceActive()) {
-      this.victoryOrbitAngle += 0.35 * dt;
+      this.victoryOrbitAngle += 0.7 * dt;
       this.cam.applyVictoryOrbit(
         this.player.getPosition(),
         this.victoryOrbitAngle,
@@ -648,7 +648,7 @@ export class App {
     }
 
     if (this.player.isVictoryDanceActive()) {
-      this.victoryOrbitAngle += 0.35 * dt;
+      this.victoryOrbitAngle += 0.7 * dt;
       this.cam.applyVictoryOrbit(
         this.player.getPosition(),
         this.victoryOrbitAngle,
