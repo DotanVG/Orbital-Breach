@@ -10,9 +10,12 @@ Orbital Breach runs in the browser with no account or install. The game supports
 
 Two teams, **Team Cyan** and **Team Magenta**, spawn in opposite breach rooms around a zero-G arena. Each round begins from gravity, then players jump, grab rails, charge a launch, and drift through the arena.
 
-The freeze pistol disables enemies for the rest of the round. Limb hits matter: a damaged right arm blocks firing, damaged legs reduce launch power, and a full freeze strands the pilot. Once a team is frozen, the enemy portal route opens. A player scores by reaching the opposing breach room and crossing the portal volume.
+The freeze pistol disables enemies for the rest of the round. Limb hits matter: a damaged right arm blocks firing, damaged legs reduce launch power, and a full freeze strands the pilot. A round is won in one of two independent ways:
 
-Matches are first to 5 round wins. Rounds have a 120-second limit and the online server runs authoritative match state at 20 Hz.
+- **Breach** — a non-frozen player crosses into the enemy breach room through the open portal volume.
+- **Full freeze** — every member of the enemy team is frozen at the same time.
+
+Portal doors open at the start of every round, so the breach path is live from the first second — freezing the enemy team is not a prerequisite for breaching, it is its own win condition. Matches are first team to 5 round wins. Rounds have a 120-second hard cap and the online server runs authoritative match state at 20 Hz.
 
 ## Playlists
 
