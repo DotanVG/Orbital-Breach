@@ -58,7 +58,7 @@ const WINNING_SCENARIOS: InstructionTextBlock[] = [
   },
   {
     title: "Match Win",
-    body: "First team to score 5 wins the match.",
+    body: "The first team to 5 round wins claims the match.",
   },
   {
     title: "Timeout",

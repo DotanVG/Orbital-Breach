@@ -31,6 +31,12 @@ import { RoomBrowser } from "../ui/roomBrowser";
 import { WelcomeScreen } from "../ui/welcome";
 import { SessionMenu, type SessionSettings } from "../ui/sessionMenu";
 import { SoundEngine } from "../audio/SoundEngine";
+import {
+  isThirdPersonCameraView,
+  resolveCameraViewModeForRound,
+  toggleCameraViewMode,
+  type CameraViewMode,
+} from "./cameraViewMode";
 import { cameraYawFacingBreachOpening } from "./cameraYawFromBreach";
 import { FloatArmTuneOverlay } from "./floatArmTuneOverlay";
 import { ProjectileSystem } from "./projectileSystem";
@@ -115,6 +121,8 @@ export class App {
   private sound!: SoundEngine;
   private fullscreenPreference = false;
   private thirdPerson = false;
+  private selectedCameraViewMode: CameraViewMode;
+  private victoryOrbitAngle = 0;
   private tutorial = new FirstTimeTutorial();
 
   public constructor() {
@@ -142,7 +150,12 @@ export class App {
     this.killFeed.setVisible(false);
     this.sessionMenu.setLauncherVisible(false);
     const initialSettings = this.sessionMenu.getSettings();
+    this.selectedCameraViewMode = resolveCameraViewModeForRound(
+      initialSettings.defaultCameraMode,
+      null,
+    );
     this.fullscreenPreference = initialSettings.fullscreenEnabled;
+    this.applySelectedCameraViewMode(this.selectedCameraViewMode);
     this.applySessionSettings(initialSettings);
 
     this.sceneMgr.getScene().add(this.sceneMgr.getCamera());
@@ -408,7 +421,7 @@ export class App {
       this.mobileControls.mount();
       this.mobileControls.hide();
       this.mobileControls.onViewToggle = () => {
-        this.thirdPerson = !this.thirdPerson;
+        this.toggleCameraView();
       };
     } else {
       this.sceneMgr.getRenderer().domElement.addEventListener("mousedown", () => {
@@ -560,15 +573,25 @@ export class App {
     updateVibeJamPortals(this.sceneMgr.getCamera().position, dt);
 
     if (FEATURE_FLAGS.thirdPersonLookBehind && this.input.consumeThirdPersonToggle()) {
-      this.thirdPerson = !this.thirdPerson;
+      this.toggleCameraView();
     }
-    const isSelfie = FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld();
 
-    const cameraCollisionBoxes = this.thirdPerson
-      ? this.arena.getThirdPersonCameraCollisionAABBs()
-      : [];
-    this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
-    this.updateGunVisibility(isSelfie);
+    if (this.player.isVictoryDanceActive()) {
+      this.victoryOrbitAngle += 0.35 * dt;
+      this.cam.applyVictoryOrbit(
+        this.player.getPosition(),
+        this.victoryOrbitAngle,
+        this.arena.getThirdPersonCameraCollisionAABBs(),
+      );
+      this.updateGunVisibility(false);
+    } else {
+      const isSelfie = this.isRearViewCameraActive();
+      const cameraCollisionBoxes = this.thirdPerson
+        ? this.arena.getThirdPersonCameraCollisionAABBs()
+        : [];
+      this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
+      this.updateGunVisibility(isSelfie);
+    }
     this.updateSoloHud(dt);
     this.renderDebugTuningOverlay();
   }
@@ -621,14 +644,25 @@ export class App {
     }
 
     if (FEATURE_FLAGS.thirdPersonLookBehind && this.input.consumeThirdPersonToggle()) {
-      this.thirdPerson = !this.thirdPerson;
+      this.toggleCameraView();
     }
-    const isSelfie = FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld();
-    const cameraCollisionBoxes = this.thirdPerson
-      ? this.arena.getThirdPersonCameraCollisionAABBs()
-      : [];
-    this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
-    this.updateGunVisibility(isSelfie);
+
+    if (this.player.isVictoryDanceActive()) {
+      this.victoryOrbitAngle += 0.35 * dt;
+      this.cam.applyVictoryOrbit(
+        this.player.getPosition(),
+        this.victoryOrbitAngle,
+        this.arena.getThirdPersonCameraCollisionAABBs(),
+      );
+      this.updateGunVisibility(false);
+    } else {
+      const isSelfie = this.isRearViewCameraActive();
+      const cameraCollisionBoxes = this.thirdPerson
+        ? this.arena.getThirdPersonCameraCollisionAABBs()
+        : [];
+      this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
+      this.updateGunVisibility(isSelfie);
+    }
     this.updateOnlineHud(dt);
   }
 
@@ -774,6 +808,10 @@ export class App {
     this.playerUpdateTimer = 0;
     this.tutorial.beginRun();
     this.cursor.hide();
+    this.applySelectedCameraViewMode(resolveCameraViewModeForRound(
+      this.sessionMenu.getSettings().defaultCameraMode,
+      this.selectedCameraViewMode,
+    ));
 
     if (!this.mobile) {
       this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
@@ -1268,7 +1306,7 @@ export class App {
     this.matchStats.reset();
     this.tutorial.beginRun();
     this.killFeed.setLocalPlayerName(selection.name);
-    this.thirdPerson = this.sessionMenu.getSettings().defaultCameraMode === "third";
+    this.resetCameraViewModeToDefault();
     if (this.matchEndHandle) {
       clearTimeout(this.matchEndHandle);
       this.matchEndHandle = null;
@@ -1338,6 +1376,7 @@ export class App {
     this.mobileControls?.hide();
     this.input.setMobileControlsActive(false);
     this.sessionMenu.setLauncherVisible(true);
+    this.resetCameraViewModeToDefault();
     this.multiplayer.showConnecting(selection.name);
 
     this.isUserExitingOnline = false;
@@ -1584,8 +1623,30 @@ export class App {
 
   private clearCelebrationState(): void {
     this.player.setVictoryDanceActive(false);
+    this.thirdPerson = isThirdPersonCameraView(this.selectedCameraViewMode);
+    this.victoryOrbitAngle = 0;
     this.match.setCelebratingTeam(null);
     this.onlineMatch.setCelebratingTeam(null);
+  }
+
+  private isRearViewCameraActive(): boolean {
+    return FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld();
+  }
+
+  private applySelectedCameraViewMode(mode: CameraViewMode): void {
+    this.selectedCameraViewMode = mode;
+    this.thirdPerson = isThirdPersonCameraView(mode);
+  }
+
+  private resetCameraViewModeToDefault(): void {
+    this.applySelectedCameraViewMode(resolveCameraViewModeForRound(
+      this.sessionMenu.getSettings().defaultCameraMode,
+      null,
+    ));
+  }
+
+  private toggleCameraView(): void {
+    this.applySelectedCameraViewMode(toggleCameraViewMode(this.selectedCameraViewMode));
   }
 
   // ── Gun tuning overlays ─────────────────────────────────────────────────────
