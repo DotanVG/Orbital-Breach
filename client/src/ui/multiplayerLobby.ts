@@ -1369,7 +1369,7 @@ function describeQueueState(state: MultiplayerRoomSnapshot, humans: number): str
     return "Both squads are full and the ready check passed.";
   }
   if (state.phase === "PLAYING") {
-    return "Match is deployed. Menu access and settings stay available between points.";
+    return "Match is live. Menu access and settings stay available between points.";
   }
   if (state.phase === "ROUND_END") {
     return "Point resolved. The next round will auto-cycle while the room stays checked in.";
