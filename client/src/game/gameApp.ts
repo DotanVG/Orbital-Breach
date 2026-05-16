@@ -457,10 +457,14 @@ export class App {
     }
 
     const unlockAudio = (): void => {
-      void this.sound.unlock().then(() => { this.sound.startMusic(); });
-      document.removeEventListener('pointerdown', unlockAudio);
-      document.removeEventListener('keydown', unlockAudio);
-      document.removeEventListener('touchstart', unlockAudio);
+      void this.sound.unlock().then(() => {
+        this.sound.startMusic();
+        document.removeEventListener('pointerdown', unlockAudio);
+        document.removeEventListener('keydown', unlockAudio);
+        document.removeEventListener('touchstart', unlockAudio);
+      }).catch((err) => {
+        console.warn("[GameApp] Audio unlock failed:", err);
+      });
     };
     document.addEventListener('pointerdown', unlockAudio);
     document.addEventListener('keydown', unlockAudio);
