@@ -40,7 +40,7 @@ import {
   measureLeftHandGripOffset,
 } from './playerGrabPose';
 import { PlayerDamageGlow } from './playerDamageGlow';
-import { applyVictoryDancePose } from './playerVictoryDance';
+import { applyVictoryDancePose, resetVictoryDancePose } from './playerVictoryDance';
 import { loadAlienRenderClone } from './alienRenderAsset';
 import { applyTeamAccent } from './teamAccent';
 import {
@@ -699,6 +699,9 @@ export class LocalPlayer {
   }
 
   public setVictoryDanceActive(active: boolean): void {
+    if (active !== this.victoryDanceActive) {
+      resetVictoryDancePose(this.animation.getRigs());
+    }
     this.victoryDanceActive = active;
     if (active) {
       this.victoryDanceElapsed = 0;
