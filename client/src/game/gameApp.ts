@@ -563,7 +563,7 @@ export class App {
     this.tickWeaponFire();
     this.projectiles.update(
       dt,
-      this.arena.getObstacleAABBs(),
+      this.arena.getObstacleBulletAABBs(),
       this.arena.getPortalBarrierAABBs(),
       this.match.getProjectileTargets(this.player),
       (hitPos, color) => this.arena.triggerPortalImpact(hitPos, color),
@@ -633,7 +633,7 @@ export class App {
 
     this.projectiles.update(
       dt,
-      this.arena.getObstacleAABBs(),
+      this.arena.getObstacleBulletAABBs(),
       this.arena.getPortalBarrierAABBs(),
       allTargets,
       (hitPos, color) => this.arena.triggerPortalImpact(hitPos, color),
