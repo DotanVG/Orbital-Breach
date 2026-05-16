@@ -20,7 +20,7 @@ export interface InstructionsContent {
 const OBJECTIVE: InstructionTextBlock[] = [
   {
     title: "Objective",
-    body: "Cross the enemy breach portal or freeze the entire enemy team to win a round.",
+    body: "Win each round by breaching the enemy room or freezing every enemy pilot.",
   },
   {
     title: "Teams",
@@ -38,23 +38,27 @@ const ROUND_FLOW: InstructionTextBlock[] = [
     body: "Drift through debris, use rails to redirect, and fire the freeze pistol at enemy pilots.",
   },
   {
-    title: "Open The Portal",
-    body: "Freeze all enemies on the opposing team — or breach their portal directly — to score.",
+    title: "FREEZE TO SCORE",
+    body: "Freeze all enemy players to score a round instantly.",
   },
   {
     title: "Breach To Score",
-    body: "Cross the enemy breach portal to score a round for your team.",
+    body: "Cross into the enemy breach room to score a round for your team.",
   },
 ];
 
 const WINNING_SCENARIOS: InstructionTextBlock[] = [
   {
-    title: "Round Win",
-    body: "Breach enemy portal or freeze all enemies to win the round.",
+    title: "Breach Win",
+    body: "A round is won when a player breaches the enemy room.",
+  },
+  {
+    title: "Freeze Win",
+    body: "A round is also won when every enemy player is frozen.",
   },
   {
     title: "Match Win",
-    body: "The first team to 5 round wins wins the match.",
+    body: "First team to score 5 wins the match.",
   },
   {
     title: "Timeout",
@@ -79,10 +83,8 @@ const DESKTOP_CONTROLS: InstructionControl[] = [
 
 export function getInstructionsContent(isMobile: boolean): InstructionsContent {
   return {
-    title: isMobile ? "Mobile Instructions" : "Desktop Instructions",
-    subtitle: isMobile
-      ? "Round flow, objective, and scoring rules for touch pilots."
-      : "Controls, objective, round flow, and scoring rules for desktop pilots.",
+    title: "INSTRUCTIONS",
+    subtitle: "Controls, objective, round flow, and scoring rules.",
     objective: OBJECTIVE,
     roundFlow: ROUND_FLOW,
     winningScenarios: WINNING_SCENARIOS,
