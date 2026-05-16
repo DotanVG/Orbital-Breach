@@ -28,6 +28,7 @@ import {
 } from "../../../shared/multiplayer";
 import type { MatchTeamSize } from "../../../shared/match";
 import { findMatchWinner } from "../../../shared/match-flow";
+import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { generateArenaLayout } from "../../../shared/arena-gen";
 import { isCallSignClean } from "../../../shared/profanity";
 import {
@@ -139,10 +140,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
   public onJoin(client: RoomClient, options?: { name?: string }): void {
     const playerName = sanitizePlayerName(options?.name);
-    const reclaimedTeam = this.removeStaleHumanPresenceForName(playerName, client.sessionId);
-    const joinTeam = reclaimedTeam !== null && this.hasSeatForHuman(reclaimedTeam)
-      ? reclaimedTeam
-      : this.getJoinTeamForHuman();
+    const joinTeam = this.getJoinTeamForHuman();
     if (joinTeam === null) {
       throw new Error("That room is full right now.");
     }
@@ -703,22 +701,6 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.lastPlayerUpdate.delete(id);
   }
 
-  private removeStaleHumanPresenceForName(name: string, sessionId: string): LobbyTeam | null {
-    let reclaimedTeam: LobbyTeam | null = null;
-
-    for (const member of Array.from(this.state.members.values())) {
-      if (member.isBot || member.id === sessionId || member.name !== name) {
-        continue;
-      }
-
-      reclaimedTeam = member.team;
-      this.state.members.delete(member.id);
-      this.removePresence(member.id);
-    }
-
-    return reclaimedTeam;
-  }
-
   private tickBots(dt: number): void {
     if (this.state.phase !== "PLAYING") return;
 
@@ -1083,8 +1065,8 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
 function sanitizePlayerName(rawName?: string): string {
   const trimmed = rawName?.trim().replace(/[^\x20-\x7E]/g, "").slice(0, 16);
-  if (!trimmed || trimmed.length === 0) return "Pilot";
-  return isCallSignClean(trimmed) ? trimmed : "Pilot";
+  if (!trimmed || trimmed.length === 0) return DEFAULT_PLAYER_NAME;
+  return isCallSignClean(trimmed) ? trimmed : DEFAULT_PLAYER_NAME;
 }
 
 function clampFinite(value: number, min: number, max: number): number {

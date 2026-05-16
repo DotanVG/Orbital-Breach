@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GRAB_RADIUS, HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_POINT_TARGET } from "../../../shared/constants";
 import { generateArenaLayout } from "../../../shared/arena-gen";
+import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { findMatchWinner } from "../../../shared/match-flow";
 import {
   getInviteRoomIdFromSearch,
@@ -83,7 +84,7 @@ export class App {
   private playerUpdateTimer = 0;
   private latestOnlineSnapshot: MultiplayerRoomSnapshot | null = null;
   private previousOnlinePhase: MultiplayerRoomSnapshot["phase"] | null = null;
-  private onlinePlayerName = "Pilot";
+  private onlinePlayerName = DEFAULT_PLAYER_NAME;
   private onlineBreachReported = false;
   private combatPresentationActive = false;
   private embedMode = false;
@@ -463,7 +464,7 @@ export class App {
     if (this.portalArrivalPending) {
       this.cursor.hide();
       this.startSoloMatch({
-        name: this.portalParams.username?.trim() || "Portal Pilot",
+        name: this.portalParams.username?.trim() || DEFAULT_PLAYER_NAME,
         teamSize: 1,
         noBots: true,
       });

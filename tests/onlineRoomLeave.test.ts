@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildBotName } from "../shared/multiplayer";
 import { OrbitalLobbyRoom } from "../server/src/colyseus/OrbitalLobbyRoom";
 import { ActorState, LobbyMemberState, OrbitalLobbyState } from "../server/src/colyseus/state";
 
@@ -53,10 +54,10 @@ describe("OrbitalLobbyRoom onLeave", () => {
 
     addMember(room, "human-1", { name: "Alpha", team: 0 });
     addMember(room, "human-2", { name: "Bravo", team: 1 });
-    addMember(room, "bot-0", { name: "CY-BOT-01", team: 0, isBot: true });
+    addMember(room, "bot-0", { name: buildBotName(0, 0), team: 0, isBot: true });
     addActor(room, "human-1", { name: "Alpha", team: 0 });
     addActor(room, "human-2", { name: "Bravo", team: 1 });
-    addActor(room, "bot-0", { name: "CY-BOT-01", team: 0, isBot: true });
+    addActor(room, "bot-0", { name: buildBotName(0, 0), team: 0, isBot: true });
 
     room.onLeave({ sessionId: "human-1" } as never);
 
@@ -106,11 +107,11 @@ describe("OrbitalLobbyRoom onLeave", () => {
     room.state.roundTimeRemaining = 18;
 
     addMember(room, "human-1", { name: "Alpha", team: 0 });
-    addMember(room, "bot-0", { name: "CY-BOT-01", team: 0, isBot: true });
-    addMember(room, "bot-1", { name: "MG-BOT-01", team: 1, isBot: true });
+    addMember(room, "bot-0", { name: buildBotName(0, 0), team: 0, isBot: true });
+    addMember(room, "bot-1", { name: buildBotName(1, 1), team: 1, isBot: true });
     addActor(room, "human-1", { name: "Alpha", team: 0 });
-    addActor(room, "bot-0", { name: "CY-BOT-01", team: 0, isBot: true });
-    addActor(room, "bot-1", { name: "MG-BOT-01", team: 1, isBot: true });
+    addActor(room, "bot-0", { name: buildBotName(0, 0), team: 0, isBot: true });
+    addActor(room, "bot-1", { name: buildBotName(1, 1), team: 1, isBot: true });
 
     room.onLeave({ sessionId: "human-1" } as never);
 
@@ -127,27 +128,29 @@ describe("OrbitalLobbyRoom onLeave", () => {
 });
 
 describe("OrbitalLobbyRoom onJoin", () => {
-  it("reclaims a stale same-name human slot and actor before seating a rejoin", () => {
+  it("allows two human players with the same name to join together", () => {
     const room = createRoom();
     room.state.phase = "LOBBY";
+    room.state.teamSize = 2;
+    room.state.maxPlayers = 4;
 
-    addMember(room, "old-session", { name: "Alpha", team: 0 });
-    addActor(room, "old-session", { name: "Alpha", team: 0 });
+    addMember(room, "first-session", { name: "Alpha", team: 0 });
+    addActor(room, "first-session", { name: "Alpha", team: 0 });
 
-    room.onJoin({ sessionId: "new-session" } as never, { name: "Alpha" });
+    room.onJoin({ sessionId: "second-session" } as never, { name: "Alpha" });
 
-    expect(room.state.members.has("old-session")).toBe(false);
-    expect(room.state.actors.has("old-session")).toBe(false);
-    expect(room.state.members.has("new-session")).toBe(true);
-    expect(room.state.members.get("new-session")?.team).toBe(0);
+    expect(room.state.members.has("first-session")).toBe(true);
+    expect(room.state.actors.has("first-session")).toBe(true);
+    expect(room.state.members.has("second-session")).toBe(true);
+    expect(room.state.members.get("second-session")?.team).toBe(1);
   });
 
   it("reclaims a bot seat when a human joins a bot-filled lobby", () => {
     const room = createRoom();
     room.state.phase = "LOBBY";
 
-    addMember(room, "bot-0", { name: "CY-BOT-01", team: 0, isBot: true });
-    addMember(room, "bot-1", { name: "MG-BOT-01", team: 1, isBot: true });
+    addMember(room, "bot-0", { name: buildBotName(0, 0), team: 0, isBot: true });
+    addMember(room, "bot-1", { name: buildBotName(1, 1), team: 1, isBot: true });
 
     room.onJoin({ sessionId: "human-1" } as never, { name: "Alpha" });
 
@@ -165,10 +168,10 @@ describe("OrbitalLobbyRoom onJoin", () => {
     const room = createRoom();
     room.state.phase = "COUNTDOWN";
 
-    addMember(room, "bot-0", { name: "CY-BOT-01", team: 0, isBot: true });
-    addMember(room, "bot-1", { name: "MG-BOT-01", team: 1, isBot: true });
-    addActor(room, "bot-0", { name: "CY-BOT-01", team: 0, isBot: true });
-    addActor(room, "bot-1", { name: "MG-BOT-01", team: 1, isBot: true });
+    addMember(room, "bot-0", { name: buildBotName(0, 0), team: 0, isBot: true });
+    addMember(room, "bot-1", { name: buildBotName(1, 1), team: 1, isBot: true });
+    addActor(room, "bot-0", { name: buildBotName(0, 0), team: 0, isBot: true });
+    addActor(room, "bot-1", { name: buildBotName(1, 1), team: 1, isBot: true });
 
     room.onJoin({ sessionId: "human-1" } as never, { name: "Alpha" });
 

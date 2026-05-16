@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { ACTOR_COLLISION_RADIUS, BOT_NAMES, GRAB_RADIUS, HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_POINT_TARGET, PLAYER_RADIUS } from "../../../shared/constants";
+import { ACTOR_COLLISION_RADIUS, GRAB_RADIUS, HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_POINT_TARGET, PLAYER_RADIUS } from "../../../shared/constants";
+import { DEFAULT_PLAYER_NAME, getBotCallSign } from "../../../shared/callSigns";
 import { findMatchWinner } from "../../../shared/match-flow";
 import { getSoloBotFill, type SoloMatchConfig } from "../../../shared/match";
 import {
@@ -137,7 +138,7 @@ export class LocalMatch {
   private barGraph: BarRouteGraph = buildBarGraph([]);
   private bots: BotState[] = [];
   private celebratingTeam: 0 | 1 | null = null;
-  private config: SoloMatchConfig = { humanName: "You", humanTeam: 0, teamSize: 1 };
+  private config: SoloMatchConfig = { humanName: DEFAULT_PLAYER_NAME, humanTeam: 0, teamSize: 1 };
   private roundResolved = false;
   private roundSeed = 0;
   private score = { team0: 0, team1: 0 };
@@ -584,19 +585,13 @@ export class LocalMatch {
     if (this.config.noBots) return;
 
     const fill = getSoloBotFill(this.config.teamSize, this.config.humanTeam);
-    const makeName = (index: number): string => {
-      const base = BOT_NAMES[index % BOT_NAMES.length];
-      const cycle = Math.floor(index / BOT_NAMES.length);
-      return cycle === 0 ? base : `${base}-${cycle + 1}`;
-    };
-
     for (let i = 0; i < fill.team0Bots; i += 1) {
-      this.bots.push(createBotState(this.scene, `bot-cyan-${i}`, makeName(i), 0));
+      this.bots.push(createBotState(this.scene, `bot-cyan-${i}`, getBotCallSign(i), 0));
     }
 
     for (let i = 0; i < fill.team1Bots; i += 1) {
       const idx = fill.team0Bots + i;
-      this.bots.push(createBotState(this.scene, `bot-magenta-${i}`, makeName(idx), 1));
+      this.bots.push(createBotState(this.scene, `bot-magenta-${i}`, getBotCallSign(idx), 1));
     }
   }
 
