@@ -97,7 +97,9 @@ describe("player-relative team UI helpers", () => {
     const roundHtml = buildRoundEndHtml({ team: 1 });
     const freezeHtml = buildRoundEndHtml({ team: 1, kind: "freeze", enemyTeam: 0 });
     const matchHtml = buildRoundEndHtml({ team: 0, matchScore: { team0: 5, team1: 3 } });
+    const technicalWinHtml = buildRoundEndHtml({ team: 0, kind: "disconnect" });
     const tieHtml = buildRoundEndHtml("tie");
+    const hudView = readFileSync(new URL("../client/src/render/hud/hudView.ts", import.meta.url), "utf8");
 
     expect(roundHtml).toContain("ob-round-end__line");
     expect(roundHtml).toContain("ob-round-end__team--magenta");
@@ -111,6 +113,13 @@ describe("player-relative team UI helpers", () => {
     expect(matchHtml).toContain("ob-round-end__team--cyan");
     expect(matchHtml).toContain("WINS");
     expect(matchHtml).toContain("5 - 3");
+    expect(technicalWinHtml).toContain("TECHNICAL WIN!");
+    expect(technicalWinHtml).toContain("All humans on ");
+    expect(technicalWinHtml).toContain(" disconnected");
+    expect((technicalWinHtml.match(/ob-round-end__line/g) ?? [])).toHaveLength(2);
+    expect(technicalWinHtml).toContain("ob-round-end__team--magenta");
+    expect(technicalWinHtml).toContain("MAGENTA");
+    expect(hudView).toContain("flex-direction: column;");
     expect(tieHtml).toContain(">TIE<");
   });
 });
