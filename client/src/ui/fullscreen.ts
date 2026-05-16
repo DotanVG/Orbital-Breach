@@ -48,9 +48,12 @@ export async function leaveFullscreen(): Promise<boolean> {
 export function isFullscreen(): boolean {
   if (typeof document === "undefined") return false;
   const fullscreenDocument = document as FullscreenDocument;
-  if (fullscreenDocument.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement) return true;
-  // F11 on most desktop browsers bypasses the Fullscreen API — detect via viewport dimensions.
-  return window.innerWidth === screen.width && window.innerHeight === screen.height;
+  return Boolean(fullscreenDocument.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement);
+}
+
+// Returns true for both API fullscreen and F11 fullscreen (which bypasses the Fullscreen API).
+export function isApparentFullscreen(): boolean {
+  return isFullscreen() || (window.innerWidth === screen.width && window.innerHeight === screen.height);
 }
 
 export function onFullscreenChange(cb: () => void): () => void {

@@ -5,7 +5,7 @@ import {
   ITCH_IO_URL,
   NOAM_SOUNDCLOUD_URL,
 } from "./creditsContent";
-import { isFullscreen, isFullscreenSupported, onFullscreenChange } from "./fullscreen";
+import { isApparentFullscreen, isFullscreenSupported, onFullscreenChange } from "./fullscreen";
 import { getInstructionsContent, type InstructionsContent } from "./instructionsContent";
 import { GITHUB_ICON_SVG, ITCH_ICON_SVG } from "./linkIcons";
 import { isTouchDevice } from "../platform";
@@ -938,7 +938,7 @@ export class SessionMenu {
   }
 
   public syncFullscreenFromBrowser(notify = true): void {
-    const fullscreenEnabled = isFullscreenSupported() && isFullscreen();
+    const fullscreenEnabled = isFullscreenSupported() && isApparentFullscreen();
     if (this.settings.fullscreenEnabled === fullscreenEnabled) {
       this.renderSettings();
       return;
