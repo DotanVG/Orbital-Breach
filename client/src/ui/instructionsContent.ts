@@ -20,7 +20,7 @@ export interface InstructionsContent {
 const OBJECTIVE: InstructionTextBlock[] = [
   {
     title: "Objective",
-    body: "Freeze the enemy squad, open their breach portal, and cross it before they recover their formation.",
+    body: "Cross the enemy breach portal or freeze the entire enemy team to win a round.",
   },
   {
     title: "Teams",
@@ -39,7 +39,7 @@ const ROUND_FLOW: InstructionTextBlock[] = [
   },
   {
     title: "Open The Portal",
-    body: "Freeze all enemies on the opposing team to open their breach portal route.",
+    body: "Freeze all enemies on the opposing team — or breach their portal directly — to score.",
   },
   {
     title: "Breach To Score",
@@ -50,7 +50,7 @@ const ROUND_FLOW: InstructionTextBlock[] = [
 const WINNING_SCENARIOS: InstructionTextBlock[] = [
   {
     title: "Round Win",
-    body: "A round is won when a player crosses the enemy breach portal after the enemy team has been fully frozen.",
+    body: "Breach enemy portal or freeze all enemies to win the round.",
   },
   {
     title: "Match Win",
