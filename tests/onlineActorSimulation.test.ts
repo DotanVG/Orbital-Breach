@@ -42,7 +42,7 @@ describe("onlineActorSimulation", () => {
     integrateZeroGActor(actor, 0.5);
     bounceActorInArena(actor, "x");
 
-    expect(actor.posX).toBeCloseTo(25.65, 5);
+    expect(actor.posX).toBeCloseTo(25.2, 5);
     expect(actor.velX).toBeLessThan(0);
   });
 

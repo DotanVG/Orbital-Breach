@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkinnedScene } from "three/addons/utils/SkeletonUtils.js";
+import { PLAYER_RADIUS } from "../../../shared/constants";
 import { applyTeamAccent } from "./teamAccent";
 
 interface AlienRenderPrototype {
@@ -23,7 +24,7 @@ export interface AlienRenderClone {
 }
 
 const ALIEN_SCALE = 0.2;
-const ALIEN_OFFSET_Y = -0.64;
+const ALIEN_OFFSET_Y = -PLAYER_RADIUS * 0.8;
 const ALIEN_OFFSET_Z = 0.3;
 const ALIEN_ROTATION_Y = Math.PI;
 

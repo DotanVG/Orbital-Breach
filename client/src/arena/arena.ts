@@ -5,6 +5,7 @@ import {
   BREACH_ROOM_W,
   BREACH_ROOM_H,
   DIAMOND_AABB_INSET,
+  PLAYER_DIAMOND_AABB_INSET,
 } from '../../../shared/constants';
 import { type PhysicsState } from '../physics';
 import { GoalPlane, type GoalDef } from './goal';
@@ -52,9 +53,11 @@ export class Arena {
   private wireframesGroup = new THREE.Group();  // diamond wireframe overlays
 
   // Separate AABB caches populated at loadLayout time.
-  // physicsBoxes  — full AABB from geometry; used for player bounce + camera (minimal padding in bounceObstacles).
-  // bulletBoxes   — inset by DIAMOND_AABB_INSET; bullets pass through corner space.
+  // physicsBoxes        — full AABB from geometry; used for camera collision.
+  // playerCollisionBoxes — inset by PLAYER_DIAMOND_AABB_INSET; avoids invisible corner walls for player bounce.
+  // bulletBoxes         — inset by DIAMOND_AABB_INSET; bullets pass through corner space.
   private physicsBoxes: THREE.Box3[] = [];
+  private playerCollisionBoxes: THREE.Box3[] = [];
   private bulletBoxes:  THREE.Box3[] = [];
 
   private goalPlanes: GoalPlane[] = [];
@@ -81,6 +84,7 @@ export class Arena {
     this.clearBreachRooms();
 
     this.physicsBoxes = [];
+    this.playerCollisionBoxes = [];
     this.bulletBoxes  = [];
 
     for (const obs of layout.obstacles) {
@@ -101,12 +105,21 @@ export class Arena {
       wireMesh.position.set(obs.pos.x, obs.pos.y, obs.pos.z);
       this.wireframesGroup.add(wireMesh);
 
-      // Tight AABB for player/camera collision (no extra inflation beyond octahedron bounds)
+      // Full AABB for camera collision
       const fullBox = new THREE.Box3(
         new THREE.Vector3(obs.pos.x - rx, obs.pos.y - ry, obs.pos.z - rz),
         new THREE.Vector3(obs.pos.x + rx, obs.pos.y + ry, obs.pos.z + rz),
       );
       this.physicsBoxes.push(fullBox);
+
+      // Inset AABB for player collision — avoids invisible corner walls in octahedron empty space
+      const px = rx * PLAYER_DIAMOND_AABB_INSET;
+      const py = ry * PLAYER_DIAMOND_AABB_INSET;
+      const pz = rz * PLAYER_DIAMOND_AABB_INSET;
+      this.playerCollisionBoxes.push(new THREE.Box3(
+        new THREE.Vector3(obs.pos.x - px, obs.pos.y - py, obs.pos.z - pz),
+        new THREE.Vector3(obs.pos.x + px, obs.pos.y + py, obs.pos.z + pz),
+      ));
 
       // Inset AABB for bullet collision — bullets pass through corner space
       const ix = rx * DIAMOND_AABB_INSET;
@@ -213,7 +226,7 @@ export class Arena {
   }
 
   public bounceObstacles(state: PhysicsState): void {
-    bounceAgainstBoxes(state, this.physicsBoxes);
+    bounceAgainstBoxes(state, this.playerCollisionBoxes);
   }
 
   /** Full AABBs — used for player collision and camera collision. */

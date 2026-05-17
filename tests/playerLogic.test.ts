@@ -175,7 +175,7 @@ describe("generateSpawnPositions", () => {
         const dy = slots[i].y - slots[j].y;
         const dz = slots[i].z - slots[j].z;
         const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        expect(distance).toBeGreaterThanOrEqual(0.74);
+        expect(distance).toBeGreaterThanOrEqual(1.6);
       }
     }
   });
