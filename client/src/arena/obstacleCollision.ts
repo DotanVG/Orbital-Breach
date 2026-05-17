@@ -26,23 +26,22 @@ export function bounceAgainstBoxes(state: PhysicsState, boxes: THREE.Box3[]): vo
       state.pos.z < minZ || state.pos.z > maxZ
     ) continue;
 
-    const overlaps = {
-      x: Math.min(state.pos.x - minX, maxX - state.pos.x),
-      y: Math.min(state.pos.y - minY, maxY - state.pos.y),
-      z: Math.min(state.pos.z - minZ, maxZ - state.pos.z),
-    };
+    const ovX = Math.min(state.pos.x - minX, maxX - state.pos.x);
+    const ovY = Math.min(state.pos.y - minY, maxY - state.pos.y);
+    const ovZ = Math.min(state.pos.z - minZ, maxZ - state.pos.z);
 
-    let minAx: 'x' | 'y' | 'z' = 'x';
-    if (overlaps.y < overlaps[minAx]) minAx = 'y';
-    if (overlaps.z < overlaps[minAx]) minAx = 'z';
-
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    const centerZ = (minZ + maxZ) / 2;
-    const centers = { x: centerX, y: centerY, z: centerZ };
-
-    const dir = Math.sign(state.pos[minAx] - centers[minAx]);
-    state.pos[minAx] += dir * overlaps[minAx];
-    state.vel[minAx] *= -0.5;
+    if (ovX <= ovY && ovX <= ovZ) {
+      const dir = Math.sign(state.pos.x - (minX + maxX) / 2);
+      state.pos.x += dir * ovX;
+      state.vel.x *= -0.5;
+    } else if (ovY <= ovX && ovY <= ovZ) {
+      const dir = Math.sign(state.pos.y - (minY + maxY) / 2);
+      state.pos.y += dir * ovY;
+      state.vel.y *= -0.5;
+    } else {
+      const dir = Math.sign(state.pos.z - (minZ + maxZ) / 2);
+      state.pos.z += dir * ovZ;
+      state.vel.z *= -0.5;
+    }
   }
 }
