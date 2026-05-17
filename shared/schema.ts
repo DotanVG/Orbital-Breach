@@ -33,8 +33,8 @@ export type DiamondArchetype =
 
 export interface ObstacleNetDef {
   pos:       Vec3;
-  size:      Vec3;  // full bounding box (2*rx, 2*ry, 2*rz) for diamonds; WxHxD for boxes
-  archetype: 'box' | 'plate' | 'beam' | DiamondArchetype;
+  size:      Vec3;  // full bounding box (2*rx, 2*ry, 2*rz)
+  archetype: DiamondArchetype;
   bars:      BarDef[];
 }
 

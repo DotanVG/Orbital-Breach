@@ -117,7 +117,8 @@ export function clampBreachRoom(
 ): void {
   // Half-extents depend on room orientation: the open axis carries depth (D),
   // the perpendicular horizontal axis carries width (W), y always carries height (H).
-  const depthHalf  = BREACH_ROOM_D / 2 - PLAYER_RADIUS;
+  // Extra 0.3 margin on depth to prevent player model clipping through back wall
+  const depthHalf  = BREACH_ROOM_D / 2 - PLAYER_RADIUS - 0.3;
   const widthHalf  = BREACH_ROOM_W / 2 - PLAYER_RADIUS;
   const heightHalf = BREACH_ROOM_H / 2 - PLAYER_RADIUS;
   const half = openAxis === 'x'

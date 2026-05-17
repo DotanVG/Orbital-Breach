@@ -10,8 +10,6 @@ import {
   DIAMOND_AABB_INSET,
   BREACH_ROOM_W,
   BREACH_ROOM_H,
-  WALL_BARS_PER_WALL_MIN,
-  WALL_BARS_PER_WALL_MAX,
 } from '../shared/constants';
 
 // Bullet radius — kept in sync with projectileSystem.ts (not exported from shared)
@@ -168,11 +166,10 @@ describe('mirrored pairs', () => {
 // ── Wall bar bounds ───────────────────────────────────────────────────────────
 
 describe('wall bars', () => {
-  it('wall bar count is 32-48 per layout (4 walls × 8-12 bars)', () => {
+  it('wall bar count is exactly 36 per layout (4 walls × 9 bars in 3×3 grid)', () => {
     for (let s = 0; s < 50; s++) {
       const layout = generateArenaLayout(s);
-      expect(layout.wallBars.length).toBeGreaterThanOrEqual(WALL_BARS_PER_WALL_MIN * 4);
-      expect(layout.wallBars.length).toBeLessThanOrEqual(WALL_BARS_PER_WALL_MAX * 4);
+      expect(layout.wallBars.length).toBe(36);
     }
   });
 

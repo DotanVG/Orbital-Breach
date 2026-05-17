@@ -54,9 +54,8 @@ describe('generateArenaLayout', () => {
   it('includes wallBars', () => {
     const layout = generateArenaLayout(555);
     expect(Array.isArray(layout.wallBars)).toBe(true);
-    // 4 non-portal walls × 8-12 bars each = 32-48 total
-    expect(layout.wallBars.length).toBeGreaterThanOrEqual(32);
-    expect(layout.wallBars.length).toBeLessThanOrEqual(48);
+    // 4 non-portal walls × 9 bars (3×3 grid) = 36 total
+    expect(layout.wallBars.length).toBe(36);
   });
 
   it('keeps all obstacles within the arena bounds', () => {

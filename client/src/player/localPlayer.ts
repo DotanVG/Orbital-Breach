@@ -537,6 +537,18 @@ export class LocalPlayer {
 
     this.victoryDanceFacingLocked = false;
 
+    if (this.phase === 'BREACH' || this.phase === 'RESPAWNING') {
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraQuat);
+      const flatForward = new THREE.Vector3(forward.x, 0, forward.z);
+      if (flatForward.lengthSq() < 1e-5) {
+        flatForward.set(0, 0, -1);
+      } else {
+        flatForward.normalize();
+      }
+      this.visualQuaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), flatForward);
+      return this.visualQuaternion;
+    }
+
     if (this.phase !== 'GRABBING' && this.phase !== 'AIMING') {
       this.visualQuaternion.copy(cameraQuat);
       return this.visualQuaternion;

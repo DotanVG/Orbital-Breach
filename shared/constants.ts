@@ -55,9 +55,8 @@ export const OBSTACLE_MIN           = 14;
 export const OBSTACLE_MAX           = 22;
 
 // Diamond obstacle physics
-export const DIAMOND_AABB_INSET     = 0.65;   // bullet AABB scale factor — bullets pass through corners
-export const WALL_BARS_PER_WALL_MIN = 8;
-export const WALL_BARS_PER_WALL_MAX = 12;
+export const DIAMOND_AABB_INSET          = 0.65;   // bullet AABB scale factor — bullets pass through corners
+export const PLAYER_DIAMOND_AABB_INSET   = 0.70;   // player collision AABB scale — avoids invisible corner walls
 
 // Legacy (kept for server sim — no longer used by client physics)
 export const ACCEL                  = 18;
