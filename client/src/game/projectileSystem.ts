@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { ARENA_SIZE } from "../../../shared/constants";
 import { Projectile, type ProjectileTrailMode } from "../projectile";
 import { bulletHitPoint } from "./bulletCollision";
+import { buildObstacleGrid, type ObstacleGrid } from "./obstacleGrid";
 import { segmentSphereHitPoint } from "./projectileActorCollision";
 
 const BULLET_RADIUS = 0.07;
@@ -70,6 +71,7 @@ export class ProjectileSystem {
   private readonly tmpTangentA = new THREE.Vector3();
   private readonly tmpTangentB = new THREE.Vector3();
   private readonly tmpCrossHelper = new THREE.Vector3();
+  private obstacleGrid: ObstacleGrid | null = null;
 
   public constructor(private readonly scene: THREE.Scene) {}
 
@@ -92,6 +94,10 @@ export class ProjectileSystem {
     onPortalHit: (pos: THREE.Vector3, color: number) => void,
     onActorHit: (hit: ProjectileActorHit) => void,
   ): void {
+    if (!this.obstacleGrid && solidBoxes.length > 0) {
+      this.obstacleGrid = buildObstacleGrid(solidBoxes);
+    }
+
     const fxMode = this.currentFxMode();
     const trailMode = this.currentTrailMode(fxMode);
 
@@ -165,6 +171,8 @@ export class ProjectileSystem {
   }
 
   public clear(): void {
+    this.obstacleGrid = null;
+
     for (const projectile of this.projectiles) {
       projectile.dispose();
       this.projectilePool.push(projectile);
@@ -255,7 +263,11 @@ export class ProjectileSystem {
   ): CollisionHit | null {
     let nearest: CollisionHit | null = null;
 
-    for (const box of solidBoxes) {
+    const obstacleCandidates = this.obstacleGrid
+      ? this.obstacleGrid.query(oldPos, newPos)
+      : solidBoxes;
+
+    for (const box of obstacleCandidates) {
       const hit = bulletHitPoint(oldPos, newPos, box, BULLET_RADIUS);
       if (!hit) continue;
       const distance = hit.distanceToSquared(oldPos);
