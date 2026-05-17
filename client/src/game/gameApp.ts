@@ -43,6 +43,7 @@ import { FloatArmTuneOverlay } from "./floatArmTuneOverlay";
 import { ProjectileSystem } from "./projectileSystem";
 import { RoundController } from "./roundController";
 import { GunTuneOverlay } from "./gunTuneOverlay";
+import { CollisionVisualizer } from "./collisionVisualizer";
 import { shouldShowDesktopOverlayCursor } from "./overlayCursor";
 import { buildShotFromCamera } from "./weaponFire";
 import { NetClient } from "../net/client";
@@ -98,6 +99,7 @@ export class App {
   private floatArmTuneOverlay = new FloatArmTuneOverlay();
   private gun: GunViewModel;
   private gunTuneOverlay = new GunTuneOverlay();
+  private collisionVis!: CollisionVisualizer;
   private hud: HUD;
   private input: InputManager;
   private killFeed = new KillFeed();
@@ -148,6 +150,7 @@ export class App {
     this.projectiles = new ProjectileSystem(this.sceneMgr.getScene());
     this.match = new LocalMatch(this.sceneMgr.getScene());
     this.onlineMatch = new OnlineMatch(this.sceneMgr.getScene());
+    this.collisionVis = new CollisionVisualizer(this.sceneMgr.getScene());
     this.hud.setVisible(false);
     this.killFeed.setVisible(false);
     this.sessionMenu.setLauncherVisible(false);
@@ -570,6 +573,7 @@ export class App {
       (hit) => this.match.handleProjectileHit(hit, this.player, this.cam),
     );
     this.tickGunTuning();
+    this.tickCollisionVis();
     this.matchStats.observePlayers(this.match.getMatchStatsActors(this.player), {
       accumulateTravel: this.round.isPlaying(),
     });
@@ -641,6 +645,7 @@ export class App {
     );
 
     this.checkOnlineBreachScore();
+    this.tickCollisionVis();
 
     this.playerUpdateTimer -= dt;
     if (this.playerUpdateTimer <= 0) {
@@ -829,6 +834,7 @@ export class App {
 
     const layout = generateArenaLayout(snapshot.roundNumber);
     this.arena.loadLayout(layout);
+    this.collisionVis.onLayoutLoaded(this.arena);
     this.projectiles.clear();
 
     this.player.setTeam(snapshot.selfTeam);
@@ -1011,6 +1017,7 @@ export class App {
 
     const layout = generateArenaLayout();
     this.arena.loadLayout(layout);
+    this.collisionVis.onLayoutLoaded(this.arena);
 
     const arrivalThisRound = this.portalArrivalPending;
     const arrivalCenter = this.arena.getBreachRoomCenter(this.player.team);
@@ -1656,6 +1663,19 @@ export class App {
 
   private toggleCameraView(): void {
     this.applySelectedCameraViewMode(toggleCameraViewMode(this.selectedCameraViewMode));
+  }
+
+  // ── Collision visualizer ────────────────────────────────────────────────────
+
+  private tickCollisionVis(): void {
+    if (this.input.consumeCollisionVisToggle()) {
+      this.collisionVis.toggle();
+    }
+    if (!this.collisionVis.isVisible()) return;
+
+    const actors = this.match.getMatchStatsActors(this.player);
+    const positions = actors.map((a) => new THREE.Vector3(a.position.x, a.position.y, a.position.z));
+    this.collisionVis.updateActors(positions);
   }
 
   // ── Gun tuning overlays ─────────────────────────────────────────────────────

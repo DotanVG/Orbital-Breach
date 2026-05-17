@@ -229,9 +229,14 @@ export class Arena {
     bounceAgainstBoxes(state, this.playerCollisionBoxes);
   }
 
-  /** Full AABBs — used for player collision and camera collision. */
+  /** Full AABBs — used for camera collision. */
   public getObstacleAABBs(): THREE.Box3[] {
     return this.physicsBoxes.map(b => b.clone());
+  }
+
+  /** Inset AABBs for player bounce — avoids invisible corners on diamond obstacles. */
+  public getPlayerCollisionAABBs(): THREE.Box3[] {
+    return this.playerCollisionBoxes.map(b => b.clone());
   }
 
   /** Inset AABBs for bullets — diamond corners are passable. */
@@ -358,7 +363,7 @@ export class Arena {
     this.goalPlanes = [];
   }
 
-  private getArenaWallAABBs(): THREE.Box3[] {
+  public getArenaWallAABBs(): THREE.Box3[] {
     if (!this.currentLayout) return [];
 
     const half = ARENA_SIZE / 2;
@@ -403,7 +408,7 @@ export class Arena {
     return boxes;
   }
 
-  private getBreachRoomWallAABBs(): THREE.Box3[] {
+  public getBreachRoomWallAABBs(): THREE.Box3[] {
     const thickness = Arena.CAMERA_WALL_THICKNESS;
     const hh = BREACH_ROOM_H / 2;
     const hw = BREACH_ROOM_W / 2;
