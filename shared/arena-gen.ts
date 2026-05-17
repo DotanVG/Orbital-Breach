@@ -1,11 +1,5 @@
 import {
   ARENA_SIZE,
-  BARS_PER_OBS_MIN,
-  BARS_PER_OBS_MAX,
-  OBSTACLE_MIN,
-  OBSTACLE_MAX,
-  BREACH_ROOM_W,
-  BREACH_ROOM_H,
   WALL_BARS_PER_WALL_MIN,
   WALL_BARS_PER_WALL_MAX,
 } from './constants';
@@ -42,29 +36,6 @@ function randRange(rng: () => number, min: number, max: number): number {
 function randSign(rng: () => number): 1 | -1 {
   return rng() < 0.5 ? 1 : -1;
 }
-
-// ── Legacy box/plate/beam archetypes ─────────────────────────────────────────
-
-const LEGACY_ARCHETYPES: Record<string, [number, number, number][]> = {
-  box: [
-    [3, 3, 3],
-    [5, 5, 5],
-    [7, 7, 7],
-  ],
-  plate: [
-    [10, 1, 6],
-    [8, 1, 8],
-    [6, 1, 10],
-    [12, 1, 5],
-  ],
-  beam: [
-    [1, 1, 10],
-    [1, 10, 1],
-    [10, 1, 1],
-    [1, 1, 14],
-    [14, 1, 1],
-  ],
-};
 
 // ── Diamond archetypes: [rx, ry, rz] half-extents ────────────────────────────
 // size stored in ObstacleNetDef = [2*rx, 2*ry, 2*rz] (full bounding box).
@@ -187,8 +158,8 @@ function makeDiamondPair(
   const { rx, ry, rz } = DIAMOND_SPECS[archetype];
   const perpAxis = goalAxis === 'z' ? 'x' : 'z';
 
-  const maxPerpPos = ARENA_SIZE / 2 - Math.max(rx, rz) - 1.5;
-  const maxYPos    = ARENA_SIZE / 2 - ry - 1.5;
+  const maxPerpPos = ARENA_SIZE / 2 - Math.max(rx, rz) - 0.5;
+  const maxYPos    = ARENA_SIZE / 2 - ry - 0.5;
 
   const perpOff = randRange(rng, -maxPerpPos, maxPerpPos);
   const yOff    = randRange(rng, -maxYPos,    maxYPos);
@@ -279,67 +250,22 @@ export function generateWallBars(
   return allBars;
 }
 
-// ── Legacy bar generation (for box/plate/beam archetypes) ─────────────────────
-
-function generateLegacyBars(
-  rng: () => number,
-  size: [number, number, number],
-  count: number,
-): BarDef[] {
-  const allFaces: { axis: 'x' | 'y' | 'z'; sign: 1 | -1 }[] = [
-    { axis: 'x', sign:  1 },
-    { axis: 'x', sign: -1 },
-    { axis: 'y', sign:  1 },
-    { axis: 'y', sign: -1 },
-    { axis: 'z', sign:  1 },
-    { axis: 'z', sign: -1 },
-  ];
-
-  const half = { x: size[0] / 2, y: size[1] / 2, z: size[2] / 2 } as Record<string, number>;
-  const bars: BarDef[] = [];
-
-  for (let i = 0; i < count; i++) {
-    const face = allFaces[i % allFaces.length];
-    const { axis, sign } = face;
-    const tangents = (['x', 'y', 'z'] as const).filter(a => a !== axis);
-    const [ta, tb] = tangents;
-
-    const offA = (rng() * 2 - 1) * half[ta] * 0.6;
-    const offB = (rng() * 2 - 1) * half[tb] * 0.6;
-
-    const lp: Record<string, number> = { x: 0, y: 0, z: 0 };
-    lp[axis] = sign * (half[axis] + 0.15);
-    lp[ta]   = offA;
-    lp[tb]   = offB;
-
-    const norm: Record<string, number> = { x: 0, y: 0, z: 0 };
-    norm[axis] = sign;
-
-    bars.push({
-      localPos: { x: lp.x, y: lp.y, z: lp.z },
-      normal:   { x: norm.x, y: norm.y, z: norm.z },
-    });
-  }
-
-  return bars;
-}
-
 // ── Main generator ─────────────────────────────────────────────────────────────
 
 /**
- * Procedurally generate a full arena layout.
+ * Procedurally generate a full arena layout — diamonds only, no legacy shapes.
  *
  * Layout bands (on goalAxis):
  *   1. Gate-blocker   — diamond_huge at (0,0,0), always present, blocks corridor.
  *   2. Mid bands      — 2–3 mirrored diamond pairs at |goalAxis| ∈ [4, 11].
- *   3. Outer bands    — 1–2 mirrored diamond pairs at |goalAxis| ∈ [11, 17].
- *   4. Flanking       — 0–2 mirrored diamond pairs near perpendicular walls.
- *   5. Legacy fills   — small number of box/plate/beam obstacles for variety.
+ *   3. Outer bands    — 2–3 mirrored diamond pairs at |goalAxis| ∈ [11, 18].
+ *   4. Edge flanks    — 2–3 pairs forced to outer perpAxis zone (walls/corners).
+ *   5. Corner pairs   — 1–2 pairs near both outer perpAxis AND outer goalAxis.
  *
  * Wall bars: 8–12 grab bars on each of the 4 non-portal arena walls.
  */
 export function generateArenaLayout(seed = Date.now()): GeneratedLayout {
-  const rng     = mulberry32(seed);
+  const rng      = mulberry32(seed);
   const goalAxis = pick(rng, ['x', 'z'] as const);
   const perpAxis = goalAxis === 'z' ? 'x' : 'z';
 
@@ -353,74 +279,91 @@ export function generateArenaLayout(seed = Date.now()): GeneratedLayout {
   for (let i = 0; i < midPairCount; i++) {
     const archetype = pick(rng, BAND_DIAMOND_ARCHETYPES);
     const { rx, ry, rz } = DIAMOND_SPECS[archetype];
-    const goalHalfExtent = (goalAxis === 'z' ? rz : rx);
+    const goalHalfExtent = goalAxis === 'z' ? rz : rx;
     const maxGoalPos = Math.min(11, ARENA_SIZE / 2 - goalHalfExtent - 2);
     const goalOff    = randSign(rng) * randRange(rng, 4, maxGoalPos);
     obstacles.push(...makeDiamondPair(rng, archetype, goalAxis, goalOff));
   }
 
-  // 3. Outer-band mirrored pairs (|goalAxis| ∈ [11, 17]).
-  const outerPairCount = 1 + Math.floor(rng() * 2); // 1 or 2
+  // 3. Outer-band mirrored pairs (|goalAxis| ∈ [11, 18]).
+  const outerPairCount = 2 + Math.floor(rng() * 2); // 2 or 3
   for (let i = 0; i < outerPairCount; i++) {
     const archetype = pick(rng, BAND_DIAMOND_ARCHETYPES);
     const { rx, ry, rz } = DIAMOND_SPECS[archetype];
-    const goalHalfExtent = (goalAxis === 'z' ? rz : rx);
-    const maxGoalPos = Math.min(17, ARENA_SIZE / 2 - goalHalfExtent - 2);
+    const goalHalfExtent = goalAxis === 'z' ? rz : rx;
+    const maxGoalPos = Math.min(18, ARENA_SIZE / 2 - goalHalfExtent - 2);
     const minGoalPos = Math.min(11, maxGoalPos);
     if (minGoalPos >= maxGoalPos) continue;
     const goalOff = randSign(rng) * randRange(rng, minGoalPos, maxGoalPos);
     obstacles.push(...makeDiamondPair(rng, archetype, goalAxis, goalOff));
   }
 
-  // 4. Flanking pairs — placed far on perpAxis, center of goalAxis zone.
-  const flankCount = Math.floor(rng() * 3); // 0, 1, or 2
-  for (let i = 0; i < flankCount; i++) {
+  // 4. Edge flanks — perpAxis forced into outer 50% zone so diamonds hug side walls.
+  const edgeFlankCount = 2 + Math.floor(rng() * 2); // 2 or 3
+  for (let i = 0; i < edgeFlankCount; i++) {
     const archetype = pick(rng, BAND_DIAMOND_ARCHETYPES);
-    const goalOff   = randSign(rng) * randRange(rng, 0, 8);
-    obstacles.push(...makeDiamondPair(rng, archetype, goalAxis, goalOff));
+    const { rx, ry, rz } = DIAMOND_SPECS[archetype];
+    const perpHalfExtent = goalAxis === 'z' ? rx : rz;
+    const fullPerpMax = ARENA_SIZE / 2 - perpHalfExtent - 0.5;
+    const edgePerpMin = fullPerpMax * 0.5;   // outer 50% of the perpAxis range
+    const perpOff     = randSign(rng) * randRange(rng, edgePerpMin, fullPerpMax);
+    const goalHalfExtent = goalAxis === 'z' ? rz : rx;
+    const maxGoalPos  = ARENA_SIZE / 2 - goalHalfExtent - 2;
+    const goalOff     = randSign(rng) * randRange(rng, 0, maxGoalPos);
+
+    // Build the pair manually to use forced perpOff
+    const yMax = ARENA_SIZE / 2 - ry - 0.5;
+    const yOff = randRange(rng, -yMax, yMax);
+
+    const posA: Record<string, number> = { x: 0, y: yOff, z: 0 };
+    posA[goalAxis] = goalOff;
+    posA[perpAxis] = perpOff;
+
+    const bars = generateDiamondEdgeBars(rx, ry, rz);
+
+    obstacles.push(
+      { pos: { x: posA.x, y: posA.y, z: posA.z }, size: { x: rx * 2, y: ry * 2, z: rz * 2 }, archetype, bars },
+      {
+        pos: { x: goalAxis === 'x' ? -goalOff : posA.x, y: yOff, z: goalAxis === 'z' ? -goalOff : posA.z },
+        size: { x: rx * 2, y: ry * 2, z: rz * 2 },
+        archetype,
+        bars: mirrorDiamondBars(bars, goalAxis),
+      },
+    );
   }
 
-  // 5. Legacy box/plate/beam fill — keeps some variety each round.
-  const legacyCount = 2 + Math.floor(rng() * 3); // 2–4 legacy obstacles (added as pairs)
-  const legacyHalf  = Math.floor(legacyCount / 2);
-  const safeLimit   = ARENA_SIZE / 2 - 7;
-  const placementMax = ARENA_SIZE / 2 - 5;
+  // 5. Corner pairs — high on BOTH perpAxis and outer goalAxis zone.
+  const cornerCount = 1 + Math.floor(rng() * 2); // 1 or 2
+  for (let i = 0; i < cornerCount; i++) {
+    const archetype = pick(rng, BAND_DIAMOND_ARCHETYPES);
+    const { rx, ry, rz } = DIAMOND_SPECS[archetype];
+    const perpHalfExtent = goalAxis === 'z' ? rx : rz;
+    const fullPerpMax    = ARENA_SIZE / 2 - perpHalfExtent - 0.5;
+    const perpOff        = randSign(rng) * randRange(rng, fullPerpMax * 0.65, fullPerpMax);
+    const goalHalfExtent = goalAxis === 'z' ? rz : rx;
+    const maxGoalPos     = Math.min(16, ARENA_SIZE / 2 - goalHalfExtent - 2);
+    const minGoalPos     = Math.min(8, maxGoalPos);
+    if (minGoalPos >= maxGoalPos) continue;
+    const goalOff = randSign(rng) * randRange(rng, minGoalPos, maxGoalPos);
 
-  for (let i = 0; i < legacyHalf; i++) {
-    const archetypeName = pick(rng, Object.keys(LEGACY_ARCHETYPES));
-    const sizeArr       = pick(rng, LEGACY_ARCHETYPES[archetypeName]) as [number, number, number];
+    const yMax = ARENA_SIZE / 2 - ry - 0.5;
+    const yOff = randRange(rng, -yMax, yMax);
 
-    const pos: Record<string, number> = { x: 0, y: 0, z: 0 };
-    for (const ax of ['x', 'y', 'z'] as const) {
-      if (ax === goalAxis) {
-        let v = 0;
-        do {
-          v = (rng() * 2 - 1) * safeLimit;
-        } while (Math.abs(v) > safeLimit * 0.85);
-        pos[ax] = v;
-      } else {
-        pos[ax] = (rng() * 2 - 1) * placementMax;
-      }
-    }
+    const posA: Record<string, number> = { x: 0, y: yOff, z: 0 };
+    posA[goalAxis] = goalOff;
+    posA[perpAxis] = perpOff;
 
-    const barCount = BARS_PER_OBS_MIN + Math.floor(rng() * (BARS_PER_OBS_MAX - BARS_PER_OBS_MIN + 1));
-    const bars     = generateLegacyBars(rng, sizeArr, barCount);
+    const bars = generateDiamondEdgeBars(rx, ry, rz);
 
-    const obs: ObstacleNetDef = {
-      pos:       { x: pos.x, y: pos.y, z: pos.z },
-      size:      { x: sizeArr[0], y: sizeArr[1], z: sizeArr[2] },
-      archetype: archetypeName as 'box' | 'plate' | 'beam',
-      bars,
-    };
-
-    const mirrorPos: Record<string, number> = { ...pos };
-    mirrorPos[goalAxis] *= -1;
-    const mirrorBars = bars.map(b => ({
-      localPos: { ...b.localPos, [goalAxis]: -b.localPos[goalAxis as keyof typeof b.localPos] },
-      normal:   { ...b.normal,   [goalAxis]: -b.normal[goalAxis as keyof typeof b.normal] },
-    }));
-
-    obstacles.push(obs, { ...obs, pos: { x: mirrorPos.x, y: mirrorPos.y, z: mirrorPos.z }, bars: mirrorBars });
+    obstacles.push(
+      { pos: { x: posA.x, y: posA.y, z: posA.z }, size: { x: rx * 2, y: ry * 2, z: rz * 2 }, archetype, bars },
+      {
+        pos: { x: goalAxis === 'x' ? -goalOff : posA.x, y: yOff, z: goalAxis === 'z' ? -goalOff : posA.z },
+        size: { x: rx * 2, y: ry * 2, z: rz * 2 },
+        archetype,
+        bars: mirrorDiamondBars(bars, goalAxis),
+      },
+    );
   }
 
   // 6. Wall bars on 4 non-portal faces.

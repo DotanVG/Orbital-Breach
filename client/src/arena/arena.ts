@@ -12,7 +12,6 @@ import { BarObject } from './bar';
 import { type GeneratedLayout } from './states';
 import {
   makeArenaMaterial,
-  makeObstacleMaterial,
   makeDiamondMaterial,
   makeDiamondWireframeMaterial,
 } from '../render/materials';
@@ -53,8 +52,8 @@ export class Arena {
   private wireframesGroup = new THREE.Group();  // diamond wireframe overlays
 
   // Separate AABB caches populated at loadLayout time.
-  // physicsBoxes  — full AABB from geometry; used for player bounce + camera.
-  // bulletBoxes   — inset for diamonds, full for legacy; used for projectiles.
+  // physicsBoxes  — full AABB from geometry; used for player bounce + camera (minimal padding in bounceObstacles).
+  // bulletBoxes   — inset by DIAMOND_AABB_INSET; bullets pass through corner space.
   private physicsBoxes: THREE.Box3[] = [];
   private bulletBoxes:  THREE.Box3[] = [];
 
@@ -85,55 +84,38 @@ export class Arena {
     this.bulletBoxes  = [];
 
     for (const obs of layout.obstacles) {
-      const isDiamond = obs.archetype.startsWith('diamond');
+      // All obstacles are diamond (OctahedronGeometry)
+      const rx = obs.size.x / 2;
+      const ry = obs.size.y / 2;
+      const rz = obs.size.z / 2;
 
-      if (isDiamond) {
-        // OctahedronGeometry: radius=1, then scale by half-extents
-        const rx = obs.size.x / 2;
-        const ry = obs.size.y / 2;
-        const rz = obs.size.z / 2;
+      const geo = new THREE.OctahedronGeometry(1, 0);
+      const mesh = new THREE.Mesh(geo, makeDiamondMaterial());
+      mesh.scale.set(rx, ry, rz);
+      mesh.position.set(obs.pos.x, obs.pos.y, obs.pos.z);
+      this.obstaclesGroup.add(mesh);
 
-        const geo = new THREE.OctahedronGeometry(1, 0);
-        const mesh = new THREE.Mesh(geo, makeDiamondMaterial());
-        mesh.scale.set(rx, ry, rz);
-        mesh.position.set(obs.pos.x, obs.pos.y, obs.pos.z);
-        this.obstaclesGroup.add(mesh);
+      const edgesGeo = new THREE.EdgesGeometry(geo);
+      const wireMesh = new THREE.LineSegments(edgesGeo, makeDiamondWireframeMaterial());
+      wireMesh.scale.set(rx * 1.005, ry * 1.005, rz * 1.005);
+      wireMesh.position.set(obs.pos.x, obs.pos.y, obs.pos.z);
+      this.wireframesGroup.add(wireMesh);
 
-        // Glowing wireframe overlay
-        const edgesGeo = new THREE.EdgesGeometry(geo);
-        const wireMesh = new THREE.LineSegments(edgesGeo, makeDiamondWireframeMaterial());
-        wireMesh.scale.set(rx * 1.005, ry * 1.005, rz * 1.005);  // tiny offset to avoid z-fight
-        wireMesh.position.set(obs.pos.x, obs.pos.y, obs.pos.z);
-        this.wireframesGroup.add(wireMesh);
+      // Tight AABB for player/camera collision (no extra inflation beyond octahedron bounds)
+      const fullBox = new THREE.Box3(
+        new THREE.Vector3(obs.pos.x - rx, obs.pos.y - ry, obs.pos.z - rz),
+        new THREE.Vector3(obs.pos.x + rx, obs.pos.y + ry, obs.pos.z + rz),
+      );
+      this.physicsBoxes.push(fullBox);
 
-        // Full AABB for player/camera collision
-        const fullBox = new THREE.Box3(
-          new THREE.Vector3(obs.pos.x - rx, obs.pos.y - ry, obs.pos.z - rz),
-          new THREE.Vector3(obs.pos.x + rx, obs.pos.y + ry, obs.pos.z + rz),
-        );
-        this.physicsBoxes.push(fullBox);
-
-        // Inset AABB for bullet collision — bullets pass through corner space
-        const ix = rx * DIAMOND_AABB_INSET;
-        const iy = ry * DIAMOND_AABB_INSET;
-        const iz = rz * DIAMOND_AABB_INSET;
-        const insetBox = new THREE.Box3(
-          new THREE.Vector3(obs.pos.x - ix, obs.pos.y - iy, obs.pos.z - iz),
-          new THREE.Vector3(obs.pos.x + ix, obs.pos.y + iy, obs.pos.z + iz),
-        );
-        this.bulletBoxes.push(insetBox);
-
-      } else {
-        // Legacy box/plate/beam — BoxGeometry as before
-        const geo = new THREE.BoxGeometry(obs.size.x, obs.size.y, obs.size.z);
-        const mesh = new THREE.Mesh(geo, makeObstacleMaterial());
-        mesh.position.set(obs.pos.x, obs.pos.y, obs.pos.z);
-        this.obstaclesGroup.add(mesh);
-
-        const fullBox = new THREE.Box3().setFromObject(mesh);
-        this.physicsBoxes.push(fullBox);
-        this.bulletBoxes.push(fullBox.clone());  // no inset for legacy
-      }
+      // Inset AABB for bullet collision — bullets pass through corner space
+      const ix = rx * DIAMOND_AABB_INSET;
+      const iy = ry * DIAMOND_AABB_INSET;
+      const iz = rz * DIAMOND_AABB_INSET;
+      this.bulletBoxes.push(new THREE.Box3(
+        new THREE.Vector3(obs.pos.x - ix, obs.pos.y - iy, obs.pos.z - iz),
+        new THREE.Vector3(obs.pos.x + ix, obs.pos.y + iy, obs.pos.z + iz),
+      ));
 
       // Grab bars for this obstacle
       for (const barDef of obs.bars) {
