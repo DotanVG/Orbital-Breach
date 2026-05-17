@@ -17,6 +17,7 @@ export interface SessionSettings {
   fullscreenEnabled: boolean;
   sfxVolume: number;
   defaultCameraMode: "first" | "third";
+  collisionVisEnabled: boolean;
 }
 
 export interface SessionMenuConfig {
@@ -37,6 +38,7 @@ const STORAGE_KEYS = {
   fullscreenEnabled: "orbital_fullscreen_enabled",
   sfxVolume: "orbital_sfx_volume",
   defaultCameraMode: "orbital_default_camera_mode",
+  collisionVisEnabled: "orbital_collision_vis",
 } as const;
 
 const DEFAULT_SETTINGS: SessionSettings = {
@@ -46,6 +48,7 @@ const DEFAULT_SETTINGS: SessionSettings = {
   musicVolume: 60,
   sfxVolume: 50,
   defaultCameraMode: "first",
+  collisionVisEnabled: false,
 };
 
 const CSS = `
@@ -634,6 +637,8 @@ export class SessionMenu {
   private readonly sfxInput: HTMLInputElement;
   private readonly sfxValue: HTMLSpanElement;
   private readonly cameraSelect: HTMLSelectElement;
+  private readonly collisionVisInput: HTMLInputElement;
+  private readonly collisionVisValue: HTMLSpanElement;
   private readonly disposeFullscreenListener: () => void;
   private settings = loadSettings();
   private currentConfig: SessionMenuConfig | null = null;
@@ -730,6 +735,17 @@ export class SessionMenu {
                   <option value="first">First Person</option>
                   <option value="third">Third Person</option>
                 </select>
+              </div>
+
+              <div class="ob-session-field">
+                <div class="ob-session-field-head">
+                  <span class="ob-session-field-label">Collision Debug</span>
+                  <span id="session-menu-collisionvis-value" class="ob-session-value"></span>
+                </div>
+                <label class="ob-session-toggle">
+                  <span class="ob-session-toggle-copy">Overlay wireframe collision volumes — player sphere, obstacle AABBs, grab bars, breach room bounds. Press C in-game to toggle.</span>
+                  <input id="session-menu-collisionvis" class="ob-session-checkbox" type="checkbox" />
+                </label>
               </div>
             </section>
 
@@ -840,6 +856,8 @@ export class SessionMenu {
     this.sfxInput = this.query("#session-menu-sfx");
     this.sfxValue = this.query("#session-menu-sfx-value");
     this.cameraSelect = this.query("#session-menu-camera");
+    this.collisionVisInput = this.query("#session-menu-collisionvis");
+    this.collisionVisValue = this.query("#session-menu-collisionvis-value");
 
     this.resumeButton.addEventListener("click", () => this.onResume?.());
     this.mainMenuButton.addEventListener("click", () => this.onMainMenu?.());
@@ -880,6 +898,12 @@ export class SessionMenu {
     });
     this.cameraSelect.addEventListener("change", () => {
       this.settings.defaultCameraMode = this.cameraSelect.value === "third" ? "third" : "first";
+      this.persistSettings();
+      this.renderSettings();
+      this.onSettingsChange?.(this.getSettings());
+    });
+    this.collisionVisInput.addEventListener("change", () => {
+      this.settings.collisionVisEnabled = this.collisionVisInput.checked;
       this.persistSettings();
       this.renderSettings();
       this.onSettingsChange?.(this.getSettings());
@@ -962,6 +986,7 @@ export class SessionMenu {
     localStorage.setItem(STORAGE_KEYS.fullscreenEnabled, String(this.settings.fullscreenEnabled));
     localStorage.setItem(STORAGE_KEYS.sfxVolume, String(this.settings.sfxVolume));
     localStorage.setItem(STORAGE_KEYS.defaultCameraMode, this.settings.defaultCameraMode);
+    localStorage.setItem(STORAGE_KEYS.collisionVisEnabled, String(this.settings.collisionVisEnabled));
   }
 
   private renderSettings(): void {
@@ -980,6 +1005,8 @@ export class SessionMenu {
     this.sfxInput.value = String(this.settings.sfxVolume);
     this.sfxValue.textContent = `${Math.round(this.settings.sfxVolume)}%`;
     this.cameraSelect.value = this.settings.defaultCameraMode;
+    this.collisionVisInput.checked = this.settings.collisionVisEnabled;
+    this.collisionVisValue.textContent = this.settings.collisionVisEnabled ? "On" : "Off";
   }
 
   private showView(view: SessionMenuView): void {
@@ -1099,6 +1126,7 @@ function loadSettings(): SessionSettings {
     musicVolume: Number.isFinite(musicVolume) ? clamp(musicVolume, 0, 100) : DEFAULT_SETTINGS.musicVolume,
     sfxVolume: Number.isFinite(sfxVolume) ? clamp(sfxVolume, 0, 100) : DEFAULT_SETTINGS.sfxVolume,
     defaultCameraMode: savedCameraMode === "third" ? "third" : "first",
+    collisionVisEnabled: localStorage.getItem(STORAGE_KEYS.collisionVisEnabled) === "true",
   };
 }
 

@@ -1262,6 +1262,7 @@ export class App {
     this.sound.setMusicVolume(settings.musicVolume);
     this.sound.setSfxVolume(settings.sfxVolume);
     this.sound.setMusicEnabled(settings.soundtrackEnabled);
+    this.collisionVis.setVisible(settings.collisionVisEnabled);
   }
 
   private async applyFullscreenPreference(enabled: boolean): Promise<void> {
@@ -1673,8 +1674,8 @@ export class App {
     }
     if (!this.collisionVis.isVisible()) return;
 
-    const actors = this.match.getMatchStatsActors(this.player);
-    const positions = actors.map((a) => new THREE.Vector3(a.position.x, a.position.y, a.position.z));
+    const statsActors = this.match.getMatchStatsActors(this.player);
+    const positions = statsActors.map((a) => new THREE.Vector3(a.position.x, a.position.y, a.position.z));
     this.collisionVis.updateActors(positions);
   }
 
