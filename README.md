@@ -117,7 +117,7 @@ Debrief awards are generated from match stats:
 | Client | TypeScript 5.9, Vite 7 |
 | Multiplayer | Colyseus 0.17 |
 | Server | Node.js, Express 5, TypeScript |
-| Testing | Vitest, 33 test files |
+| Testing | Vitest, 42 test files, 243 tests |
 | Frontend hosting | Vercel |
 | Backend hosting | Render |
 | Analytics | Vercel Web Analytics and Speed Insights |

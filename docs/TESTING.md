@@ -70,26 +70,41 @@ For these, rely on the manual smoke checklist below.
 
 ---
 
-## Current coverage (37 test files)
+## Current coverage (42 test files, 243 tests)
 
-The suite covers physics, arena generation, both win paths, bot AI, online
-reconciliation, portal placement, debrief stats, mobile input logic, embed
-detection, fullscreen behavior, analytics events, room directory, profanity
-filtering, scoreboard / kill-feed builders, and regression cases. The exact
-file list lives in `tests/` and `shared/**/*.test.ts`; run `npm test` to see
-counts and timing.
+The suite covers physics, arena generation, diamond obstacle invariants, both
+win paths, bot AI, online reconciliation, portal placement, debrief stats,
+mobile input logic, embed detection, fullscreen behavior, analytics events,
+room directory, profanity filtering, scoreboard / kill-feed builders, and
+regression cases. The exact file list lives in `tests/` and
+`shared/**/*.test.ts`; run `npm test` to see counts and timing.
 
 Notable groups:
 
-| Area | Tests |
+| Area | Files | What they cover |
+|---|---|---|
+| Shared logic | `arena-gen`, `physics`, `playerLogic`, `match`, `matchFlow`, `multiplayer`, `profanity` | Deterministic generation, physics helpers, match rules |
+| Arena obstacles | `diamond-obstacles` | Gate-blocker corridor invariant ×200 seeds, all 5 diamond archetypes, edge-bar geometry, wall bar bounds and normals |
+| Solo runtime | `localMatch`, `botBrain`, `roundController`, `matchStatsTracker` | Round lifecycle, bot AI, stat accumulation |
+| Online runtime | `onlineMatch`, `onlineActorDamage`, `onlineBotTargeting`, `onlineGrabSync`, `onlineRoomLeave`, `reconciliation`, `roomDirectory` | Snapshot reconciliation, damage sync, room browser |
+| Geometry / collision | `breachRoomQueries`, `bulletCollision`, `projectileActorCollision`, `cameraYawFromBreach` | AABB hit math, segment–sphere test, breach queries |
+| Vibe Jam | `vibeJamPortal`, `portalPlacement` | Portal param parsing, spawn placement |
+| UI / platform | `scoreboard`, `scoreboardCursor`, `overlayCursor`, `creditsContent`, `instructionsContent`, `linkIcons`, `teamPresentation`, `firstTimeTutorial`, `embedMode`, `fullscreen`, `mobileInputLogic`, `analytics` | Pure DOM builders, cursor logic, analytics events |
+| Sanity | `smoke` | Import sanity |
+
+### Diamond obstacle test suite (`tests/diamond-obstacles.test.ts`)
+
+Added with the arena overhaul. Key invariants:
+
+| Test group | What it asserts |
 |---|---|
-| Shared logic | `arena-gen`, `physics`, `playerLogic`, `match`, `matchFlow`, `multiplayer`, `profanity` |
-| Solo runtime | `localMatch`, `botBrain`, `roundController`, `matchStatsTracker` |
-| Online runtime | `onlineMatch`, `onlineActorDamage`, `onlineBotTargeting`, `onlineGrabSync`, `onlineRoomLeave`, `reconciliation`, `roomDirectory` |
-| Geometry / collision | `breachRoomQueries`, `bulletCollision`, `projectileActorCollision`, `cameraYawFromBreach` |
-| Vibe Jam | `vibeJamPortal`, `portalPlacement` |
-| UI / platform | `scoreboard`, `scoreboardCursor`, `overlayCursor`, `creditsContent`, `instructionsContent`, `linkIcons`, `teamPresentation`, `firstTimeTutorial`, `embedMode`, `fullscreen`, `mobileInputLogic`, `analytics` |
-| Sanity | `smoke` |
+| Gate-blocker invariant (200 seeds) | Every layout has exactly one `diamond_huge` at `(0,0,0)` whose inset bullet AABB (×0.65 + bullet radius) covers the full portal opening on both axes |
+| Archetype coverage | All five archetypes appear across 50 seeds; specs have correct positive half-extents |
+| Determinism | Same seed → identical `obstacles` and `wallBars` arrays every time |
+| Mirrored pairs | Every band diamond has a mirror with matching archetype + size and negated goal-axis position |
+| Wall bars | Count is 32–48 per layout (4 walls × 8–12); all positions inside arena bounds; one axis flush against a non-portal wall face; normals point inward |
+| Edge bars | `generateDiamondEdgeBars` always produces exactly 12 bars; normals are unit vectors |
+| Layout validity (200 seeds) | No NaN positions anywhere; goal axis is always x or z; all obstacle sizes positive |
 
 ---
 

@@ -19,10 +19,22 @@ export interface BarDef {
   normal:   Vec3;   // outward face normal
 }
 
+export interface WallBarDef {
+  pos:    Vec3;   // world-space position
+  normal: Vec3;   // points inward from the wall face
+}
+
+export type DiamondArchetype =
+  | 'diamond_tall'
+  | 'diamond_wide'
+  | 'diamond_long'
+  | 'diamond_core'
+  | 'diamond_huge';
+
 export interface ObstacleNetDef {
   pos:       Vec3;
-  size:      Vec3;
-  archetype: 'box' | 'plate' | 'beam';
+  size:      Vec3;  // full bounding box (2*rx, 2*ry, 2*rz) for diamonds; WxHxD for boxes
+  archetype: 'box' | 'plate' | 'beam' | DiamondArchetype;
   bars:      BarDef[];
 }
 

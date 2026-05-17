@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateArenaLayout } from '../shared/arena-gen';
-import { ARENA_SIZE, OBSTACLE_MIN, OBSTACLE_MAX } from '../shared/constants';
+import { ARENA_SIZE } from '../shared/constants';
 
 describe('generateArenaLayout', () => {
   it('is deterministic for the same seed', () => {
@@ -27,38 +27,51 @@ describe('generateArenaLayout', () => {
     expect(layout.goalSigns).toEqual({ team0: -1, team1: 1 });
   });
 
-  it('generates an even number of obstacles in the allowed range', () => {
+  it('generates at least several obstacles', () => {
     for (let s = 0; s < 20; s++) {
       const layout = generateArenaLayout(s);
-      expect(layout.obstacles.length % 2).toBe(0);
-      const halfCount = layout.obstacles.length / 2;
-      expect(halfCount).toBeGreaterThanOrEqual(Math.floor(OBSTACLE_MIN / 2));
-      expect(halfCount).toBeLessThanOrEqual(OBSTACLE_MAX);
+      // Gate-blocker (1) + at least 2 mid-band pairs (4) + 1 outer-band pair (2) = at least 7
+      expect(layout.obstacles.length).toBeGreaterThanOrEqual(7);
     }
   });
 
-  it('mirrors obstacles on the goal axis for symmetry', () => {
-    const layout = generateArenaLayout(7777);
-    const ax = layout.goalAxis;
-    for (let i = 0; i < layout.obstacles.length; i += 2) {
-      const a = layout.obstacles[i];
-      const b = layout.obstacles[i + 1];
-      expect(a.size).toEqual(b.size);
-      expect(a.pos[ax]).toBeCloseTo(-b.pos[ax]);
-    }
-  });
-
-  it('keeps obstacles clear of the portal lanes', () => {
-    const layout = generateArenaLayout(321);
-    const ax = layout.goalAxis;
-    const safeLimit = ARENA_SIZE / 2 - 7;
-    for (const obs of layout.obstacles) {
-      expect(Math.abs(obs.pos[ax])).toBeLessThanOrEqual(safeLimit * 0.85 + 1e-9);
+  it('always contains a gate-blocker diamond_huge at the center', () => {
+    for (let s = 0; s < 50; s++) {
+      const layout = generateArenaLayout(s);
+      const blocker = layout.obstacles.find(o => o.archetype === 'diamond_huge');
+      expect(blocker).toBeDefined();
+      expect(blocker!.pos.x).toBeCloseTo(0);
+      expect(blocker!.pos.y).toBeCloseTo(0);
+      expect(blocker!.pos.z).toBeCloseTo(0);
     }
   });
 
   it('records the seed used', () => {
     const layout = generateArenaLayout(98765);
     expect(layout.seed).toBe(98765);
+  });
+
+  it('includes wallBars', () => {
+    const layout = generateArenaLayout(555);
+    expect(Array.isArray(layout.wallBars)).toBe(true);
+    // 4 non-portal walls × 8-12 bars each = 32-48 total
+    expect(layout.wallBars.length).toBeGreaterThanOrEqual(32);
+    expect(layout.wallBars.length).toBeLessThanOrEqual(48);
+  });
+
+  it('keeps all obstacles within the arena bounds', () => {
+    const half = ARENA_SIZE / 2;
+    for (let s = 0; s < 30; s++) {
+      const layout = generateArenaLayout(s);
+      for (const obs of layout.obstacles) {
+        const rx = obs.size.x / 2;
+        const ry = obs.size.y / 2;
+        const rz = obs.size.z / 2;
+        // Center must be within arena minus half-extents with some clearance
+        expect(Math.abs(obs.pos.x) + rx).toBeLessThanOrEqual(half + 0.01);
+        expect(Math.abs(obs.pos.y) + ry).toBeLessThanOrEqual(half + 0.01);
+        expect(Math.abs(obs.pos.z) + rz).toBeLessThanOrEqual(half + 0.01);
+      }
+    }
   });
 });
