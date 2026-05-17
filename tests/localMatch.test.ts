@@ -146,8 +146,8 @@ describe("LocalMatch", () => {
     const bots = (match as unknown as { bots: Array<{ phys: { pos: THREE.Vector3 } }> }).bots;
 
     expect(playerSpawn).toBeDefined();
-    expect(playerSpawn.y).toBeCloseTo(-2.12, 4);
-    expect(bots.every((bot) => Math.abs(bot.phys.pos.y + 2.12) < 1e-4)).toBe(true);
+    expect(playerSpawn.y).toBeCloseTo(-2.57, 4);
+    expect(bots.every((bot) => Math.abs(bot.phys.pos.y + 2.57) < 1e-4)).toBe(true);
   });
 
   it("emits a score event for breach wins", () => {

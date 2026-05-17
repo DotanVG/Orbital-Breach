@@ -1,4 +1,3 @@
-import { PLAYER_RADIUS } from '../../../shared/constants';
 import type { HitZone } from './playerTypes';
 
 export interface Vec3Like {
@@ -19,7 +18,7 @@ export function classifyHitZone(
   playerPos: Vec3Like,
   playerFacing: Vec3Like,
   hitOffsetY = 0,
-  hitRadius = PLAYER_RADIUS,
+  hitRadius = 0.8,
 ): HitZone {
   const localX = impactPoint.x - playerPos.x;
   const localY = impactPoint.y - playerPos.y - hitOffsetY;

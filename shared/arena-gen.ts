@@ -1,7 +1,5 @@
 import {
   ARENA_SIZE,
-  WALL_BARS_PER_WALL_MIN,
-  WALL_BARS_PER_WALL_MAX,
 } from './constants';
 import type { ObstacleNetDef, BarDef, WallBarDef, DiamondArchetype } from './schema';
 
@@ -192,58 +190,51 @@ function makeDiamondPair(
 }
 
 // ── Wall bar generation ───────────────────────────────────────────────────────
-// 4 non-portal walls get 8-12 bars each (portal walls already have portalBars).
+// 4 non-portal walls get a deterministic 3×3 grid of 9 bars each (36 total).
+// Positions at 1/4, 1/2, 3/4 of arena size on each free axis.
 
 function generateWallBarsForFace(
-  rng: () => number,
   wallAxis: 'x' | 'y' | 'z',
   wallSign: 1 | -1,
-  goalAxis: 'x' | 'y' | 'z',
-  count: number,
 ): WallBarDef[] {
-  const half   = ARENA_SIZE / 2;
-  const margin = 3.0;   // keep bars away from arena edges
+  const half = ARENA_SIZE / 2;
   const bars: WallBarDef[] = [];
 
-  for (let i = 0; i < count; i++) {
-    const pos: Record<string, number> = { x: 0, y: 0, z: 0 };
+  const freeAxes = (['x', 'y', 'z'] as const).filter(a => a !== wallAxis);
+  const gridPositions = [-half / 2, 0, half / 2];  // -10, 0, +10
 
-    // Place bar flush against the interior face of the wall
-    pos[wallAxis] = wallSign * (half - 0.12);
+  for (const u of gridPositions) {
+    for (const v of gridPositions) {
+      const pos: Record<string, number> = { x: 0, y: 0, z: 0 };
+      pos[wallAxis] = wallSign * (half - 0.12);
+      pos[freeAxes[0]] = u;
+      pos[freeAxes[1]] = v;
 
-    // The other two axes span the wall face (excluding portal cut-outs on goalAxis face).
-    const freeAxes = (['x', 'y', 'z'] as const).filter(a => a !== wallAxis);
-    for (const ax of freeAxes) {
-      pos[ax] = randRange(rng, -half + margin, half - margin);
+      const normal: Record<string, number> = { x: 0, y: 0, z: 0 };
+      normal[wallAxis] = -wallSign;
+
+      bars.push({
+        pos:    { x: pos.x, y: pos.y, z: pos.z },
+        normal: { x: normal.x, y: normal.y, z: normal.z },
+      });
     }
-
-    // Normal points inward (away from wall face, into arena)
-    const normal: Record<string, number> = { x: 0, y: 0, z: 0 };
-    normal[wallAxis] = -wallSign;
-
-    bars.push({
-      pos:    { x: pos.x, y: pos.y, z: pos.z },
-      normal: { x: normal.x, y: normal.y, z: normal.z },
-    });
   }
 
   return bars;
 }
 
 export function generateWallBars(
-  rng: () => number,
+  _rng: () => number,
   goalAxis: 'x' | 'y' | 'z',
 ): WallBarDef[] {
   // The portal (goal) axis walls already have bars from portalBars.ts.
-  // Generate wall bars for the remaining 4 faces.
+  // Generate 3×3 grid wall bars for the remaining 4 faces (9 bars × 4 walls = 36).
   const nonPortalAxes = (['x', 'y', 'z'] as const).filter(a => a !== goalAxis);
   const allBars: WallBarDef[] = [];
 
   for (const wallAxis of nonPortalAxes) {
     for (const wallSign of [1, -1] as const) {
-      const count = WALL_BARS_PER_WALL_MIN
-        + Math.floor(rng() * (WALL_BARS_PER_WALL_MAX - WALL_BARS_PER_WALL_MIN + 1));
-      allBars.push(...generateWallBarsForFace(rng, wallAxis, wallSign, goalAxis, count));
+      allBars.push(...generateWallBarsForFace(wallAxis, wallSign));
     }
   }
 

@@ -1,5 +1,5 @@
 export const ARENA_SIZE             = 40;
-export const PLAYER_RADIUS          = 0.8;
+export const PLAYER_RADIUS          = 0.35;
 // Projectile hit test radius — tight to the alien's torso/head silhouette.
 // The hit sphere is also shifted down by HITBOX_OFFSET_Y so it sits on the
 // alien body rather than centered on the physics anchor (which is near the
@@ -8,7 +8,7 @@ export const HITBOX_RADIUS          = 0.42;
 export const HITBOX_OFFSET_Y        = -0.35;
 // Actor-vs-actor separation radius. Tighter than PLAYER_RADIUS so alien
 // models can brush shoulders without a visible gap between them.
-export const ACTOR_COLLISION_RADIUS = 0.5;
+export const ACTOR_COLLISION_RADIUS = 0.3;
 export const TICK_RATE              = 20;
 export const FREEZE_TIME            = 2.0;    // kept for server compat
 export const RESPAWN_TIME           = 2.0;
@@ -56,8 +56,6 @@ export const OBSTACLE_MAX           = 22;
 
 // Diamond obstacle physics
 export const DIAMOND_AABB_INSET     = 0.65;   // bullet AABB scale factor — bullets pass through corners
-export const WALL_BARS_PER_WALL_MIN = 8;
-export const WALL_BARS_PER_WALL_MAX = 12;
 
 // Legacy (kept for server sim — no longer used by client physics)
 export const ACCEL                  = 18;
