@@ -18,6 +18,7 @@ export class InputManager {
   private menuTogglePressed = false;
   private helpPressed = false;
   private collisionVisTogglePressed = false;
+  private colliderEditorTogglePressed = false;
   public onTabHoldChange: ((held: boolean) => void) | null = null;
 
   // Mobile touch input state
@@ -41,8 +42,9 @@ export class InputManager {
       if (e.code === 'KeyP' && !e.repeat) this.gunTuneTogglePressed = true;
       if (e.code === 'Enter' && !e.repeat) this.gunTunePrintPressed = true;
       if (e.code === 'Escape' && !e.repeat) this.menuTogglePressed = true;
-      if (e.code === 'KeyH'   && !e.repeat) this.helpPressed = true;
-      if (e.code === 'KeyC'   && !e.repeat) this.collisionVisTogglePressed = true;
+      if (e.code === 'KeyH'        && !e.repeat) this.helpPressed = true;
+      if (e.code === 'BracketLeft' && !e.repeat) this.collisionVisTogglePressed = true;
+      if (e.code === 'BracketRight'&& !e.repeat) this.colliderEditorTogglePressed = true;
       // Only intercept navigation/delete keys when focus is NOT in a text field,
       // so the Call Sign input and other fields retain normal keyboard behaviour.
       const tag = (document.activeElement as HTMLElement | null)?.tagName ?? '';
@@ -291,11 +293,50 @@ export class InputManager {
     return v && !this.uiBlocked;
   }
 
-  /** Toggle collision visualizer — KeyC. */
+  /** Toggle collision visualizer — BracketLeft ([). */
   public consumeCollisionVisToggle(): boolean {
     const v = this.collisionVisTogglePressed;
     this.collisionVisTogglePressed = false;
     return v;
+  }
+
+  /** Toggle collider editor — BracketRight (]). */
+  public consumeColliderEditorToggle(): boolean {
+    const v = this.colliderEditorTogglePressed;
+    this.colliderEditorTogglePressed = false;
+    return v;
+  }
+
+  /**
+   * Axes for the collider editor (same keys as gun tuner).
+   * No-Shift: move position. Shift: resize.
+   * Rotation: I/K J/L U/O (same as gun tuner).
+   */
+  public getColliderEditorAxes(): {
+    move: { x: number; y: number; z: number };
+    resize: { x: number; y: number; z: number };
+    rotation: { x: number; y: number; z: number };
+  } {
+    if (this.uiBlocked) {
+      return {
+        move:     { x: 0, y: 0, z: 0 },
+        resize:   { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+      };
+    }
+    const shift = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+    const dx = (this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('ArrowLeft') ? 1 : 0);
+    const dy = (this.keys.has('PageUp')  ? 1 : 0) - (this.keys.has('PageDown') ? 1 : 0);
+    const dz = (this.keys.has('ArrowDown') ? 1 : 0) - (this.keys.has('ArrowUp') ? 1 : 0);
+    return {
+      move:   shift ? { x: 0, y: 0, z: 0 } : { x: dx, y: dy, z: dz },
+      resize: shift ? { x: dx, y: dy, z: dz } : { x: 0, y: 0, z: 0 },
+      rotation: {
+        x: (this.keys.has('KeyK') ? 1 : 0) - (this.keys.has('KeyI') ? 1 : 0),
+        y: (this.keys.has('KeyL') ? 1 : 0) - (this.keys.has('KeyJ') ? 1 : 0),
+        z: (this.keys.has('KeyO') ? 1 : 0) - (this.keys.has('KeyU') ? 1 : 0),
+      },
+    };
   }
 
   public getGunTuneAxes(): {
@@ -380,6 +421,8 @@ export class InputManager {
     this.gunTuneResetPressed = false;
     this.gunTunePrintPressed = false;
     this.menuTogglePressed = false;
+    this.collisionVisTogglePressed = false;
+    this.colliderEditorTogglePressed = false;
     // mobileControlsActive is intentionally preserved across blur/visibility changes
     if (tabWasHeld) this.onTabHoldChange?.(false);
   }

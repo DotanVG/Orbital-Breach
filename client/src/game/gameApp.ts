@@ -44,6 +44,7 @@ import { ProjectileSystem } from "./projectileSystem";
 import { RoundController } from "./roundController";
 import { GunTuneOverlay } from "./gunTuneOverlay";
 import { CollisionVisualizer } from "./collisionVisualizer";
+import { ColliderEditor } from "./colliderEditor";
 import { shouldShowDesktopOverlayCursor } from "./overlayCursor";
 import { buildShotFromCamera } from "./weaponFire";
 import { NetClient } from "../net/client";
@@ -100,6 +101,7 @@ export class App {
   private gun: GunViewModel;
   private gunTuneOverlay = new GunTuneOverlay();
   private collisionVis!: CollisionVisualizer;
+  private colliderEditor!: ColliderEditor;
   private hud: HUD;
   private input: InputManager;
   private killFeed = new KillFeed();
@@ -150,7 +152,8 @@ export class App {
     this.projectiles = new ProjectileSystem(this.sceneMgr.getScene());
     this.match = new LocalMatch(this.sceneMgr.getScene());
     this.onlineMatch = new OnlineMatch(this.sceneMgr.getScene());
-    this.collisionVis = new CollisionVisualizer(this.sceneMgr.getScene());
+    this.collisionVis   = new CollisionVisualizer(this.sceneMgr.getScene());
+    this.colliderEditor = new ColliderEditor(this.sceneMgr.getScene());
     this.hud.setVisible(false);
     this.killFeed.setVisible(false);
     this.sessionMenu.setLauncherVisible(false);
@@ -574,6 +577,7 @@ export class App {
     );
     this.tickGunTuning();
     this.tickCollisionVis();
+    this.tickColliderEditor();
     this.matchStats.observePlayers(this.match.getMatchStatsActors(this.player), {
       accumulateTravel: this.round.isPlaying(),
     });
@@ -1677,6 +1681,17 @@ export class App {
     const statsActors = this.match.getMatchStatsActors(this.player);
     const positions = statsActors.map((a) => new THREE.Vector3(a.position.x, a.position.y, a.position.z));
     this.collisionVis.updateActors(positions);
+  }
+
+  // ── Collider editor ─────────────────────────────────────────────────────────
+
+  private tickColliderEditor(): void {
+    if (this.input.consumeColliderEditorToggle()) {
+      this.colliderEditor.toggle();
+    }
+    if (!this.colliderEditor.isVisible()) return;
+    const axes = this.input.getColliderEditorAxes();
+    this.colliderEditor.tick(this.player.getPosition(), axes);
   }
 
   // ── Gun tuning overlays ─────────────────────────────────────────────────────

@@ -743,7 +743,7 @@ export class SessionMenu {
                   <span id="session-menu-collisionvis-value" class="ob-session-value"></span>
                 </div>
                 <label class="ob-session-toggle">
-                  <span class="ob-session-toggle-copy">Overlay wireframe collision volumes — player sphere, obstacle AABBs, grab bars, breach room bounds. Press C in-game to toggle.</span>
+                  <span class="ob-session-toggle-copy">Overlay wireframe collision volumes — player sphere, obstacle AABBs, grab bars, breach room bounds. Press [ in-game to toggle.</span>
                   <input id="session-menu-collisionvis" class="ob-session-checkbox" type="checkbox" />
                 </label>
               </div>
