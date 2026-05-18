@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { ARENA_SIZE } from "../../../shared/constants";
 import { Projectile, type ProjectileTrailMode } from "../projectile";
 import { bulletHitPoint } from "./bulletCollision";
+import { buildObstacleGrid, type ObstacleGrid } from "./obstacleGrid";
 import { segmentSphereHitPoint } from "./projectileActorCollision";
 
 const BULLET_RADIUS = 0.07;
@@ -58,11 +59,19 @@ type CollisionHit =
 
 export class ProjectileSystem {
   private flashes: HitFlash[] = [];
+  private freeFlashes: number[] = [];
   private projectilePool: Projectile[] = [];
   private projectiles: Projectile[] = [];
   private sparks: SparkBurst[] = [];
+  private freeSparks: number[] = [];
   private readonly tmpDirection = new THREE.Vector3();
   private readonly tmpSparkNormal = new THREE.Vector3();
+  private readonly tmpInwardNormal = new THREE.Vector3();
+  private readonly tmpClampedPos = new THREE.Vector3();
+  private readonly tmpTangentA = new THREE.Vector3();
+  private readonly tmpTangentB = new THREE.Vector3();
+  private readonly tmpCrossHelper = new THREE.Vector3();
+  private obstacleGrid: ObstacleGrid | null = null;
 
   public constructor(private readonly scene: THREE.Scene) {}
 
@@ -85,6 +94,10 @@ export class ProjectileSystem {
     onPortalHit: (pos: THREE.Vector3, color: number) => void,
     onActorHit: (hit: ProjectileActorHit) => void,
   ): void {
+    if (!this.obstacleGrid && solidBoxes.length > 0) {
+      this.obstacleGrid = buildObstacleGrid(solidBoxes);
+    }
+
     const fxMode = this.currentFxMode();
     const trailMode = this.currentTrailMode(fxMode);
 
@@ -158,26 +171,32 @@ export class ProjectileSystem {
   }
 
   public clear(): void {
+    this.obstacleGrid = null;
+
     for (const projectile of this.projectiles) {
       projectile.dispose();
       this.projectilePool.push(projectile);
     }
     this.projectiles = [];
 
-    for (const flash of this.flashes) {
-      flash.active = false;
-      flash.light.visible = false;
+    this.freeFlashes.length = 0;
+    for (let i = 0; i < this.flashes.length; i++) {
+      this.flashes[i].active = false;
+      this.flashes[i].light.visible = false;
+      this.freeFlashes.push(i);
     }
 
-    for (const spark of this.sparks) {
-      spark.active = false;
-      spark.points.visible = false;
+    this.freeSparks.length = 0;
+    for (let i = 0; i < this.sparks.length; i++) {
+      this.sparks[i].active = false;
+      this.sparks[i].points.visible = false;
+      this.freeSparks.push(i);
     }
   }
 
   private acquireFlash(): HitFlash | null {
-    const existing = this.flashes.find((flash) => !flash.active);
-    if (existing) return existing;
+    const freeIdx = this.freeFlashes.pop();
+    if (freeIdx !== undefined) return this.flashes[freeIdx];
     if (this.flashes.length >= MAX_FLASH_POOL) return null;
 
     const light = new THREE.PointLight(0xffffff, 0, 0, 2);
@@ -190,8 +209,8 @@ export class ProjectileSystem {
   }
 
   private acquireSparkBurst(): SparkBurst | null {
-    const existing = this.sparks.find((spark) => !spark.active);
-    if (existing) return existing;
+    const freeIdx = this.freeSparks.pop();
+    if (freeIdx !== undefined) return this.sparks[freeIdx];
     if (this.sparks.length >= MAX_SPARK_POOL) return null;
 
     const positions = new Float32Array(SPARK_COUNT * 3);
@@ -244,7 +263,11 @@ export class ProjectileSystem {
   ): CollisionHit | null {
     let nearest: CollisionHit | null = null;
 
-    for (const box of solidBoxes) {
+    const obstacleCandidates = this.obstacleGrid
+      ? this.obstacleGrid.query(oldPos, newPos)
+      : solidBoxes;
+
+    for (const box of obstacleCandidates) {
       const hit = bulletHitPoint(oldPos, newPos, box, BULLET_RADIUS);
       if (!hit) continue;
       const distance = hit.distanceToSquared(oldPos);
@@ -281,9 +304,9 @@ export class ProjectileSystem {
     const ax = Math.abs(clampedPos.x);
     const ay = Math.abs(clampedPos.y);
     const az = Math.abs(clampedPos.z);
-    if (ax >= ay && ax >= az) return new THREE.Vector3(-Math.sign(clampedPos.x), 0, 0);
-    if (ay >= ax && ay >= az) return new THREE.Vector3(0, -Math.sign(clampedPos.y), 0);
-    return new THREE.Vector3(0, 0, -Math.sign(clampedPos.z));
+    if (ax >= ay && ax >= az) return this.tmpInwardNormal.set(-Math.sign(clampedPos.x), 0, 0);
+    if (ay >= ax && ay >= az) return this.tmpInwardNormal.set(0, -Math.sign(clampedPos.y), 0);
+    return this.tmpInwardNormal.set(0, 0, -Math.sign(clampedPos.z));
   }
 
   private isAtArenaBoundary(pos: THREE.Vector3): boolean {
@@ -295,7 +318,7 @@ export class ProjectileSystem {
   }
 
   private clampToArena(pos: THREE.Vector3): THREE.Vector3 {
-    return new THREE.Vector3(
+    return this.tmpClampedPos.set(
       Math.max(-ARENA_LIMIT, Math.min(ARENA_LIMIT, pos.x)),
       Math.max(-ARENA_LIMIT, Math.min(ARENA_LIMIT, pos.y)),
       Math.max(-ARENA_LIMIT, Math.min(ARENA_LIMIT, pos.z)),
@@ -303,17 +326,16 @@ export class ProjectileSystem {
   }
 
   private recycleDeadProjectiles(): void {
-    if (this.projectiles.length === 0) return;
-
-    const active: Projectile[] = [];
-    for (const projectile of this.projectiles) {
-      if (projectile.dead) {
-        this.projectilePool.push(projectile);
+    let write = 0;
+    for (let read = 0; read < this.projectiles.length; read++) {
+      const p = this.projectiles[read];
+      if (p.dead) {
+        this.projectilePool.push(p);
       } else {
-        active.push(projectile);
+        this.projectiles[write++] = p;
       }
     }
-    this.projectiles = active;
+    this.projectiles.length = write;
   }
 
   private spawnFlash(
@@ -350,13 +372,13 @@ export class ProjectileSystem {
     const spark = this.acquireSparkBurst();
     if (!spark) return;
 
-    const nrm = normal ?? new THREE.Vector3(0, 1, 0);
-    const tangentA = new THREE.Vector3();
-    const tangentB = new THREE.Vector3();
+    const nrm = normal ?? this.tmpSparkNormal.set(0, 1, 0);
+    const tangentA = this.tmpTangentA;
+    const tangentB = this.tmpTangentB;
     if (Math.abs(nrm.x) < 0.9) {
-      tangentA.crossVectors(nrm, new THREE.Vector3(1, 0, 0)).normalize();
+      tangentA.crossVectors(nrm, this.tmpCrossHelper.set(1, 0, 0)).normalize();
     } else {
-      tangentA.crossVectors(nrm, new THREE.Vector3(0, 1, 0)).normalize();
+      tangentA.crossVectors(nrm, this.tmpCrossHelper.set(0, 1, 0)).normalize();
     }
     tangentB.crossVectors(nrm, tangentA);
     const phiMax = normal ? Math.PI / 2 : Math.PI;
@@ -398,7 +420,8 @@ export class ProjectileSystem {
   }
 
   private updateFlashes(dt: number): void {
-    for (const flash of this.flashes) {
+    for (let i = 0; i < this.flashes.length; i++) {
+      const flash = this.flashes[i];
       if (!flash.active) continue;
 
       flash.age += dt;
@@ -408,19 +431,21 @@ export class ProjectileSystem {
       if (flash.age >= FLASH_DURATION) {
         flash.active = false;
         flash.light.visible = false;
+        this.freeFlashes.push(i);
       }
     }
   }
 
   private updateSparks(dt: number): void {
-    for (const spark of this.sparks) {
+    for (let i = 0; i < this.sparks.length; i++) {
+      const spark = this.sparks[i];
       if (!spark.active) continue;
 
       spark.age += dt;
-      for (let i = 0; i < spark.count; i += 1) {
-        spark.positions[i * 3] += spark.velocities[i * 3] * dt;
-        spark.positions[i * 3 + 1] += spark.velocities[i * 3 + 1] * dt;
-        spark.positions[i * 3 + 2] += spark.velocities[i * 3 + 2] * dt;
+      for (let j = 0; j < spark.count; j += 1) {
+        spark.positions[j * 3] += spark.velocities[j * 3] * dt;
+        spark.positions[j * 3 + 1] += spark.velocities[j * 3 + 1] * dt;
+        spark.positions[j * 3 + 2] += spark.velocities[j * 3 + 2] * dt;
       }
       (spark.points.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
       (spark.points.material as THREE.PointsMaterial).opacity = Math.max(0, 1 - (spark.age / SPARK_DURATION) ** 2);
@@ -428,6 +453,7 @@ export class ProjectileSystem {
       if (spark.age >= SPARK_DURATION) {
         spark.active = false;
         spark.points.visible = false;
+        this.freeSparks.push(i);
       }
     }
   }
