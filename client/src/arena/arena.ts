@@ -4,6 +4,8 @@ import {
   BREACH_ROOM_D,
   BREACH_ROOM_W,
   BREACH_ROOM_H,
+  DIAMOND_AABB_INSET,
+  PLAYER_DIAMOND_AABB_INSET,
 } from '../../../shared/constants';
 import { type PhysicsState } from '../physics';
 import { GoalPlane, type GoalDef } from './goal';
@@ -11,7 +13,8 @@ import { BarObject } from './bar';
 import { type GeneratedLayout } from './states';
 import {
   makeArenaMaterial,
-  makeObstacleMaterial,
+  makeDiamondMaterial,
+  makeDiamondWireframeMaterial,
 } from '../render/materials';
 import { buildBreachWalls } from './breachWalls';
 import { placePortalArenaBars } from './portalBars';
@@ -38,10 +41,25 @@ interface BreachRoom {
  *   portalBars          — arena-side portal grab bars
  *   breachRoomQueries   — pure inside-room predicates
  *   obstacleCollision   — AABB bounce math
+ *
+ * Diamond obstacles use OctahedronGeometry with a glowing wireframe overlay.
+ * Bullet collision uses an inset AABB (×DIAMOND_AABB_INSET) so projectiles
+ * pass through the invisible "corner" space around each crystal tip.
  */
 export class Arena {
   private static readonly CAMERA_WALL_THICKNESS = 0.25;
+
   private obstaclesGroup = new THREE.Group();
+  private wireframesGroup = new THREE.Group();  // diamond wireframe overlays
+
+  // Separate AABB caches populated at loadLayout time.
+  // physicsBoxes        — full AABB from geometry; used for camera collision.
+  // playerCollisionBoxes — inset by PLAYER_DIAMOND_AABB_INSET; avoids invisible corner walls for player bounce.
+  // bulletBoxes         — inset by DIAMOND_AABB_INSET; bullets pass through corner space.
+  private physicsBoxes: THREE.Box3[] = [];
+  private playerCollisionBoxes: THREE.Box3[] = [];
+  private bulletBoxes:  THREE.Box3[] = [];
+
   private goalPlanes: GoalPlane[] = [];
   private barObjects: BarObject[] = [];
   private breachRooms: BreachRoom[] = [];
@@ -56,6 +74,7 @@ export class Arena {
     cubeGeo.dispose();
 
     scene.add(this.obstaclesGroup);
+    scene.add(this.wireframesGroup);
   }
 
   public loadLayout(layout: GeneratedLayout): void {
@@ -64,12 +83,54 @@ export class Arena {
     this.clearGoalPlanes();
     this.clearBreachRooms();
 
+    this.physicsBoxes = [];
+    this.playerCollisionBoxes = [];
+    this.bulletBoxes  = [];
+
     for (const obs of layout.obstacles) {
-      const geo = new THREE.BoxGeometry(obs.size.x, obs.size.y, obs.size.z);
-      const mesh = new THREE.Mesh(geo, makeObstacleMaterial());
+      // All obstacles are diamond (OctahedronGeometry)
+      const rx = obs.size.x / 2;
+      const ry = obs.size.y / 2;
+      const rz = obs.size.z / 2;
+
+      const geo = new THREE.OctahedronGeometry(1, 0);
+      const mesh = new THREE.Mesh(geo, makeDiamondMaterial());
+      mesh.scale.set(rx, ry, rz);
       mesh.position.set(obs.pos.x, obs.pos.y, obs.pos.z);
       this.obstaclesGroup.add(mesh);
 
+      const edgesGeo = new THREE.EdgesGeometry(geo);
+      const wireMesh = new THREE.LineSegments(edgesGeo, makeDiamondWireframeMaterial());
+      wireMesh.scale.set(rx * 1.005, ry * 1.005, rz * 1.005);
+      wireMesh.position.set(obs.pos.x, obs.pos.y, obs.pos.z);
+      this.wireframesGroup.add(wireMesh);
+
+      // Full AABB for camera collision
+      const fullBox = new THREE.Box3(
+        new THREE.Vector3(obs.pos.x - rx, obs.pos.y - ry, obs.pos.z - rz),
+        new THREE.Vector3(obs.pos.x + rx, obs.pos.y + ry, obs.pos.z + rz),
+      );
+      this.physicsBoxes.push(fullBox);
+
+      // Inset AABB for player collision — avoids invisible corner walls in octahedron empty space
+      const px = rx * PLAYER_DIAMOND_AABB_INSET;
+      const py = ry * PLAYER_DIAMOND_AABB_INSET;
+      const pz = rz * PLAYER_DIAMOND_AABB_INSET;
+      this.playerCollisionBoxes.push(new THREE.Box3(
+        new THREE.Vector3(obs.pos.x - px, obs.pos.y - py, obs.pos.z - pz),
+        new THREE.Vector3(obs.pos.x + px, obs.pos.y + py, obs.pos.z + pz),
+      ));
+
+      // Inset AABB for bullet collision — bullets pass through corner space
+      const ix = rx * DIAMOND_AABB_INSET;
+      const iy = ry * DIAMOND_AABB_INSET;
+      const iz = rz * DIAMOND_AABB_INSET;
+      this.bulletBoxes.push(new THREE.Box3(
+        new THREE.Vector3(obs.pos.x - ix, obs.pos.y - iy, obs.pos.z - iz),
+        new THREE.Vector3(obs.pos.x + ix, obs.pos.y + iy, obs.pos.z + iz),
+      ));
+
+      // Grab bars for this obstacle
       for (const barDef of obs.bars) {
         const worldPos = new THREE.Vector3(
           obs.pos.x + barDef.localPos.x,
@@ -78,6 +139,12 @@ export class Arena {
         );
         this.barObjects.push(new BarObject(this.scene, worldPos, barDef.normal));
       }
+    }
+
+    // Wall bars — free-floating bars on non-portal arena walls
+    for (const wb of layout.wallBars) {
+      const worldPos = new THREE.Vector3(wb.pos.x, wb.pos.y, wb.pos.z);
+      this.barObjects.push(new BarObject(this.scene, worldPos, wb.normal));
     }
 
     const { goalAxis, goalSigns } = layout;
@@ -159,14 +226,22 @@ export class Arena {
   }
 
   public bounceObstacles(state: PhysicsState): void {
-    const boxes = this.obstaclesGroup.children.map((child) =>
-      new THREE.Box3().setFromObject(child as THREE.Mesh),
-    );
-    bounceAgainstBoxes(state, boxes);
+    bounceAgainstBoxes(state, this.playerCollisionBoxes);
   }
 
+  /** Full AABBs — used for camera collision. */
   public getObstacleAABBs(): THREE.Box3[] {
-    return this.obstaclesGroup.children.map(c => new THREE.Box3().setFromObject(c as THREE.Mesh));
+    return this.physicsBoxes.map(b => b.clone());
+  }
+
+  /** Inset AABBs for player bounce — avoids invisible corners on diamond obstacles. */
+  public getPlayerCollisionAABBs(): THREE.Box3[] {
+    return this.playerCollisionBoxes.map(b => b.clone());
+  }
+
+  /** Inset AABBs for bullets — diamond corners are passable. */
+  public getObstacleBulletAABBs(): THREE.Box3[] {
+    return this.bulletBoxes.map(b => b.clone());
   }
 
   public getThirdPersonCameraCollisionAABBs(): THREE.Box3[] {
@@ -271,6 +346,14 @@ export class Arena {
       (mesh.material as THREE.Material).dispose();
     }
     this.obstaclesGroup.clear();
+
+    for (const child of [...this.wireframesGroup.children]) {
+      const ls = child as THREE.LineSegments;
+      ls.geometry.dispose();
+      (ls.material as THREE.Material).dispose();
+    }
+    this.wireframesGroup.clear();
+
     for (const bar of this.barObjects) bar.dispose();
     this.barObjects = [];
   }
@@ -280,7 +363,7 @@ export class Arena {
     this.goalPlanes = [];
   }
 
-  private getArenaWallAABBs(): THREE.Box3[] {
+  public getArenaWallAABBs(): THREE.Box3[] {
     if (!this.currentLayout) return [];
 
     const half = ARENA_SIZE / 2;
@@ -325,7 +408,7 @@ export class Arena {
     return boxes;
   }
 
-  private getBreachRoomWallAABBs(): THREE.Box3[] {
+  public getBreachRoomWallAABBs(): THREE.Box3[] {
     const thickness = Arena.CAMERA_WALL_THICKNESS;
     const hh = BREACH_ROOM_H / 2;
     const hw = BREACH_ROOM_W / 2;

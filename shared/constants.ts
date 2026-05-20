@@ -54,6 +54,10 @@ export const MATCH_END_DELAY        = 7;     // seconds showing MATCH result bef
 export const OBSTACLE_MIN           = 14;
 export const OBSTACLE_MAX           = 22;
 
+// Diamond obstacle physics
+export const DIAMOND_AABB_INSET          = 0.65;   // bullet AABB scale factor — bullets pass through corners
+export const PLAYER_DIAMOND_AABB_INSET   = 0.70;   // player collision AABB scale — avoids invisible corner walls
+
 // Legacy (kept for server sim — no longer used by client physics)
 export const ACCEL                  = 18;
 export const MAX_SPEED              = 16;

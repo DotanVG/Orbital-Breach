@@ -17,6 +17,7 @@ export class InputManager {
   private gunTunePrintPressed = false;
   private menuTogglePressed = false;
   private helpPressed = false;
+  private collisionVisTogglePressed = false;
   public onTabHoldChange: ((held: boolean) => void) | null = null;
 
   // Mobile touch input state
@@ -41,6 +42,7 @@ export class InputManager {
       if (e.code === 'Enter' && !e.repeat) this.gunTunePrintPressed = true;
       if (e.code === 'Escape' && !e.repeat) this.menuTogglePressed = true;
       if (e.code === 'KeyH'   && !e.repeat) this.helpPressed = true;
+      if (e.code === 'KeyC'   && !e.repeat) this.collisionVisTogglePressed = true;
       // Only intercept navigation/delete keys when focus is NOT in a text field,
       // so the Call Sign input and other fields retain normal keyboard behaviour.
       const tag = (document.activeElement as HTMLElement | null)?.tagName ?? '';
@@ -287,6 +289,13 @@ export class InputManager {
     const v = this.helpPressed;
     this.helpPressed = false;
     return v && !this.uiBlocked;
+  }
+
+  /** Toggle collision visualizer — KeyC. */
+  public consumeCollisionVisToggle(): boolean {
+    const v = this.collisionVisTogglePressed;
+    this.collisionVisTogglePressed = false;
+    return v;
   }
 
   public getGunTuneAxes(): {

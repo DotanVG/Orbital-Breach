@@ -23,6 +23,11 @@ export default class Sim {
   public gamePhase: GamePhase = "LOBBY";
   public seq = 0;
 
+  // Scratch objects — reused every tick to avoid per-tick allocation
+  private readonly _fwd = { x: 0, y: 0, z: 0 };
+  private readonly _right = { x: 0, y: 0, z: 0 };
+  private _snapshotPlayers: ReturnType<ServerPlayer["toNetState"]>[] = [];
+
   public addPlayer(p: ServerPlayer): void {
     this.players.set(p.id, p);
   }
@@ -74,7 +79,8 @@ export default class Sim {
     }
 
     p.seq = inp.seq;
-    p.rot = { ...p.rot, ...inp.rot };
+    p.rot.yaw = inp.rot.yaw;
+    p.rot.pitch = inp.rot.pitch;
   }
 
   private integratePlayer(p: ServerPlayer, dt: number): void {
@@ -88,15 +94,15 @@ export default class Sim {
     const sy = Math.sin(yaw);
     const cp = Math.cos(pitch);
     const sp = Math.sin(pitch);
-    const forward = { x: -sy * cp, y: sp, z: -cy * cp };
-    const right = { x: cy, y: 0, z: -sy };
+    this._fwd.x = -sy * cp; this._fwd.y = sp; this._fwd.z = -cy * cp;
+    this._right.x = cy; this._right.y = 0; this._right.z = -sy;
     const ax = inp.walkAxes;
     const scale = ACCEL * dt;
 
     // walkAxes is {x, z} only — no y thrust in zero-G arena
-    p.vel.x += (right.x * ax.x + forward.x * ax.z) * scale;
-    p.vel.y += (right.y * ax.x + forward.y * ax.z) * scale;
-    p.vel.z += (right.z * ax.x + forward.z * ax.z) * scale;
+    p.vel.x += (this._right.x * ax.x + this._fwd.x * ax.z) * scale;
+    p.vel.y += (this._right.y * ax.x + this._fwd.y * ax.z) * scale;
+    p.vel.z += (this._right.z * ax.x + this._fwd.z * ax.z) * scale;
 
     p.vel.x *= DAMPING;
     p.vel.y *= DAMPING;
@@ -157,8 +163,8 @@ export default class Sim {
   }
 
   private resetPos(p: ServerPlayer): void {
-    p.pos = p.team === 0 ? { x: 0, y: 0, z: -15 } : { x: 0, y: 0, z: 15 };
-    p.vel = { x: 0, y: 0, z: 0 };
+    p.pos.x = 0; p.pos.y = 0; p.pos.z = p.team === 0 ? -15 : 15;
+    p.vel.x = 0; p.vel.y = 0; p.vel.z = 0;
   }
 
   public handleShot(shooterId: string, targetId: string): void {
@@ -185,11 +191,18 @@ export default class Sim {
   }
 
   public getSnapshot(): ServerStateMsg {
+    const snap = this._snapshotPlayers;
+    let i = 0;
+    for (const p of this.players.values()) {
+      snap[i++] = p.toNetState();
+    }
+    snap.length = i;
+
     return {
       t:          "state",
       seq:        ++this.seq,
-      players:    [...this.players.values()].map((p) => p.toNetState()),
-      score:      { ...this.score },
+      players:    snap,
+      score:      this.score,
       arenaState: this.arenaStateId,
       phase:      this.gamePhase,
     };

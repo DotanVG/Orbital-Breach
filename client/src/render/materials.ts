@@ -98,3 +98,23 @@ export function makeBarMaterial(): THREE.MeshStandardMaterial {
     roughness: 0.1,
   });
 }
+
+export function makeDiamondMaterial(): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: 0x1a2a3a,
+    emissive: 0x003366,
+    emissiveIntensity: 0.35,
+    metalness: 0.85,
+    roughness: 0.15,
+    transparent: true,
+    opacity: 0.92,
+  });
+}
+
+export function makeDiamondWireframeMaterial(): THREE.LineBasicMaterial {
+  return new THREE.LineBasicMaterial({
+    color: 0x00ccff,
+    transparent: true,
+    opacity: 0.75,
+  });
+}
