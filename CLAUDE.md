@@ -73,11 +73,22 @@ cd server && node_modules/.bin/tsc --noEmit
 Feature → staging → main. Never push features directly to main.
 
 ```
-feature/<name>  →  staging  (merge commit OK)
-staging         →  main     ONLY via: git merge --ff-only staging
+feature/<name>  →  staging    via GitHub PR (squash merge OK)
+staging         →  main       NEVER via GitHub PR — CLI only:
 ```
 
-Hotfix escape hatch: push hotfix directly to main, then immediately `git merge main` into staging to re-sync.
+```bash
+git fetch origin
+git checkout main && git merge --ff-only origin/staging && git push origin main
+```
+
+Hotfix escape hatch: push hotfix directly to main, then sync staging:
+
+```bash
+git checkout staging && git merge origin/main && git push origin staging
+```
+
+After any sync: `origin/main` and `origin/staging` must point to the same SHA.
 
 Branch naming: `feature/<kebab-name>` matching the PlanTracker feature name.
 main must always be in a working, playable state.
