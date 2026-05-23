@@ -148,3 +148,15 @@ Key commands:
 
 - <short progress note with timestamp>
 ```
+
+## Knowledge graph (graphify)
+
+`graphify-out/` — local-only, gitignored. Contains a clustered knowledge graph of the codebase.
+
+**Claude/Codex uses it automatically** via `.claude/skills/graphify/SKILL.md` — no manual steps needed for AI-assisted work.
+
+**Regenerate after major refactors:**
+```bash
+graphify extract . --backend ollama --model llama3
+graphify cluster-only .
+```
