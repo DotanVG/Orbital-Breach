@@ -13,3 +13,4 @@ CLAUDE.local.md
 /package.json
 /package-lock.json
 /.codex
+graphify-out/
