@@ -1673,7 +1673,7 @@ export class App {
   // ── Collision visualizer ────────────────────────────────────────────────────
 
   private tickCollisionVis(): void {
-    if (this.input.consumeCollisionVisToggle()) {
+    if (import.meta.env.DEV && this.input.consumeCollisionVisToggle()) {
       this.collisionVis.toggle();
     }
     if (!this.collisionVis.isVisible()) return;
@@ -1686,6 +1686,7 @@ export class App {
   // ── Collider editor ─────────────────────────────────────────────────────────
 
   private tickColliderEditor(): void {
+    if (!import.meta.env.DEV) return;
     if (this.input.consumeColliderEditorToggle()) {
       this.colliderEditor.toggle();
     }
