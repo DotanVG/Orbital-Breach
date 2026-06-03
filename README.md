@@ -98,26 +98,15 @@ Debrief awards are generated from match stats:
 - **Iron Pilot** for a human pilot who avoids being frozen.
 - **Moon Walker** for the most travel distance.
 
-## Current Status
-
-| Feature | Status |
-| --- | --- |
-| Browser game deployment | Done |
-| Solo and online multiplayer | Done |
-| Mobile touch controls | Done |
-| In-game instructions page | Done |
-| Itch.io landing page | Done |
-| Fullscreen mode with settings toggle | Done; iPhone Safari disables the toggle because non-video fullscreen is unsupported |
-
 ## Tech Stack
 
 | Layer | Technology |
 | --- | --- |
-| Renderer | Three.js 0.179 |
-| Client | TypeScript 5.9, Vite 7 |
-| Multiplayer | Colyseus 0.17 |
-| Server | Node.js, Express 5, TypeScript |
-| Testing | Vitest, 42 test files, 243 tests |
+| Renderer | Three.js 0.179.1 |
+| Client | TypeScript 5.9.3, Vite 7.1.3 |
+| Multiplayer | `@colyseus/sdk` 0.17.40, `@colyseus/core` 0.17.41, `@colyseus/ws-transport` 0.17.13 |
+| Server | Node.js 18+ runtime, Express 5.2.1, TypeScript 5.9.3 |
+| Testing | Vitest suite in `tests/` plus the manual smoke checklist in `docs/TESTING.md` |
 | Frontend hosting | Vercel |
 | Backend hosting | Render |
 | Analytics | Vercel Web Analytics and Speed Insights |
@@ -129,18 +118,11 @@ Prerequisites: Node.js 18+ and npm.
 Install dependencies:
 
 ```bash
-npm install
 npm install --prefix client
 npm install --prefix server
 ```
 
-Run the full local stack:
-
-```bash
-npm run dev
-```
-
-Or run each service separately:
+Run each service in its own terminal:
 
 ```bash
 # terminal 1
@@ -155,39 +137,78 @@ Open [http://localhost:5173](http://localhost:5173). In development, the Vite se
 Useful commands:
 
 ```bash
-# tests
-npm test
-
-# production builds
+# client build + typecheck
 npm run build --prefix client
+
+# server build
 npm run build --prefix server
+
+# repo-root vitest run (uses vitest.config.ts)
+npx --yes vitest run --config vitest.config.ts
 ```
 
 Production online multiplayer requires `VITE_COLYSEUS_ENDPOINT` on the client. The server accepts `PORT`, `CLIENT_ORIGIN`, `PUBLIC_ADDRESS`, and `NODE_ENV`.
 
 ## Development Tooling
 
-This repo uses an AI-assisted workflow driven by [Symphony](https://github.com/openai/symphony) and [Claude Code](https://docs.anthropic.com/claude-code).
+This repo uses an AI-assisted workflow driven by [Symphony](https://github.com/openai/symphony), [Claude Code](https://docs.anthropic.com/claude-code), and Codex-compatible repo-local skills.
 
 | File / Dir | Purpose |
 | --- | --- |
-| `WORKFLOW.md` | Symphony orchestration config — defines agents, task routing, and branching rules for [symphony-orchestrator](https://github.com/DotanVG/symphony-orchestrator) |
-| `.codex/` | Codex CLI agent skills for automated code tasks |
-| `.claude/` | Claude Code config: settings, hooks, shared skills, and worktree setup |
+| `WORKFLOW.md` | Symphony orchestration prompt and execution contract: tracker state routing, kickoff steps, validation expectations, PR handoff, and the `origin/staging` sync rules used by the orchestrator |
+| `.claude/settings.json` | Shared Claude project settings, plugin wiring, and hooks |
+| `.claude/hooks/` | Repository guardrails such as post-edit validation and git-operation safety checks |
+| `.claude/skills/` | Repo-local Claude/Codex skills, including graphify and project-specific workflow helpers |
+| `.worktreeinclude` | Local-only Claude/Codex files copied into new worktrees when they exist locally |
+| `CLAUDE.md` | Project memory: branch strategy, architecture invariants, and testing expectations |
 
-The combination of Linear (issue tracking) + Symphony (orchestration) + Claude Code (implementation) lets you assign tasks from any machine and have agents pick them up, branch, implement, and open PRs without a local dev environment.
+Merge strategy follows the repo's documented branch flow: feature work targets `staging` first, and `staging` is promoted to `main` with a fast-forward sync after validation. The orchestration workflow always rebases or fast-forwards against `origin/staging` before active work.
+
+The combination of Linear (issue tracking) + Symphony (orchestration) + Claude/Codex skills (implementation and verification) lets you assign tasks from any machine and have agents pick them up, branch, implement, and open PRs without a separate local planning layer.
+
+### Knowledge Graph
+
+`graphify-out/` is a local-only, gitignored knowledge graph for the codebase. Claude/Codex picks it up through `.claude/skills/graphify/SKILL.md`, so AI sessions can query the graph without extra setup.
+
+Regenerate it after major refactors or any large structural update:
+
+```bash
+graphify extract . --backend ollama --model llama3
+graphify cluster-only .
+```
 
 ## Repository Map
 
-- `client/src/game/gameApp.ts` owns app mode transitions, the render loop, portal flow, solo/online match orchestration, HUD updates, and end-of-match debrief routing.
-- `client/src/ui/roomBrowser.ts` implements public room browsing, private/public room creation, invite detection, and direct joins.
-- `client/src/ui/multiplayerLobby.ts` implements the online lobby, rosters, ready flow, bot fill controls, invite URL, native share, and QR code.
-- `client/src/match/localMatch.ts` runs solo matches with local bots.
-- `client/src/match/onlineMatch.ts` reconciles server-authoritative online snapshots.
-- `server/src/colyseus/OrbitalLobbyRoom.ts` runs the multiplayer room lifecycle, hit validation, scoring, bot fill, and authoritative actor state.
-- `server/src/index.ts` exposes Colyseus rooms plus `/health`, `/wake`, and `/rooms`.
-- `shared/` contains match constants, multiplayer messages, arena generation, spawn logic, player hit logic, and shared schemas.
-- `tests/` covers physics, arena generation, player logic, multiplayer room behavior, online reconciliation, UI helpers, analytics, portal placement, debrief stats, and regression cases.
+- `client/src/game/` contains the runtime shell: `gameApp.ts`, round flow, projectile handling, portal handoff, overlays, and debrief routing.
+- `client/src/match/` contains solo authority, online reconciliation, roster shaping, bots, and match adapters.
+- `client/src/player/` contains local-player movement, animation, combat, spawn helpers, and third-person presentation.
+- `client/src/arena/` contains procedural arena layout, breach-room queries, portal barriers, and obstacle collision helpers.
+- `client/src/render/` contains the Three.js scene manager, HUD renderers, materials, and player-facing overlays.
+- `client/src/ui/` contains the DOM UI stack: menu, welcome flow, room browser, multiplayer lobby, mobile controls, session menu, credits, instructions, and debrief.
+- `client/src/net/` contains Colyseus client wiring, endpoint resolution, room-directory polling, reconciliation helpers, and backend wake-up support.
+- `client/src/audio/` and `client/src/analytics/` contain sound playback and Vercel analytics wrappers.
+- `server/src/colyseus/` contains the production multiplayer runtime: authoritative room lifecycle, state schema, damage handling, and room directory.
+- `server/src/index.ts` bootstraps Express, Colyseus transport, CORS/security middleware, and the `/health`, `/wake`, and `/rooms` endpoints.
+- `server/src/net/`, `server/src/room.ts`, and `server/src/sim.ts` retain the legacy WebSocket transport/test harness that is still referenced by parts of the test suite.
+- `shared/` contains match constants, arena generation, multiplayer contracts, profanity filtering, hit logic, and shared schemas reused by client and server.
+- `docs/` contains the long-form architecture and testing references used to keep README detail concise.
+- `tests/` contains the Vitest coverage for gameplay rules, arena generation, online reconciliation, UI helpers, portal placement, analytics, debrief stats, and regressions.
+- `.claude/`, `CLAUDE.md`, `WORKFLOW.md`, and `.worktreeinclude` contain the repo-local AI workflow configuration.
+
+## Current Codebase Coverage
+
+Shipped and implemented in the current `staging` tree:
+
+- Browser-playable zero-G FPS with solo bot matches and Colyseus-backed online multiplayer.
+- Quick match, room browser, private/public room creation, invite URLs, native share, and QR joins.
+- Mobile touch controls, embed support for itch.io, and Vibe Jam portal handoff/return flow.
+- Post-match debrief stats, awards, credits, analytics, and Speed Insights instrumentation.
+- AI bot fill, ready checks, stale-player seat cleanup, and authoritative round/match scoring.
+
+Evidence-backed pending or transitional surfaces still visible in the repo:
+
+- `client/src/combat.ts` still carries a TODO to route firing through an active-weapon abstraction instead of the current fixed freeze-pistol path.
+- `server/src/net/`, `server/src/room.ts`, and `server/src/sim.ts` remain as legacy transport/test support while Colyseus is the production multiplayer path.
 
 ## Credits
 
