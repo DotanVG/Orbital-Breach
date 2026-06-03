@@ -1,6 +1,7 @@
 import { MAX_LAUNCH_SPEED } from '../../../shared/constants';
 import type { DamageState, EnemyPlayerInfo, FullPlayerInfo } from '../../../shared/schema';
 import { isTouchDevice } from '../platform';
+import { buildBodyStatusHtml, damageStateSignature } from './hud/bodyStatus';
 import { createHudView, type HudElements } from './hud/hudView';
 import { buildScoreboardHtml } from './hud/scoreboard';
 import type { TutorialPrompt } from './hud/tutorial';
@@ -94,6 +95,7 @@ export class HUD {
   private hitConfirmTeam: 0 | 1 = 0;
   private hitConfirmTimer = 0;
   private isFirstRound = true;
+  private lastDamageSignature = "";
   private prevPhase: GamePhase = 'LOBBY';
   private typewriterTimer = 0;
   private typewriterIdx = 0;
@@ -301,22 +303,13 @@ export class HUD {
   }
 
   private renderDamage(damage: DamageState): void {
-    const parts: Array<{ label: string; tone: "danger" | "warn" | "info" }> = [];
-    if (damage.frozen) parts.push({ label: "FROZEN", tone: "danger" });
-    if (damage.leftArm) parts.push({ label: "LEFT ARM OFFLINE", tone: "warn" });
-    if (damage.rightArm) parts.push({ label: "RIGHT ARM OFFLINE", tone: "warn" });
-    if (damage.leftLeg && damage.rightLeg) {
-      parts.push({ label: "BOTH LEGS 50% LAUNCH", tone: "info" });
-    } else if (damage.leftLeg) {
-      parts.push({ label: "LEFT LEG 75% LAUNCH", tone: "info" });
-    } else if (damage.rightLeg) {
-      parts.push({ label: "RIGHT LEG 75% LAUNCH", tone: "info" });
-    }
+    this.view.damage.style.display = "block";
 
-    this.view.damage.style.display = parts.length > 0 ? "flex" : "none";
-    this.view.damage.innerHTML = parts
-      .map((part) => `<span class="ob-damage-pill ob-damage-pill--${part.tone}">${part.label}</span>`)
-      .join("");
+    const signature = damageStateSignature(damage);
+    if (signature !== this.lastDamageSignature) {
+      this.lastDamageSignature = signature;
+      this.view.damage.innerHTML = buildBodyStatusHtml(damage);
+    }
   }
 
   private renderScoreboard(
