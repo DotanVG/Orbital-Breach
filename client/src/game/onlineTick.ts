@@ -139,6 +139,7 @@ function checkOnlineBreachScore(ctx: GameTickContext): void {
 function sendOnlinePlayerUpdate(ctx: GameTickContext): void {
   const pos = ctx.player.getPosition();
   const vel = ctx.player.phys.vel;
+  const orientation = ctx.player.getVisualQuaternion();
   ctx.net.sendPlayerUpdate({
     posX: pos.x,
     posY: pos.y,
@@ -147,6 +148,10 @@ function sendOnlinePlayerUpdate(ctx: GameTickContext): void {
     velY: vel.y,
     velZ: vel.z,
     yaw: ctx.cam.getYaw(),
+    orientX: orientation.x,
+    orientY: orientation.y,
+    orientZ: orientation.z,
+    orientW: orientation.w,
     phase: ctx.player.phase,
     frozen: ctx.player.damage.frozen,
     leftArm: ctx.player.damage.leftArm,

@@ -8,6 +8,11 @@ import {
   ONE_LEG_HIT_LAUNCH_FACTOR,
   PLAYER_RADIUS,
 } from "./constants";
+import {
+  classifyHitZoneByColliders,
+  isQuaternionLike,
+  type QuaternionLike,
+} from "./hitZoneColliders";
 import type { Vec3 } from "./vec3";
 import { v3 } from "./vec3";
 
@@ -56,6 +61,26 @@ export interface CollisionBody {
 }
 
 export function classifyHitZone(
+  impactPoint: Vec3,
+  playerPos: Vec3,
+  playerFacing: Vec3 | QuaternionLike,
+  hitOffsetY = 0,
+  hitRadius = PLAYER_RADIUS,
+): HitZone {
+  if (isQuaternionLike(playerFacing)) {
+    return classifyHitZoneByColliders(impactPoint, playerPos, playerFacing);
+  }
+
+  return classifyHitZoneFromFacing(
+    impactPoint,
+    playerPos,
+    playerFacing,
+    hitOffsetY,
+    hitRadius,
+  );
+}
+
+function classifyHitZoneFromFacing(
   impactPoint: Vec3,
   playerPos: Vec3,
   playerFacing: Vec3,

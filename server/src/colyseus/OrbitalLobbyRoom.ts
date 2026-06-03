@@ -29,6 +29,10 @@ import type { MatchTeamSize } from "../../../shared/match";
 import { findMatchWinner } from "../../../shared/match-flow";
 import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { generateArenaLayout } from "../../../shared/arena-gen";
+import {
+  normalizeQuaternion,
+  quaternionFromYawPitchRoll,
+} from "../../../shared/hitZoneColliders";
 import { isCallSignClean } from "../../../shared/profanity";
 import {
   ACTOR_COLLISION_RADIUS,
@@ -322,6 +326,13 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     actor.velY = clampFinite(Number(message.velY), -VEL_CLAMP, VEL_CLAMP);
     actor.velZ = clampFinite(Number(message.velZ), -VEL_CLAMP, VEL_CLAMP);
     actor.yaw = clampFinite(Number(message.yaw), -Math.PI * 2, Math.PI * 2);
+    const orientation = normalizeQuaternion({
+      x: Number(message.orientX ?? 0),
+      y: Number(message.orientY ?? 0),
+      z: Number(message.orientZ ?? 0),
+      w: Number(message.orientW ?? 1),
+    });
+    setActorOrientation(actor, orientation);
     const rawPhase = String(message.phase ?? "");
     const prevPhase = actor.phase;
     actor.phase = normalizeAuthoritativePhase(rawPhase, actor);
@@ -703,6 +714,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       actor.kills = 0;
       actor.deaths = 0;
       actor.yaw = this.botSpawnYaw[member.team];
+      setActorOrientation(actor, quaternionFromYawPitchRoll(actor.yaw));
 
       if (member.team === 0) {
         const slot = slots0[team0Index] ?? slots0[slots0.length - 1] ?? center0;
@@ -1011,6 +1023,16 @@ function normalizeDirection(
     y: y / length,
     z: z / length,
   };
+}
+
+function setActorOrientation(
+  actor: Pick<ActorState, "orientX" | "orientY" | "orientZ" | "orientW">,
+  orientation: { x: number; y: number; z: number; w: number },
+): void {
+  actor.orientX = orientation.x;
+  actor.orientY = orientation.y;
+  actor.orientZ = orientation.z;
+  actor.orientW = orientation.w;
 }
 
 function breachExitYaw(axis: "x" | "y" | "z", openSign: 1 | -1): number {

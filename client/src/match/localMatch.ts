@@ -10,6 +10,7 @@ import {
   maxLaunchPower,
   resolveActorCollisions,
 } from "../../../shared/player-logic";
+import { quaternionFromYawPitchRoll } from "../../../shared/hitZoneColliders";
 import type { EnemyPlayerInfo, FullPlayerInfo, PlayerPhase, DamageState } from "../../../shared/schema";
 import type { Vec3 } from "../../../shared/vec3";
 import { v3 } from "../../../shared/vec3";
@@ -308,7 +309,7 @@ export class LocalMatch {
       const zone = LocalPlayer.classifyHitZone(
         event.impactPoint,
         player.getPosition(),
-        camera.getForward(),
+        player.getVisualQuaternion(),
         HITBOX_OFFSET_Y,
         HITBOX_RADIUS,
       );
@@ -335,7 +336,7 @@ export class LocalMatch {
     const zone = classifyHitZone(
       toVec3(event.impactPoint),
       toVec3(bot.phys.pos),
-      yawForward(bot.rot.yaw),
+      quaternionFromYawPitchRoll(bot.rot.yaw, bot.rot.pitch),
       HITBOX_OFFSET_Y,
       HITBOX_RADIUS,
     );
@@ -404,7 +405,7 @@ export class LocalMatch {
         bot.phys.pos,
         bot.damage,
         bot.phase,
-        bot.rot.yaw,
+        toThreeQuaternion(quaternionFromYawPitchRoll(bot.rot.yaw, bot.rot.pitch)),
         dt,
         bot.phys.vel.length(),
         this.celebratingTeam === bot.team,
@@ -974,7 +975,14 @@ function resetBotsForRound(
     bot.breachEntryCarryTimer = 0;
     bot.rot = exitRotation(query, bot.team);
     bot.brain.resetForRound(roundSeed * 37 + i * 13 + bot.team);
-    bot.avatar.update(bot.phys.pos, bot.damage, bot.phase, bot.rot.yaw, 0, 0);
+    bot.avatar.update(
+      bot.phys.pos,
+      bot.damage,
+      bot.phase,
+      toThreeQuaternion(quaternionFromYawPitchRoll(bot.rot.yaw, bot.rot.pitch)),
+      0,
+      0,
+    );
   }
 }
 
@@ -1047,6 +1055,11 @@ function decayBreachEntryCarry(bot: BotState, onGround: boolean, dt: number): vo
   bot.breachEntryCarry.y = 0;
 }
 
-function yawForward(yaw: number): Vec3 {
-  return v3.normalize({ x: -Math.sin(yaw), y: 0, z: -Math.cos(yaw) });
+function toThreeQuaternion(quaternion: ReturnType<typeof quaternionFromYawPitchRoll>): THREE.Quaternion {
+  return new THREE.Quaternion(
+    quaternion.x,
+    quaternion.y,
+    quaternion.z,
+    quaternion.w,
+  );
 }

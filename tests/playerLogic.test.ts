@@ -9,6 +9,7 @@ import {
   resolveActorCollisions,
   spawnPosition,
 } from "../shared/player-logic";
+import { quaternionFromYawPitchRoll } from "../shared/hitZoneColliders";
 import {
   BOTH_LEGS_HIT_LAUNCH_FACTOR,
   HITBOX_OFFSET_Y,
@@ -16,6 +17,7 @@ import {
   MAX_LAUNCH_SPEED,
   ONE_LEG_HIT_LAUNCH_FACTOR,
 } from "../shared/constants";
+import { defaultHitZoneColliders } from "../client/src/player/hitZoneColliders";
 
 describe("classifyHitZone", () => {
   const playerPos = { x: 0, y: 0, z: 0 };
@@ -75,6 +77,79 @@ describe("classifyHitZone", () => {
     expect(
       classifyHitZone({ x: 0, y: 0.2, z: 0 }, playerPos, facing, -0.35),
     ).toBe("head");
+  });
+
+  it("keeps the normalized collider layout symmetric around the model centerline", () => {
+    expect(defaultHitZoneColliders).toEqual([
+      {
+        id: "col_1",
+        zone: "head",
+        shape: "sphere",
+        position: { x: 0, y: -0.16, z: 0 },
+        size: { x: 0.15, y: 0.15, z: 0.15 },
+        rotation: { x: 0, y: 0, z: 0 },
+      },
+      {
+        id: "col_2",
+        zone: "body",
+        shape: "box",
+        position: { x: 0, y: -0.45, z: 0 },
+        size: { x: 0.11, y: 0.114, z: 0.088 },
+        rotation: { x: 0, y: 0, z: 0 },
+      },
+      {
+        id: "col_3",
+        zone: "leftArm",
+        shape: "box",
+        position: { x: 0.1375, y: -0.4, z: 0.0175 },
+        size: { x: 0.051, y: 0.115, z: 0.093 },
+        rotation: { x: 0, y: 0, z: 0 },
+      },
+      {
+        id: "col_4",
+        zone: "rightArm",
+        shape: "box",
+        position: { x: -0.1375, y: -0.4, z: 0.0175 },
+        size: { x: 0.051, y: 0.115, z: 0.093 },
+        rotation: { x: 0, y: 0, z: 0 },
+      },
+      {
+        id: "col_5",
+        zone: "leftLeg",
+        shape: "box",
+        position: { x: -0.0975, y: -0.64, z: -0.01 },
+        size: { x: 0.033, y: 0.104, z: 0.035 },
+        rotation: { x: 0, y: 0, z: 0 },
+      },
+      {
+        id: "col_6",
+        zone: "rightLeg",
+        shape: "box",
+        position: { x: 0.0975, y: -0.64, z: -0.01 },
+        size: { x: 0.033, y: 0.104, z: 0.035 },
+        rotation: { x: 0, y: 0, z: 0 },
+      },
+    ]);
+  });
+
+  it("classifies hits against rolled alien orientation instead of using yaw-only facing", () => {
+    // Right-leg local point from the normalized collider target, rolled 180
+    // degrees around forward so the collider stays attached to the model.
+    const rolledRightLegHit = {
+      x: -0.0975,
+      y: 0.64,
+      z: -0.01,
+    };
+
+    expect(
+      classifyHitZone(
+        rolledRightLegHit,
+        playerPos,
+        quaternionFromYawPitchRoll(0, 0, Math.PI),
+        HITBOX_OFFSET_Y,
+        HITBOX_RADIUS,
+      ),
+    ).toBe("rightLeg");
   });
 });
 
