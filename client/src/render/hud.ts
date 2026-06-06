@@ -142,7 +142,7 @@ export class HUD {
     this.renderCrosshair(state.dt);
     this.renderGrabPrompt(state.playerPhase, state.nearBar, state.damage, state.team);
     this.renderPowerBar(state.playerPhase, state.launchPower, state.maxLaunchPower, state.team);
-    this.renderDamage(state.damage);
+    this.renderDamage(state.phase, state.damage);
     this.renderTutorial(state.phase, state.tutorialPrompt, state.team);
     this.renderScoreboard(state.tabHeld, state.ownTeam, state.enemyTeam, state.showPing, state.team);
     this.view.help.classList.toggle("ob-help-visible", state.helpVisible);
@@ -302,8 +302,10 @@ export class HUD {
     this.view.powerLabel.style.textShadow = `0 0 8px ${palette.glowColor}`;
   }
 
-  private renderDamage(damage: DamageState): void {
-    this.view.damage.style.display = "block";
+  private renderDamage(phase: GamePhase, damage: DamageState): void {
+    const show = phase === 'PLAYING';
+    this.view.damage.style.display = show ? "block" : "none";
+    if (!show) return;
 
     const signature = damageStateSignature(damage);
     if (signature !== this.lastDamageSignature) {
