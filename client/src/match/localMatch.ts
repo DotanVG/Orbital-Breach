@@ -143,6 +143,9 @@ export class LocalMatch {
   private roundResolved = false;
   private roundSeed = 0;
   private score = { team0: 0, team1: 0 };
+  // Reused across the per-frame bot loop so each bot doesn't allocate a fresh
+  // Quaternion every frame. avatar.update() copies it immediately.
+  private readonly botOrientationScratch = new THREE.Quaternion();
 
   public onEvent: ((event: LocalMatchEvent) => void) | null = null;
 
@@ -310,8 +313,6 @@ export class LocalMatch {
         event.impactPoint,
         player.getPosition(),
         player.getVisualQuaternion(),
-        HITBOX_OFFSET_Y,
-        HITBOX_RADIUS,
       );
       const frozen = player.applyHit(zone, impulse);
       if (frozen) {
@@ -337,8 +338,6 @@ export class LocalMatch {
       toVec3(event.impactPoint),
       toVec3(bot.phys.pos),
       quaternionFromYawPitchRoll(bot.rot.yaw, bot.rot.pitch),
-      HITBOX_OFFSET_Y,
-      HITBOX_RADIUS,
     );
     const frozen = applyHitToBot(bot, zone, impulse);
     if (event.ownerId === LOCAL_PLAYER_ID) {
@@ -405,7 +404,7 @@ export class LocalMatch {
         bot.phys.pos,
         bot.damage,
         bot.phase,
-        toThreeQuaternion(quaternionFromYawPitchRoll(bot.rot.yaw, bot.rot.pitch)),
+        toThreeQuaternion(quaternionFromYawPitchRoll(bot.rot.yaw, bot.rot.pitch), this.botOrientationScratch),
         dt,
         bot.phys.vel.length(),
         this.celebratingTeam === bot.team,
@@ -1055,8 +1054,11 @@ function decayBreachEntryCarry(bot: BotState, onGround: boolean, dt: number): vo
   bot.breachEntryCarry.y = 0;
 }
 
-function toThreeQuaternion(quaternion: ReturnType<typeof quaternionFromYawPitchRoll>): THREE.Quaternion {
-  return new THREE.Quaternion(
+function toThreeQuaternion(
+  quaternion: ReturnType<typeof quaternionFromYawPitchRoll>,
+  out: THREE.Quaternion = new THREE.Quaternion(),
+): THREE.Quaternion {
+  return out.set(
     quaternion.x,
     quaternion.y,
     quaternion.z,

@@ -60,6 +60,19 @@ export interface CollisionBody {
   vel?: Vec3;
 }
 
+/**
+ * Classify which body zone a shot landed on.
+ *
+ * Preferred path: pass a full orientation `QuaternionLike` as `playerFacing` —
+ * the hit is classified against the rotating signed-distance colliders, so it
+ * stays correct for yaw'd/rolling aliens. In that case `hitOffsetY`/`hitRadius`
+ * are ignored (the colliders carry their own absolute positions and extents).
+ *
+ * Legacy path: pass a `Vec3` facing direction to use the yaw-only heuristic,
+ * where `hitOffsetY`/`hitRadius` shift and scale the zone thresholds. This path
+ * is retained only for the older callers and tests; production now always
+ * passes a quaternion.
+ */
 export function classifyHitZone(
   impactPoint: Vec3,
   playerPos: Vec3,

@@ -30,6 +30,9 @@ interface RemoteActorTrack {
 export class OnlineMatch {
   private celebratingTeam: 0 | 1 | null = null;
   private tracks = new Map<string, RemoteActorTrack>();
+  // Reused as the per-frame slerp target so we don't allocate a fresh
+  // Quaternion per remote actor every frame.
+  private readonly orientationScratch = new THREE.Quaternion();
 
   public constructor(private scene: THREE.Scene) {}
 
@@ -100,7 +103,7 @@ export class OnlineMatch {
       const previousPos = track.renderPos.clone();
       const sharpness = track.snapshot.phase === "FROZEN" ? 20 : 12;
       reconcileVector(track.renderPos, predictedPos, dt, sharpness, 3.5);
-      const targetOrientation = snapshotOrientation(track.snapshot);
+      const targetOrientation = snapshotOrientation(track.snapshot, this.orientationScratch);
       const orientationAlpha = 1 - Math.pow(0.0008, dt);
       track.renderOrientation.slerp(targetOrientation, orientationAlpha);
 
@@ -157,8 +160,6 @@ export class OnlineMatch {
         z: track.renderOrientation.z,
         w: track.renderOrientation.w,
       },
-      HITBOX_OFFSET_Y,
-      HITBOX_RADIUS,
     );
   }
 
@@ -226,15 +227,13 @@ function cloneSnapshot(actor: OnlineActorSnapshot): OnlineActorSnapshot {
   return { ...actor };
 }
 
-function snapshotOrientation(actor: Pick<OnlineActorSnapshot, "orientX" | "orientY" | "orientZ" | "orientW">): THREE.Quaternion {
-  const orientation = new THREE.Quaternion(
-    actor.orientX,
-    actor.orientY,
-    actor.orientZ,
-    actor.orientW,
-  );
-  if (orientation.lengthSq() <= 1e-8) {
-    return new THREE.Quaternion();
+function snapshotOrientation(
+  actor: Pick<OnlineActorSnapshot, "orientX" | "orientY" | "orientZ" | "orientW">,
+  out: THREE.Quaternion = new THREE.Quaternion(),
+): THREE.Quaternion {
+  out.set(actor.orientX, actor.orientY, actor.orientZ, actor.orientW);
+  if (out.lengthSq() <= 1e-8) {
+    return out.identity();
   }
-  return orientation.normalize();
+  return out.normalize();
 }

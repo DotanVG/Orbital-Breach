@@ -239,8 +239,12 @@ function multiplyQuaternions(a: QuaternionLike, b: QuaternionLike): QuaternionLi
 }
 
 function rotateByQuaternion(q: QuaternionLike, point: Vec3): Vec3 {
+  // v' = v + 2w(u × v) + 2(u × (u × v)), where u = q.xyz.
+  // The 2w factor is required — without it the rotation under-rotates and
+  // shrinks the vector for any angle other than 0 or 180 degrees (where w = 0),
+  // which silently misclassifies hits on yaw'd/rolling aliens.
   const qVec = { x: q.x, y: q.y, z: q.z };
   const uv = v3.cross(qVec, point);
   const uuv = v3.cross(qVec, uv);
-  return v3.add(point, v3.addScaled(v3.scale(uv, q.w), uuv, 2));
+  return v3.add(point, v3.addScaled(v3.scale(uv, 2 * q.w), uuv, 2));
 }
