@@ -102,10 +102,10 @@ Debrief awards are generated from match stats:
 
 | Layer | Technology |
 | --- | --- |
-| Renderer | Three.js 0.179.1 |
-| Client | TypeScript 5.9.3, Vite 7.1.3 |
-| Multiplayer | `@colyseus/sdk` 0.17.40, `@colyseus/core` 0.17.41, `@colyseus/ws-transport` 0.17.13 |
-| Server | Node.js 18+ runtime, Express 5.2.1, TypeScript 5.9.3 |
+| Renderer | Three.js 0.179 |
+| Client | TypeScript 5.9, Vite 7.1 |
+| Multiplayer | `@colyseus/sdk` 0.17, `@colyseus/core` 0.17, `@colyseus/ws-transport` 0.17 |
+| Server | Node.js 18+ runtime, Express 5.2, TypeScript 5.9 |
 | Testing | Vitest suite in `tests/` plus the manual smoke checklist in `docs/TESTING.md` |
 | Frontend hosting | Vercel |
 | Backend hosting | Render |
@@ -118,11 +118,20 @@ Prerequisites: Node.js 18+ and npm.
 Install dependencies:
 
 ```bash
+npm install
 npm install --prefix client
 npm install --prefix server
 ```
 
-Run each service in its own terminal:
+The root `npm install` pulls the dev tooling (`concurrently`, `vitest`) used by the repo-root scripts.
+
+Run the full local stack in one terminal:
+
+```bash
+npm run dev
+```
+
+This uses `concurrently` to start the server and client together. To run each service separately instead:
 
 ```bash
 # terminal 1
@@ -137,14 +146,14 @@ Open [http://localhost:5173](http://localhost:5173). In development, the Vite se
 Useful commands:
 
 ```bash
+# repo-root test suite (vitest)
+npm test
+
 # client build + typecheck
 npm run build --prefix client
 
 # server build
 npm run build --prefix server
-
-# repo-root vitest run (uses vitest.config.ts)
-npx --yes vitest run --config vitest.config.ts
 ```
 
 Production online multiplayer requires `VITE_COLYSEUS_ENDPOINT` on the client. The server accepts `PORT`, `CLIENT_ORIGIN`, `PUBLIC_ADDRESS`, and `NODE_ENV`.
