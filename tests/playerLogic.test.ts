@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  allLimbsDamaged,
   classifyHitZone,
   applyHit,
+  findFullFreezeWinner,
   generateSpawnPositions,
   maxLaunchPower,
   resolveActorCollisions,
@@ -243,5 +245,99 @@ describe("resolveActorCollisions", () => {
     // pointing away from each other, so the approach guard should leave them.
     expect(a.vel.x).toBeCloseTo(-3, 4);
     expect(b.vel.x).toBeCloseTo(3, 4);
+  });
+});
+
+describe("allLimbsDamaged", () => {
+  it("is true only when all four limbs are hit", () => {
+    expect(
+      allLimbsDamaged({ frozen: false, leftArm: true, rightArm: true, leftLeg: true, rightLeg: true }),
+    ).toBe(true);
+    expect(
+      allLimbsDamaged({ frozen: false, leftArm: true, rightArm: true, leftLeg: true, rightLeg: false }),
+    ).toBe(false);
+    expect(
+      allLimbsDamaged({ frozen: true, leftArm: false, rightArm: false, leftLeg: false, rightLeg: false }),
+    ).toBe(false);
+  });
+});
+
+describe("applyHit — arm asymmetry", () => {
+  function grabbingState() {
+    return {
+      damage: { frozen: false, leftArm: false, rightArm: false, leftLeg: false, rightLeg: false },
+      deaths: 0,
+      grabbedBarPos: { x: 1, y: 2, z: 3 },
+      launchPower: 5,
+      phase: "GRABBING" as const,
+      vel: { x: 0, y: 0, z: 0 },
+    };
+  }
+
+  it("a left-arm hit drops the grab and sends the player FLOATING", () => {
+    const state = grabbingState();
+    const killed = applyHit(state, "leftArm", { x: 0, y: 0, z: 0 });
+    expect(killed).toBe(false);
+    expect(state.phase).toBe("FLOATING");
+    expect(state.grabbedBarPos).toBeNull();
+    expect(state.damage.leftArm).toBe(true);
+  });
+
+  it("a right-arm hit does NOT drop the grab", () => {
+    const state = grabbingState();
+    const killed = applyHit(state, "rightArm", { x: 0, y: 0, z: 0 });
+    expect(killed).toBe(false);
+    expect(state.phase).toBe("GRABBING");
+    expect(state.grabbedBarPos).toEqual({ x: 1, y: 2, z: 3 });
+    expect(state.damage.rightArm).toBe(true);
+  });
+
+  it("adds the impulse to the player's velocity", () => {
+    const state = grabbingState();
+    applyHit(state, "rightArm", { x: 2, y: -1, z: 0.5 });
+    expect(state.vel).toEqual({ x: 2, y: -1, z: 0.5 });
+  });
+});
+
+describe("findFullFreezeWinner", () => {
+  const actor = (team: 0 | 1, frozen: boolean) => ({ team, frozen });
+
+  it("returns null while both teams still have active players", () => {
+    expect(
+      findFullFreezeWinner([actor(0, false), actor(0, true), actor(1, false)]),
+    ).toBeNull();
+  });
+
+  it("returns the surviving team when the other is fully frozen", () => {
+    expect(findFullFreezeWinner([actor(0, true), actor(1, false)])).toBe(1);
+    expect(findFullFreezeWinner([actor(0, false), actor(1, true), actor(1, true)])).toBe(0);
+  });
+
+  it("returns null on a mutual full freeze (no winner)", () => {
+    expect(findFullFreezeWinner([actor(0, true), actor(1, true)])).toBeNull();
+  });
+
+  it("returns null when either team has no players at all", () => {
+    expect(findFullFreezeWinner([actor(0, true)])).toBeNull();
+    expect(findFullFreezeWinner([])).toBeNull();
+  });
+});
+
+describe("generateSpawnPositions — edge cases", () => {
+  const arena = {
+    getBreachRoomCenter: () => ({ x: 0, y: 0, z: -23 }),
+    getBreachOpenAxis: () => "z" as const,
+    getBreachOpenSign: () => 1 as const,
+  };
+
+  it("returns an empty list for a non-positive count", () => {
+    expect(generateSpawnPositions(0, 0, arena)).toEqual([]);
+    expect(generateSpawnPositions(0, -3, arena)).toEqual([]);
+  });
+
+  it("is deterministic for the same seed", () => {
+    const a = generateSpawnPositions(0, 5, arena, 42);
+    const b = generateSpawnPositions(0, 5, arena, 42);
+    expect(a).toEqual(b);
   });
 });

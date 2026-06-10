@@ -56,7 +56,9 @@ expect.extend({
 });
 
 declare module "vitest" {
-  interface Assertion<T = unknown> {
+  // Default must match vitest's own `Assertion<T = any>` declaration exactly,
+  // or TS2428 "identical type parameters" fires under tsconfig.test.json.
+  interface Assertion<T = any> {
     toEqualQuaternions(expected: Record<string, THREE.Quaternion>): T;
   }
   interface AsymmetricMatchersContaining {
