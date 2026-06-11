@@ -1,6 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { getSoloBotFill } from "../shared/match";
+import { getSoloBotFill, isMatchTeamSize, MATCH_TEAM_SIZES } from "../shared/match";
 import { buildHudRosters } from "../client/src/match/rosterView";
+
+describe("isMatchTeamSize", () => {
+  it("accepts every supported team size", () => {
+    for (const size of MATCH_TEAM_SIZES) {
+      expect(isMatchTeamSize(size)).toBe(true);
+    }
+  });
+
+  it("rejects sizes outside the supported set", () => {
+    expect(isMatchTeamSize(0)).toBe(false);
+    expect(isMatchTeamSize(3)).toBe(false);
+    expect(isMatchTeamSize(-1)).toBe(false);
+    expect(isMatchTeamSize(21)).toBe(false);
+  });
+});
 
 describe("getSoloBotFill", () => {
   it("fills a 1v1 skirmish with one enemy bot", () => {
@@ -21,6 +36,19 @@ describe("getSoloBotFill", () => {
     });
     expect(getSoloBotFill(10, 0).totalBots).toBe(19);
     expect(getSoloBotFill(20, 0).totalBots).toBe(39);
+  });
+
+  it("leaves the bot seat open on team 1 when the human plays magenta", () => {
+    expect(getSoloBotFill(2, 1)).toEqual({
+      team0Bots: 2,
+      team1Bots: 1,
+      totalBots: 3,
+      totalPlayers: 4,
+    });
+  });
+
+  it("defaults the human to team 0", () => {
+    expect(getSoloBotFill(1)).toEqual(getSoloBotFill(1, 0));
   });
 });
 

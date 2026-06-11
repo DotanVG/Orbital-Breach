@@ -42,6 +42,36 @@ Config at the repo root:
   `client/node_modules/three/build/three.module.js`.
 - `tsconfig.test.json` — TypeScript scope for the test compile.
 
+### Root harness package.json (gitignored — recreate on fresh clones)
+
+The root `package.json` is deliberately **gitignored** (root-level dev tooling,
+not part of deployable code — Vercel builds from `client/` only, see
+`vercel.json`). A fresh clone therefore cannot run `npm test` until it exists.
+Recreate it with exactly this content, then `npm install`:
+
+```json
+{
+  "name": "orbital-breach-root",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^3.2.4",
+    "concurrently": "^9.1.0",
+    "vitest": "^3.2.4"
+  }
+}
+```
+
+Claude Code on the web does this automatically via the SessionStart hook
+(`.claude/hooks/session-start.mjs`), which also installs `client/` and
+`server/` dependencies. If you change the harness deps, update both this
+section and the hook — they must stay in sync.
+
 Conventions:
 - Explicit imports — `import { describe, it, expect } from 'vitest';`
 - Import paths are relative to the **repo root**:
