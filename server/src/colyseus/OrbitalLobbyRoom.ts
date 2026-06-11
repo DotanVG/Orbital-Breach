@@ -11,7 +11,6 @@ import {
   MULTIPLAYER_ROUND_END_SECONDS,
   MULTIPLAYER_ROUND_SECONDS,
   sanitizeRoomName,
-  type BreachReportMessage,
   type FillBotsMessage,
   type FreezeEventMessage,
   type HitReportMessage,
@@ -49,6 +48,7 @@ import {
   bounceActorInArena,
   integrateZeroGActor,
   isActorInEnemyBreachRoom,
+  isHitReportDistancePlausible,
   shouldServerSimulateHumanActor,
 } from "./onlineActorSimulation";
 import type { OrbitalRoomMetadata } from "./roomDirectory";
@@ -129,8 +129,8 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.onMessage("hit_report", (client, message: HitReportMessage) => {
       this.handleHitReportMessage(client, message);
     });
-    this.onMessage("breach_report", (client, message: BreachReportMessage) => {
-      this.handleBreachReportMessage(client, message);
+    this.onMessage("breach_report", (client) => {
+      this.handleBreachReportMessage(client);
     });
 
     void this.unlock();
@@ -324,6 +324,20 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       actor.leftLeg = false;
       actor.rightLeg = false;
     }
+
+    // Authoritative breach detection: award the point as soon as the
+    // position stream shows the actor inside the enemy breach room, so a
+    // legitimate breach scores even if its breach_report raced ahead of
+    // the position updates.
+    if (
+      this.state.phase === "PLAYING"
+      && !this.roundResolved
+      && !actor.frozen
+      && isActorInEnemyBreachRoom(actor, this.botGoalAxis, this.botGoalSigns)
+    ) {
+      actor.phase = "BREACH";
+      this.awardOnlineRoundPoint(actor.team, actor.id, actor.name, "breach");
+    }
   }
 
   private handleShotEventMessage(client: RoomClient, message: ShotEventMessage): void {
@@ -356,12 +370,13 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     if (this.state.phase !== "PLAYING" || this.roundResolved) return;
 
     const shooter = this.state.actors.get(client.sessionId);
-    if (!shooter || shooter.frozen) return;
+    if (!shooter || shooter.frozen || shooter.rightArm || shooter.phase === "RESPAWNING") return;
 
     const targetId = String(message.targetId ?? "").slice(0, 64);
     const target = this.state.actors.get(targetId);
     if (!target || target.frozen || target.team === shooter.team) return;
     if (!isHitZone(message.zone)) return;
+    if (!isHitReportDistancePlausible(shooter, target)) return;
 
     if (target.isBot) {
       target.frozen = true;
@@ -389,17 +404,19 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.checkFullFreezeWin();
   }
 
-  private handleBreachReportMessage(client: RoomClient, message: BreachReportMessage): void {
+  private handleBreachReportMessage(client: RoomClient): void {
     if (this.state.phase !== "PLAYING" || this.roundResolved) return;
 
     const actor = this.state.actors.get(client.sessionId);
     if (!actor || actor.frozen) return;
 
-    const scorerTeam = message.scorerTeam === 0 || message.scorerTeam === 1
-      ? message.scorerTeam
-      : actor.team;
+    // The report is only a hint: the point is awarded when the server's
+    // last-known position for this actor is inside the enemy breach room.
+    // Team and name come from server state, never from the client message.
+    if (!isActorInEnemyBreachRoom(actor, this.botGoalAxis, this.botGoalSigns)) return;
 
-    this.awardOnlineRoundPoint(scorerTeam, actor.id, String(message.scorerName || actor.name), "breach");
+    actor.phase = "BREACH";
+    this.awardOnlineRoundPoint(actor.team, actor.id, actor.name, "breach");
   }
 
   // ── Round flow ──────────────────────────────────────────────────────────────

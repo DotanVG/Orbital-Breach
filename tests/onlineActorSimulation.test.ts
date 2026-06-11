@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_HIT_REPORT_DISTANCE,
   PLAYER_UPDATE_STALE_MS,
   bounceActorInArena,
   integrateZeroGActor,
   isActorInEnemyBreachRoom,
+  isHitReportDistancePlausible,
   shouldServerSimulateHumanActor,
   type ServerSimulatedOnlineActor,
 } from "../server/src/colyseus/onlineActorSimulation";
@@ -57,5 +59,40 @@ describe("onlineActorSimulation", () => {
 
     expect(isActorInEnemyBreachRoom(actor, "x", goalSigns)).toBe(true);
     expect(isActorInEnemyBreachRoom(makeActor({ team: 0, posX: 19 }), "x", goalSigns)).toBe(false);
+  });
+
+  it("rejects breach claims made from the arena or the actor's own breach room", () => {
+    const goalSigns = { team0: 1 as const, team1: -1 as const };
+
+    // Arena center — nowhere near a breach room.
+    expect(isActorInEnemyBreachRoom(makeActor({ team: 0, posX: 0 }), "x", goalSigns)).toBe(false);
+    // Inside the actor's OWN breach room (team 0 defends +x side).
+    expect(isActorInEnemyBreachRoom(makeActor({ team: 0, posX: 23 }), "x", goalSigns)).toBe(false);
+    // Same position is a valid breach for the OTHER team.
+    expect(isActorInEnemyBreachRoom(makeActor({ team: 1, posX: 23 }), "x", goalSigns)).toBe(true);
+    // Off-axis or out of the room's vertical bounds never counts.
+    expect(isActorInEnemyBreachRoom(makeActor({ team: 0, posX: -23, posZ: 30 }), "x", goalSigns)).toBe(false);
+    expect(isActorInEnemyBreachRoom(makeActor({ team: 0, posX: -23, posY: 30 }), "x", goalSigns)).toBe(false);
+  });
+});
+
+describe("isHitReportDistancePlausible", () => {
+  it("accepts hits within the arena's reachable extent", () => {
+    const shooter = makeActor({ posX: -20, posY: -20, posZ: -20 });
+    const target = makeActor({ posX: 20, posY: 20, posZ: 20 });
+    expect(isHitReportDistancePlausible(shooter, target)).toBe(true);
+    expect(isHitReportDistancePlausible(shooter, shooter)).toBe(true);
+  });
+
+  it("rejects hit reports on targets beyond the arena diagonal", () => {
+    const shooter = makeActor({ posX: 0, posY: 0, posZ: 0 });
+    const target = makeActor({ posX: MAX_HIT_REPORT_DISTANCE + 1, posY: 0, posZ: 0 });
+    expect(isHitReportDistancePlausible(shooter, target)).toBe(false);
+  });
+
+  it("treats the maximum distance itself as plausible", () => {
+    const shooter = makeActor();
+    const target = makeActor({ posX: MAX_HIT_REPORT_DISTANCE });
+    expect(isHitReportDistancePlausible(shooter, target)).toBe(true);
   });
 });
