@@ -6,7 +6,7 @@
 
 [Play Orbital Breach](https://orbital-breach.vercel.app) | [Itch.io](https://dotanv.itch.io) | [Source](https://github.com/DotanVG/Orbital-Breach)
 
-Orbital Breach runs in the browser with no account or install. The game supports solo bot matches, online multiplayer rooms, mobile touch controls, Vibe Jam portal handoff, debrief stats, credits, Vercel Analytics, and Vercel Speed Insights.
+Orbital Breach runs in the browser with no account or install. The game supports solo bot matches, online multiplayer rooms, mobile touch controls, Vibe Jam portal handoff, and post-match debrief stats.
 
 ## The Match
 
@@ -89,7 +89,6 @@ On touch devices, Orbital Breach swaps in mobile controls: a movement joystick i
 - Winning-team victory dance animation at match end.
 - Credits screen and external project links.
 - Vibe Jam portal integration at `https://vibej.am/portal/2026`, including return portals for portal arrivals.
-- Landing attribution via Vercel Web Analytics and performance collection via Vercel Speed Insights.
 
 Debrief awards are generated from match stats:
 
@@ -118,20 +117,11 @@ Prerequisites: Node.js 18+ and npm.
 Install dependencies:
 
 ```bash
-npm install
 npm install --prefix client
 npm install --prefix server
 ```
 
-The root `npm install` pulls the dev tooling (`concurrently`, `vitest`) used by the repo-root scripts.
-
-Run the full local stack in one terminal:
-
-```bash
-npm run dev
-```
-
-This uses `concurrently` to start the server and client together. To run each service separately instead:
+Run the server and client in separate terminals:
 
 ```bash
 # terminal 1
@@ -146,8 +136,10 @@ Open [http://localhost:5173](http://localhost:5173). In development, the Vite se
 Useful commands:
 
 ```bash
-# repo-root test suite (vitest)
-npm test
+# test suite — run from the repo root
+# (the one-time install lands in a gitignored root package.json)
+npm install vitest
+npx vitest run
 
 # client build + typecheck
 npm run build --prefix client
@@ -206,7 +198,7 @@ graphify cluster-only .
 
 ## Current Codebase Coverage
 
-Shipped and implemented in the current `staging` tree:
+Shipped and implemented:
 
 - Browser-playable zero-G FPS with solo bot matches and Colyseus-backed online multiplayer.
 - Quick match, room browser, private/public room creation, invite URLs, native share, and QR joins.
@@ -214,7 +206,7 @@ Shipped and implemented in the current `staging` tree:
 - Post-match debrief stats, awards, credits, analytics, and Speed Insights instrumentation.
 - AI bot fill, ready checks, stale-player seat cleanup, and authoritative round/match scoring.
 
-Evidence-backed pending or transitional surfaces still visible in the repo:
+Pending or transitional:
 
 - `client/src/combat.ts` still carries a TODO to route firing through an active-weapon abstraction instead of the current fixed freeze-pistol path.
 - `server/src/net/`, `server/src/room.ts`, and `server/src/sim.ts` remain as legacy transport/test support while Colyseus is the production multiplayer path.
