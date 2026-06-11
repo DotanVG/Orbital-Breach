@@ -224,7 +224,7 @@ Shared hooks in `.claude/settings.json`, scripts in `.claude/hooks/`.
 
 ## README upkeep
 
-`README.md` has a **Current Codebase Coverage** section (prose, not a table). When a feature ships, add or update its bullet under "Shipped and implemented", and move anything no longer pending out of the "Evidence-backed pending or transitional surfaces" list. If a feature adds new user-facing capability, update the relevant section above it (e.g. Player-Facing Features, Tech Stack) too.
+`README.md` has a **Current Codebase Coverage** section (prose, not a table). When a feature ships, add or update its bullet under "Shipped and implemented", and move anything no longer pending out of the "Pending or transitional" list. If a feature adds new user-facing capability, update the relevant section above it (e.g. Player-Facing Features, Tech Stack) too.
 
 ---
 
