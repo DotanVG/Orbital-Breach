@@ -131,6 +131,24 @@ export function bounceActorInArena(
   }
 }
 
+// Longest legitimate shooter→target separation: the full arena diagonal
+// including both breach rooms. Anything beyond this cannot be a real hit.
+export const MAX_HIT_REPORT_DISTANCE = Math.hypot(
+  ARENA_SIZE + 2 * BREACH_ROOM_D,
+  ARENA_SIZE,
+  ARENA_SIZE,
+);
+
+export function isHitReportDistancePlausible(
+  shooter: Pick<ServerSimulatedOnlineActor, "posX" | "posY" | "posZ">,
+  target: Pick<ServerSimulatedOnlineActor, "posX" | "posY" | "posZ">,
+): boolean {
+  const dx = target.posX - shooter.posX;
+  const dy = target.posY - shooter.posY;
+  const dz = target.posZ - shooter.posZ;
+  return dx * dx + dy * dy + dz * dz <= MAX_HIT_REPORT_DISTANCE * MAX_HIT_REPORT_DISTANCE;
+}
+
 export function isActorInEnemyBreachRoom(
   actor: Pick<ServerSimulatedOnlineActor, "posX" | "posY" | "posZ" | "team">,
   goalAxis: "x" | "z",
