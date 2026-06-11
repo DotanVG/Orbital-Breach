@@ -190,7 +190,6 @@ graphify cluster-only .
 - `client/src/audio/` and `client/src/analytics/` contain sound playback and Vercel analytics wrappers.
 - `server/src/colyseus/` contains the production multiplayer runtime: authoritative room lifecycle, state schema, damage handling, and room directory.
 - `server/src/index.ts` bootstraps Express, Colyseus transport, CORS/security middleware, and the `/health`, `/wake`, and `/rooms` endpoints.
-- `server/src/net/`, `server/src/room.ts`, and `server/src/sim.ts` retain the legacy WebSocket transport/test harness that is still referenced by parts of the test suite.
 - `shared/` contains match constants, arena generation, multiplayer contracts, profanity filtering, hit logic, and shared schemas reused by client and server.
 - `docs/` contains the long-form architecture and testing references used to keep README detail concise.
 - `tests/` contains the Vitest coverage for gameplay rules, arena generation, online reconciliation, UI helpers, portal placement, analytics, debrief stats, and regressions.
@@ -209,7 +208,6 @@ Shipped and implemented:
 Pending or transitional:
 
 - `client/src/combat.ts` still carries a TODO to route firing through an active-weapon abstraction instead of the current fixed freeze-pistol path.
-- `server/src/net/`, `server/src/room.ts`, and `server/src/sim.ts` remain as legacy transport/test support while Colyseus is the production multiplayer path.
 
 ## Credits
 

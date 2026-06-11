@@ -34,10 +34,10 @@ export class KillFeed {
     const victimColor = victimTeam === 0 ? "#00ffff" : "#ff00ff";
     const killerLabel = this.localPlayerName && killerName === this.localPlayerName
       ? `<span style="color:${killerColor};text-shadow:0 0 6px ${killerColor};font-weight:bold">YOU</span>`
-      : `<span style="color:${killerColor};text-shadow:0 0 6px ${killerColor}">${killerName}</span>`;
+      : `<span style="color:${killerColor};text-shadow:0 0 6px ${killerColor}">${escapeHtml(killerName)}</span>`;
     const victimLabel = this.localPlayerName && victimName === this.localPlayerName
       ? `<span style="color:${victimColor};text-shadow:0 0 6px ${victimColor};font-weight:bold">YOU</span>`
-      : `<span style="color:${victimColor};text-shadow:0 0 6px ${victimColor}">${victimName}</span>`;
+      : `<span style="color:${victimColor};text-shadow:0 0 6px ${victimColor}">${escapeHtml(victimName)}</span>`;
 
     entry.innerHTML =
       killerLabel
@@ -63,7 +63,7 @@ export class KillFeed {
     const entry = document.createElement("div");
     const displayName = this.localPlayerName && scorerName === this.localPlayerName ? "YOU" : scorerName;
     entry.innerHTML =
-      `<span style="color:${color};text-shadow:0 0 8px ${color};font-weight:bold">${displayName} BREACHED!</span>`;
+      `<span style="color:${color};text-shadow:0 0 8px ${color};font-weight:bold">${escapeHtml(displayName)} BREACHED!</span>`;
 
     Object.assign(entry.style, {
       background: "rgba(0,0,0,0.65)",
@@ -102,7 +102,7 @@ export class KillFeed {
   }
 }
 
-function escapeHtml(raw: string): string {
+export function escapeHtml(raw: string): string {
   return raw.replace(/[&<>"']/g, (ch) => {
     switch (ch) {
       case "&":
