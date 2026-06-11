@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { GRAB_RADIUS, HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_POINT_TARGET } from "../../../shared/constants";
+import { MATCH_POINT_TARGET } from "../../../shared/constants";
 import { generateArenaLayout } from "../../../shared/arena-gen";
 import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { findMatchWinner } from "../../../shared/match-flow";
@@ -15,7 +15,6 @@ import { FEATURE_FLAGS } from "../featureFlags";
 import { InputManager } from "../input";
 import { LocalMatch } from "../match/localMatch";
 import { OnlineMatch } from "../match/onlineMatch";
-import type { ProjectileHitEvent } from "../match/localMatch";
 import { isTouchDevice } from "../platform";
 import { LocalPlayer } from "../player";
 import { GunViewModel } from "../render/gun";
@@ -39,14 +38,13 @@ import {
   type CameraViewMode,
 } from "./cameraViewMode";
 import { cameraYawFacingBreachOpening } from "./cameraYawFromBreach";
-import { FloatArmTuneOverlay } from "./floatArmTuneOverlay";
+import { DebugOverlays } from "./debugOverlays";
+import { tickOnlineGame } from "./onlineTick";
 import { ProjectileSystem } from "./projectileSystem";
 import { RoundController } from "./roundController";
-import { GunTuneOverlay } from "./gunTuneOverlay";
-import { CollisionVisualizer } from "./collisionVisualizer";
-import { ColliderEditor } from "./colliderEditor";
+import { tickSoloGame } from "./soloTick";
 import { shouldShowDesktopOverlayCursor } from "./overlayCursor";
-import { buildShotFromCamera } from "./weaponFire";
+import type { GameTickContext } from "./tickContext";
 import { NetClient } from "../net/client";
 import { MultiplayerLobby } from "../ui/multiplayerLobby";
 import type { PlaySelection } from "../ui/menu";
@@ -56,18 +54,15 @@ import { getScoreboardCursorTransition } from "./scoreboardCursor";
 import { MatchStatsTracker, type ObservedMatchPlayer } from "./matchStatsTracker";
 import {
   PORTAL_ARRIVAL_SPAWN,
-  checkPortalCollisions,
   clearVibeJamPortals,
   configureOutboundPortal,
   configurePortalArrivalSpawn,
   getPortalParams,
   initVibeJamPortal,
   isPortalArrival,
-  updateVibeJamPortals,
 } from "./portal/vibeJamPortal";
 import type { PortalParams } from "./portal/parsePortalParams";
 
-const PLAYER_UPDATE_RATE = 0.05; // 20hz
 const ONLINE_MATCH_DEBRIEF_DELAY_MS = 4000;
 
 export class App {
@@ -97,11 +92,8 @@ export class App {
   private arena: Arena;
   private cam: CameraController;
   private cursor!: GlobalCursor;
-  private floatArmTuneOverlay = new FloatArmTuneOverlay();
+  private debugOverlays: DebugOverlays;
   private gun: GunViewModel;
-  private gunTuneOverlay = new GunTuneOverlay();
-  private collisionVis!: CollisionVisualizer;
-  private colliderEditor!: ColliderEditor;
   private hud: HUD;
   private input: InputManager;
   private killFeed = new KillFeed();
@@ -124,6 +116,7 @@ export class App {
   private sceneMgr: SceneManager;
   private sessionMenu = new SessionMenu();
   private sound!: SoundEngine;
+  private tickCtx!: GameTickContext;
   private fullscreenPreference = false;
   private thirdPerson = false;
   private selectedCameraViewMode: CameraViewMode;
@@ -152,8 +145,7 @@ export class App {
     this.projectiles = new ProjectileSystem(this.sceneMgr.getScene());
     this.match = new LocalMatch(this.sceneMgr.getScene());
     this.onlineMatch = new OnlineMatch(this.sceneMgr.getScene());
-    this.collisionVis   = new CollisionVisualizer(this.sceneMgr.getScene());
-    this.colliderEditor = new ColliderEditor(this.sceneMgr.getScene());
+    this.debugOverlays = new DebugOverlays(this.sceneMgr.getScene());
     this.hud.setVisible(false);
     this.killFeed.setVisible(false);
     this.sessionMenu.setLauncherVisible(false);
@@ -439,6 +431,8 @@ export class App {
         this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
       });
     }
+
+    this.tickCtx = this.createTickContext();
   }
 
   public start(): void {
@@ -533,9 +527,9 @@ export class App {
     }
 
     if (gameplayActive && this.appMode === "solo") {
-      this.tickSoloGame(dt);
+      tickSoloGame(this.tickCtx, dt);
     } else if (gameplayActive && this.appMode === "online" && this.onlineGameActive) {
-      this.tickOnlineGame(dt);
+      tickOnlineGame(this.tickCtx, dt);
     }
 
     this.syncCombatPresentation(gameplayActive);
@@ -544,259 +538,16 @@ export class App {
     requestAnimationFrame((nextTimestamp) => this.loop(nextTimestamp));
   }
 
-  // ── Solo game tick ──────────────────────────────────────────────────────────
 
-  private tickSoloGame(dt: number): void {
-    this.input.setAimingMode(this.player.phase === "AIMING");
-    this.cam.setZeroGMode(this.player.phase !== "BREACH");
-    this.cam.tickTransition(dt);
 
-    const { dx, dy } = this.input.consumeMouseDelta();
-    this.cam.applyMouseDelta(dx, dy, this.input.mouseSensitivity);
 
-    this.round.tick(dt);
 
-    this.input.updateFireCooldown(dt);
-    this.player.update(this.input, this.cam, this.arena, dt);
-    this.arena.update(dt);
-
-    const botShots = this.match.tick(dt, this.arena, this.player, this.round.isPlaying());
-    for (const shot of botShots) {
-      this.projectiles.spawn(shot.origin, shot.direction, shot.team, shot.ownerId);
-      this.sound.playRemoteShot(shot.origin);
-    }
-
-    this.tickWeaponFire();
-    this.projectiles.update(
-      dt,
-      this.arena.getObstacleBulletAABBs(),
-      this.arena.getPortalBarrierAABBs(),
-      this.match.getProjectileTargets(this.player),
-      (hitPos, color) => this.arena.triggerPortalImpact(hitPos, color),
-      (hit) => this.match.handleProjectileHit(hit, this.player, this.cam),
-    );
-    this.tickGunTuning();
-    this.tickCollisionVis();
-    this.tickColliderEditor();
-    this.matchStats.observePlayers(this.match.getMatchStatsActors(this.player), {
-      accumulateTravel: this.round.isPlaying(),
-    });
-
-    checkPortalCollisions(this.player.getPosition(), this.player.phys.vel.y);
-    updateVibeJamPortals(this.sceneMgr.getCamera().position, dt);
-
-    if (FEATURE_FLAGS.thirdPersonLookBehind && this.input.consumeThirdPersonToggle()) {
-      this.toggleCameraView();
-    }
-
-    if (this.player.isVictoryDanceActive()) {
-      this.victoryOrbitAngle += 0.7 * dt;
-      this.cam.applyVictoryOrbit(
-        this.player.getPosition(),
-        this.victoryOrbitAngle,
-        this.arena.getThirdPersonCameraCollisionAABBs(),
-      );
-      this.updateGunVisibility(false);
-    } else {
-      const isSelfie = this.isRearViewCameraActive();
-      const cameraCollisionBoxes = this.thirdPerson
-        ? this.arena.getThirdPersonCameraCollisionAABBs()
-        : [];
-      this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
-      this.updateGunVisibility(isSelfie);
-    }
-    this.updateSoloHud(dt);
-    this.renderDebugTuningOverlay();
-  }
-
-  // ── Online game tick ────────────────────────────────────────────────────────
-
-  private tickOnlineGame(dt: number): void {
-    this.input.setAimingMode(this.player.phase === "AIMING");
-    this.cam.setZeroGMode(this.player.phase !== "BREACH");
-    this.cam.tickTransition(dt);
-
-    const { dx, dy } = this.input.consumeMouseDelta();
-    this.cam.applyMouseDelta(dx, dy, this.input.mouseSensitivity);
-
-    this.input.updateFireCooldown(dt);
-    this.player.update(this.input, this.cam, this.arena, dt);
-    this.arena.update(dt);
-
-    this.onlineMatch.update(dt);
-
-    this.tickOnlineWeaponFire();
-
-    const localActorId = this.getOnlineLocalActorId();
-    const localCentre = this.player.getPosition().clone();
-    localCentre.y += HITBOX_OFFSET_Y;
-    const localTarget = {
-      active: this.player.phase !== "RESPAWNING" && this.player.phase !== "BREACH" && !this.player.damage.frozen,
-      id: localActorId,
-      pos: localCentre,
-      radius: HITBOX_RADIUS,
-      team: this.player.team,
-    };
-    const allTargets = [localTarget, ...this.onlineMatch.getProjectileTargets()];
-
-    this.projectiles.update(
-      dt,
-      this.arena.getObstacleBulletAABBs(),
-      this.arena.getPortalBarrierAABBs(),
-      allTargets,
-      (hitPos, color) => this.arena.triggerPortalImpact(hitPos, color),
-      (hit) => this.handleOnlineProjectileHit(hit),
-    );
-
-    this.checkOnlineBreachScore();
-    this.tickCollisionVis();
-
-    this.playerUpdateTimer -= dt;
-    if (this.playerUpdateTimer <= 0) {
-      this.playerUpdateTimer = PLAYER_UPDATE_RATE;
-      this.sendOnlinePlayerUpdate();
-    }
-
-    if (FEATURE_FLAGS.thirdPersonLookBehind && this.input.consumeThirdPersonToggle()) {
-      this.toggleCameraView();
-    }
-
-    if (this.player.isVictoryDanceActive()) {
-      this.victoryOrbitAngle += 0.7 * dt;
-      this.cam.applyVictoryOrbit(
-        this.player.getPosition(),
-        this.victoryOrbitAngle,
-        this.arena.getThirdPersonCameraCollisionAABBs(),
-      );
-      this.updateGunVisibility(false);
-    } else {
-      const isSelfie = this.isRearViewCameraActive();
-      const cameraCollisionBoxes = this.thirdPerson
-        ? this.arena.getThirdPersonCameraCollisionAABBs()
-        : [];
-      this.cam.apply(this.player.getPosition(), this.thirdPerson, isSelfie, cameraCollisionBoxes);
-      this.updateGunVisibility(isSelfie);
-    }
-    this.updateOnlineHud(dt);
-  }
-
-  private tickOnlineWeaponFire(): void {
-    const inZeroG = this.player.phase === "FLOATING"
-      || this.player.phase === "GRABBING"
-      || this.player.phase === "AIMING";
-
-    if (!this.onlineGameActive || !this.onlineRoundActive) return;
-    if (!this.input.canControlGame() || !inZeroG) return;
-    if (!this.player.canFire() || !this.input.consumeFire()) return;
-
-    const useThirdPersonMuzzle = this.thirdPerson
-      || (FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld());
-    const shot = buildShotFromCamera(this.player, this.cam, this.gun, useThirdPersonMuzzle);
-    if (!shot) return;
-
-    const localActorId = this.getOnlineLocalActorId();
-    this.projectiles.spawn(shot.origin, shot.direction, this.player.team, localActorId);
-    this.sound.playLocalShot();
-    this.net.sendShot({
-      ownerId: localActorId,
-      team: this.player.team,
-      originX: shot.origin.x,
-      originY: shot.origin.y,
-      originZ: shot.origin.z,
-      dirX: shot.direction.x,
-      dirY: shot.direction.y,
-      dirZ: shot.direction.z,
-    });
-    this.player.triggerArmRecoil();
-    this.tutorial.noteShotFired();
-  }
-
-  private handleOnlineProjectileHit(hit: ProjectileHitEvent): void {
-    const localActorId = this.getOnlineLocalActorId();
-    if (hit.targetId === localActorId) {
-      return;
-    }
-
-    if (hit.ownerId === localActorId) {
-      const zone = this.onlineMatch.classifyHitZone(hit.targetId, hit.impactPoint);
-      if (!zone) return;
-      this.net.sendHitReport({
-        targetId: hit.targetId,
-        zone,
-        impX: 0,
-        impY: 0,
-        impZ: 0,
-      });
-      this.hud.triggerHitConfirm(this.player.team);
-      return;
-    }
-
-    if (hit.targetId === localActorId) {
-      if (hit.ownerId !== "local-player") {
-        const zone = LocalPlayer.classifyHitZone(
-          hit.impactPoint,
-          this.player.getPosition(),
-          this.cam.getForward(),
-          HITBOX_OFFSET_Y,
-          HITBOX_RADIUS,
-        );
-        // Zero impulse — shots freeze but do not push. See localMatch.ts.
-        this.player.applyHit(zone, hit.direction.clone().normalize().multiplyScalar(0));
-      }
-      return;
-    }
-
-  }
-
-  private checkOnlineBreachScore(): void {
-    if (!this.onlineGameActive) return;
-    if (this.onlineBreachReported || this.player.damage.frozen) return;
-    if (this.player.phase !== "FLOATING" && this.player.phase !== "BREACH") return;
-
-    const enemyTeam = (1 - this.player.team) as 0 | 1;
-    if (!this.arena.isGoalDoorOpen(enemyTeam)) return;
-    const reachedEnemyBreach = this.player.phase === "BREACH"
-      ? this.arena.isInBreachRoom(this.player.getPosition(), enemyTeam)
-      : this.arena.isDeepInBreachRoom(this.player.getPosition(), enemyTeam, 1.0);
-    if (!reachedEnemyBreach) return;
-
-    this.player.currentBreachTeam = enemyTeam;
-    this.player.phase = "BREACH";
-    this.onlineBreachReported = true;
-    this.disableOnlineProjectiles();
-
-    this.net.sendBreachReport({
-      scorerTeam: this.player.team,
-      scorerName: this.onlinePlayerName,
-    });
-  }
 
   private disableOnlineProjectiles(): void {
     this.onlineRoundActive = false;
     this.projectiles.clear();
   }
 
-  private sendOnlinePlayerUpdate(): void {
-    const pos = this.player.getPosition();
-    const vel = this.player.phys.vel;
-    this.net.sendPlayerUpdate({
-      posX: pos.x,
-      posY: pos.y,
-      posZ: pos.z,
-      velX: vel.x,
-      velY: vel.y,
-      velZ: vel.z,
-      yaw: this.cam.getYaw(),
-      phase: this.player.phase,
-      frozen: this.player.damage.frozen,
-      leftArm: this.player.damage.leftArm,
-      rightArm: this.player.damage.rightArm,
-      leftLeg: this.player.damage.leftLeg,
-      rightLeg: this.player.damage.rightLeg,
-      kills: this.player.kills,
-      deaths: this.player.deaths,
-    });
-  }
 
   // ── Online game lifecycle ───────────────────────────────────────────────────
 
@@ -838,7 +589,7 @@ export class App {
 
     const layout = generateArenaLayout(snapshot.roundNumber);
     this.arena.loadLayout(layout);
-    this.collisionVis.onLayoutLoaded(this.arena);
+    this.debugOverlays.onLayoutLoaded(this.arena);
     this.projectiles.clear();
 
     this.player.setTeam(snapshot.selfTeam);
@@ -903,113 +654,7 @@ export class App {
     this.hud.hideRoundEnd();
   }
 
-  // ── HUD updates ─────────────────────────────────────────────────────────────
 
-  private updateSoloHud(dt: number): void {
-    let nearBar = this.arena.getNearestBar(this.player.getPosition(), GRAB_RADIUS) !== null;
-    if (this.player.phase === "BREACH" && !this.arena.isGoalDoorOpen(this.player.currentBreachTeam)) {
-      nearBar = false;
-    }
-
-    if (this.mobile && this.mobileControls) {
-      const canGrab = !this.player.damage.leftArm && !this.player.damage.frozen;
-      this.mobileControls.setPhase(this.player.phase);
-      this.mobileControls.setNearBar(nearBar, canGrab);
-      const showPower = this.player.phase === "GRABBING" || this.player.phase === "AIMING";
-      const max = this.player.maxLaunchPower();
-      const pct = max > 0 ? this.player.launchPower / max : 0;
-      this.mobileControls.setPowerLevel(pct, showPower);
-      this.mobileControls.setViewMode(this.thirdPerson);
-    }
-
-    const rosters = this.match.getHudRosters(this.player);
-    this.hud.update({
-      score: this.match.getScore(),
-      phase: this.round.getPhase(),
-      countdown: this.round.getCountdown(),
-      roundTimeRemaining: this.round.getRoundTimeRemaining(),
-      playerPhase: this.player.phase,
-      launchPower: this.player.launchPower,
-      maxLaunchPower: this.player.maxLaunchPower(),
-      nearBar,
-      damage: this.player.damage,
-      showPing: false,
-      tabHeld: this.input.isTabHeld(),
-      ownTeam: rosters.ownTeam,
-      enemyTeam: rosters.enemyTeam,
-      tutorialPrompt: this.tutorial.update({
-        currentBreachTeam: this.player.currentBreachTeam,
-        frozen: this.player.damage.frozen,
-        inRound: this.round.getPhase() === "COUNTDOWN" || this.round.getPhase() === "PLAYING",
-        mobile: this.mobile,
-        phase: this.player.phase,
-        team: this.player.team,
-      }),
-      helpVisible: this.helpVisible,
-      dt,
-      team: this.player.team,
-    });
-  }
-
-  private updateOnlineHud(dt: number): void {
-    const snap = this.latestOnlineSnapshot;
-    if (!snap) return;
-
-    const sessionId = this.net.getSessionId() ?? "local-player";
-
-    let nearBar = this.arena.getNearestBar(this.player.getPosition(), GRAB_RADIUS) !== null;
-    if (this.player.phase === "BREACH" && !this.arena.isGoalDoorOpen(this.player.currentBreachTeam)) {
-      nearBar = false;
-    }
-
-    if (this.mobile && this.mobileControls) {
-      const canGrab = !this.player.damage.leftArm && !this.player.damage.frozen;
-      this.mobileControls.setPhase(this.player.phase);
-      this.mobileControls.setNearBar(nearBar, canGrab);
-      const showPower = this.player.phase === "GRABBING" || this.player.phase === "AIMING";
-      const max = this.player.maxLaunchPower();
-      const pct = max > 0 ? this.player.launchPower / max : 0;
-      this.mobileControls.setPowerLevel(pct, showPower);
-      this.mobileControls.setViewMode(this.thirdPerson);
-    }
-
-    const rosters = this.onlineMatch.getHudRosters(
-      sessionId,
-      this.onlinePlayerName,
-      this.player.team,
-      this.player.kills,
-      this.player.deaths,
-      this.player.damage.frozen,
-      this.player.phase,
-    );
-
-    this.hud.update({
-      score: snap.score,
-      phase: snap.phase,
-      countdown: snap.countdownRemaining,
-      roundTimeRemaining: snap.roundTimeRemaining,
-      playerPhase: this.player.phase,
-      launchPower: this.player.launchPower,
-      maxLaunchPower: this.player.maxLaunchPower(),
-      nearBar,
-      damage: this.player.damage,
-      showPing: true,
-      tabHeld: this.input.isTabHeld(),
-      ownTeam: rosters.ownTeam,
-      enemyTeam: rosters.enemyTeam,
-      tutorialPrompt: this.tutorial.update({
-        currentBreachTeam: this.player.currentBreachTeam,
-        frozen: this.player.damage.frozen,
-        inRound: snap.phase === "COUNTDOWN" || snap.phase === "PLAYING",
-        mobile: this.mobile,
-        phase: this.player.phase,
-        team: this.player.team,
-      }),
-      helpVisible: this.helpVisible,
-      dt,
-      team: this.player.team,
-    });
-  }
 
   // ── Solo round lifecycle ────────────────────────────────────────────────────
 
@@ -1021,7 +666,7 @@ export class App {
 
     const layout = generateArenaLayout();
     this.arena.loadLayout(layout);
-    this.collisionVis.onLayoutLoaded(this.arena);
+    this.debugOverlays.onLayoutLoaded(this.arena);
 
     const arrivalThisRound = this.portalArrivalPending;
     const arrivalCenter = this.arena.getBreachRoomCenter(this.player.team);
@@ -1266,7 +911,7 @@ export class App {
     this.sound.setMusicVolume(settings.musicVolume);
     this.sound.setSfxVolume(settings.sfxVolume);
     this.sound.setMusicEnabled(settings.soundtrackEnabled);
-    this.collisionVis.setVisible(settings.collisionVisEnabled);
+    this.debugOverlays.setCollisionVisVisible(settings.collisionVisEnabled);
   }
 
   private async applyFullscreenPreference(enabled: boolean): Promise<void> {
@@ -1303,6 +948,54 @@ export class App {
 
   private getOnlineLocalActorId(): string {
     return this.net.getSessionId() ?? "local-player";
+  }
+
+  /**
+   * Context handed to the per-frame tick functions in soloTick.ts /
+   * onlineTick.ts. Subsystem references are stable; mutable flags are
+   * exposed as accessor properties backed by this App's fields.
+   */
+  private createTickContext(): GameTickContext {
+    const app = this;
+    return {
+      arena: this.arena,
+      cam: this.cam,
+      debugOverlays: this.debugOverlays,
+      gun: this.gun,
+      hud: this.hud,
+      input: this.input,
+      match: this.match,
+      matchStats: this.matchStats,
+      mobile: this.mobile,
+      mobileControls: this.mobileControls,
+      net: this.net,
+      onlineMatch: this.onlineMatch,
+      player: this.player,
+      projectiles: this.projectiles,
+      round: this.round,
+      sceneMgr: this.sceneMgr,
+      sound: this.sound,
+      tutorial: this.tutorial,
+
+      get helpVisible() { return app.helpVisible; },
+      get latestOnlineSnapshot() { return app.latestOnlineSnapshot; },
+      get onlineBreachReported() { return app.onlineBreachReported; },
+      set onlineBreachReported(value: boolean) { app.onlineBreachReported = value; },
+      get onlineGameActive() { return app.onlineGameActive; },
+      get onlinePlayerName() { return app.onlinePlayerName; },
+      get onlineRoundActive() { return app.onlineRoundActive; },
+      get playerUpdateTimer() { return app.playerUpdateTimer; },
+      set playerUpdateTimer(value: number) { app.playerUpdateTimer = value; },
+      get thirdPerson() { return app.thirdPerson; },
+      get victoryOrbitAngle() { return app.victoryOrbitAngle; },
+      set victoryOrbitAngle(value: number) { app.victoryOrbitAngle = value; },
+
+      disableOnlineProjectiles: () => this.disableOnlineProjectiles(),
+      getOnlineLocalActorId: () => this.getOnlineLocalActorId(),
+      isRearViewCameraActive: () => this.isRearViewCameraActive(),
+      toggleCameraView: () => this.toggleCameraView(),
+      updateGunVisibility: (isSelfie: boolean) => this.updateGunVisibility(isSelfie),
+    };
   }
 
   // ── Solo match start ────────────────────────────────────────────────────────
@@ -1506,7 +1199,7 @@ export class App {
     window.history.replaceState({}, "", url);
   }
 
-  // ── Weapon fire (solo) ──────────────────────────────────────────────────────
+  // ── Match debrief ───────────────────────────────────────────────────────────
 
   private showMatchDebrief(data: DebriefData): void {
     if (this.matchEndHandle) {
@@ -1612,25 +1305,6 @@ export class App {
     this.multiplayer.show();
   }
 
-  private tickWeaponFire(): void {
-    const inZeroG = this.player.phase === "FLOATING"
-      || this.player.phase === "GRABBING"
-      || this.player.phase === "AIMING";
-
-    if (!this.round.isPlaying()) return;
-    if (!this.input.canControlGame() || !inZeroG) return;
-    if (!this.player.canFire() || !this.input.consumeFire()) return;
-
-    const useThirdPersonMuzzle = this.thirdPerson
-      || (FEATURE_FLAGS.thirdPersonLookBehind && this.input.isSelfieHeld());
-    const shot = buildShotFromCamera(this.player, this.cam, this.gun, useThirdPersonMuzzle);
-    if (!shot) return;
-
-    this.projectiles.spawn(shot.origin, shot.direction, this.player.team, "local-player");
-    this.sound.playLocalShot();
-    this.player.triggerArmRecoil();
-    this.tutorial.noteShotFired();
-  }
 
   private setCelebratingTeam(team: 0 | 1): void {
     const playerWins = this.player.team === team && !this.player.damage.frozen;
@@ -1670,132 +1344,8 @@ export class App {
     this.applySelectedCameraViewMode(toggleCameraViewMode(this.selectedCameraViewMode));
   }
 
-  // ── Collision visualizer ────────────────────────────────────────────────────
 
-  private tickCollisionVis(): void {
-    if (import.meta.env.DEV && this.input.consumeCollisionVisToggle()) {
-      this.collisionVis.toggle();
-    }
-    if (!this.collisionVis.isVisible()) return;
 
-    const statsActors = this.match.getMatchStatsActors(this.player);
-    const positions = statsActors.map((a) => new THREE.Vector3(a.position.x, a.position.y, a.position.z));
-    this.collisionVis.updateActors(positions);
-  }
-
-  // ── Collider editor ─────────────────────────────────────────────────────────
-
-  private tickColliderEditor(): void {
-    if (!import.meta.env.DEV) return;
-    if (this.input.consumeColliderEditorToggle()) {
-      this.colliderEditor.toggle();
-    }
-    if (!this.colliderEditor.isVisible()) return;
-    const axes = this.input.getColliderEditorAxes();
-    this.colliderEditor.tick(this.player.getPosition(), axes);
-  }
-
-  // ── Gun tuning overlays ─────────────────────────────────────────────────────
-
-  private tickGunTuning(): void {
-    const tuning = FEATURE_FLAGS.debugTuning;
-    if (!tuning.enabled) return;
-
-    if (tuning.target === "Pistol") {
-      if (this.input.consumeGunTuneToggle()) this.player.toggleThirdPersonGunTuning();
-      if (this.input.consumeGunTuneReset()) this.player.resetThirdPersonGunTuning();
-      if (this.input.consumeGunTunePrint()) {
-        void this.copyDebugTuningToClipboard(this.player.logThirdPersonGunTuning());
-      }
-
-      if (this.player.isThirdPersonGunTuningEnabled()) {
-        const tuningAxes = this.input.getGunTuneAxes();
-        this.player.nudgeThirdPersonGun(
-          tuningAxes.position,
-          tuningAxes.rotation,
-          tuningAxes.fine,
-        );
-      }
-      return;
-    }
-
-    if (!this.player.isFloatLimbTarget(tuning.target)) return;
-
-    if (this.input.consumeGunTuneToggle()) this.player.toggleFloatArmTuning();
-    if (this.input.consumeGunTuneReset()) this.player.resetFloatLimbTuning(tuning.target);
-    if (this.input.consumeGunTunePrint()) {
-      void this.copyDebugTuningToClipboard(this.player.logFloatLimbTuning(tuning.target));
-    }
-
-    if (this.player.isFloatLimbTuningEnabled()) {
-      const tuningAxes = this.input.getGunTuneAxes();
-      this.player.nudgeFloatLimbRotation(
-        tuning.target,
-        tuningAxes.rotation,
-        tuningAxes.fine,
-      );
-    }
-  }
-
-  private renderDebugTuningOverlay(): void {
-    const tuning = FEATURE_FLAGS.debugTuning;
-
-    this.gunTuneOverlay.render(
-      this.player.getThirdPersonGunTuningState(),
-      tuning.enabled && tuning.target === "Pistol",
-    );
-
-    if (!this.player.isFloatLimbTarget(tuning.target)) {
-      this.floatArmTuneOverlay.render(
-        { target: "FloatRightArm", rotation: this.player.getFloatLimbTuningState("FloatRightArm").rotation },
-        false,
-        false,
-      );
-      return;
-    }
-
-    this.floatArmTuneOverlay.render(
-      this.player.getFloatLimbTuningState(tuning.target),
-      this.player.isFloatLimbTuningEnabled(),
-      tuning.enabled,
-    );
-  }
-
-  private async copyDebugTuningToClipboard(text: string): Promise<void> {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        console.info("[DebugTuning] Copied tuning values to clipboard.");
-        return;
-      }
-    } catch (error) {
-      console.warn("[DebugTuning] Clipboard API failed, trying fallback copy.", error);
-    }
-
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.setAttribute("readonly", "");
-    textarea.style.position = "fixed";
-    textarea.style.opacity = "0";
-    textarea.style.pointerEvents = "none";
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
-    textarea.setSelectionRange(0, textarea.value.length);
-
-    try {
-      const copied = document.execCommand("copy");
-      if (copied) {
-        console.info("[DebugTuning] Copied tuning values to clipboard.");
-      } else {
-        console.warn("[DebugTuning] Clipboard copy failed; value is still in the console.");
-      }
-    } catch (error) {
-      console.warn("[DebugTuning] Clipboard fallback failed; value is still in the console.", error);
-    } finally {
-      document.body.removeChild(textarea);
-    }
-  }
 
   // ── Shared helpers ──────────────────────────────────────────────────────────
 
