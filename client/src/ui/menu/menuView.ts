@@ -993,12 +993,16 @@ function initMenuFx(container: HTMLElement): void {
 
     if (!reducedMotionMq?.matches) startLoop();
 
-    reducedMotionMq?.addEventListener("change", (e) => { e.matches ? stopLoop() : startLoop(); });
+    // Keep a named reference so cleanup removes the SAME listener that was
+    // added — the media query object outlives every menu mount, so a
+    // mismatched removeEventListener leaks one listener per menu show.
+    const onReducedMotionChange = (e: MediaQueryListEvent) => { e.matches ? stopLoop() : startLoop(); };
+    reducedMotionMq?.addEventListener("change", onReducedMotionChange);
 
     const mobMo = new MutationObserver(() => {
       if (!root.isConnected) {
         stopLoop();
-        reducedMotionMq?.removeEventListener("change", stopLoop);
+        reducedMotionMq?.removeEventListener("change", onReducedMotionChange);
         mobMo.disconnect();
       }
     });
