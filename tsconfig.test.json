@@ -7,9 +7,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["vitest/globals", "node"],
+    "types": ["vitest/globals", "node", "vite/client"],
     "paths": {
-      "three": ["./client/node_modules/three"]
+      "three": ["./client/node_modules/@types/three"]
     }
   },
   "include": ["tests/**/*.ts", "shared/**/*.ts"]
