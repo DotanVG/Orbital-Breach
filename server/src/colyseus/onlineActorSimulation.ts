@@ -131,6 +131,15 @@ export function bounceActorInArena(
   }
 }
 
+export function breachRoomCenter(
+  goalAxis: "x" | "y" | "z",
+  sign: 1 | -1,
+): { x: number; y: number; z: number } {
+  const center = { x: 0, y: 0, z: 0 };
+  center[goalAxis] = sign * (ARENA_SIZE / 2 + BREACH_ROOM_D / 2);
+  return center;
+}
+
 // Longest legitimate shooter→target separation: the full arena diagonal
 // including both breach rooms. Anything beyond this cannot be a real hit.
 export const MAX_HIT_REPORT_DISTANCE = Math.hypot(

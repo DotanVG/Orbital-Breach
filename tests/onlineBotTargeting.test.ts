@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getOnlineActorBreachTeam,
   isOnlineActorTargetableByBot,
-} from "../server/src/colyseus/OrbitalLobbyRoom";
+} from "../server/src/colyseus/botAI";
 
 const GOAL_SIGNS = { team0: -1 as const, team1: 1 as const };
 
