@@ -195,8 +195,6 @@ The production server is a Colyseus + Express app on Render.
 | `colyseus/state.ts` | `@colyseus/schema` state classes synced to clients |
 | `colyseus/actorDamage.ts` | Authoritative damage application |
 | `colyseus/roomDirectory.ts` | Public room listing exposed via `/rooms` |
-| `room.ts`, `sim.ts`, `player.ts` | Legacy WS sim code retained for tests; the Colyseus path is the production runtime |
-| `net/wsServer.ts`, `net/messageCodec.ts` | Legacy raw-WS transport, no longer hit by production clients |
 
 Environment variables consumed by the server:
 
