@@ -20,6 +20,7 @@ export class InputManager {
   private collisionVisTogglePressed = false;
   private colliderEditorTogglePressed = false;
   public onTabHoldChange: ((held: boolean) => void) | null = null;
+  private removeGlobalListeners: (() => void) | null = null;
 
   // Mobile touch input state
   private touchLookDx = 0;
@@ -33,7 +34,7 @@ export class InputManager {
   public mouseSensitivity = 0.002;
 
   public constructor() {
-    window.addEventListener('keydown', (e) => {
+    const handleKeyDown = (e: KeyboardEvent): void => {
       const tabWasHeld = this.keys.has('Tab');
       this.keys.add(e.code);
       if (e.code === 'Tab' && !tabWasHeld) this.onTabHoldChange?.(true);
@@ -64,15 +65,15 @@ export class InputManager {
           e.preventDefault();
         }
       }
-    });
+    };
 
-    window.addEventListener('keyup', (e) => {
+    const handleKeyUp = (e: KeyboardEvent): void => {
       const tabWasHeld = e.code === 'Tab' && this.keys.has('Tab');
       this.keys.delete(e.code);
       if (tabWasHeld) this.onTabHoldChange?.(false);
-    });
+    };
 
-    window.addEventListener('mousemove', (e) => {
+    const handleMouseMove = (e: MouseEvent): void => {
       if (!this.isLocked()) return;
       const movementX = clampMouseDelta(e.movementX);
       const movementY = clampMouseDelta(e.movementY);
@@ -83,27 +84,45 @@ export class InputManager {
       } else {
         this.mouseDy += movementY;
       }
-    });
+    };
 
-    window.addEventListener('mousedown', (e) => {
+    const handleMouseDown = (e: MouseEvent): void => {
       if (e.button === 0) this.keys.add('MouseLeft');
-    });
+    };
 
-    window.addEventListener('mouseup', (e) => {
+    const handleMouseUp = (e: MouseEvent): void => {
       if (e.button === 0) this.keys.delete('MouseLeft');
-    });
+    };
 
-    window.addEventListener('blur', () => {
+    const handleBlur = (): void => {
       if (this.clearStateOnBackground) {
         this.clearState();
       }
-    });
+    };
 
-    document.addEventListener('visibilitychange', () => {
+    const handleVisibilityChange = (): void => {
       if (document.hidden && this.clearStateOnBackground) {
         this.clearState();
       }
-    });
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    this.removeGlobalListeners = () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }
 
   // ── Aiming mode ──────────────────────────────────────────────────
@@ -403,6 +422,12 @@ export class InputManager {
 
   public isLocked(): boolean {
     return document.pointerLockElement != null;
+  }
+
+  public dispose(): void {
+    this.removeGlobalListeners?.();
+    this.removeGlobalListeners = null;
+    this.clearState();
   }
 
   private clearState(): void {

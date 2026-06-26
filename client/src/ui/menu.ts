@@ -16,6 +16,8 @@ export interface PlaySelection {
 export class MainMenu {
   private menu: MenuElements | null = null;
   private styleEl: HTMLStyleElement | null = null;
+  private menuListenerAbort: AbortController | null = null;
+  private disposeMenuListeners: (() => void) | null = null;
 
   public onPlaySolo: ((selection: PlaySelection) => void) | null = null;
   public onPlayOnline: ((selection: PlaySelection) => void) | null = null;
@@ -38,52 +40,47 @@ export class MainMenu {
       isMatchTeamSize(savedSize) ? savedSize : 1,
     );
     this.menu = elements;
+    const listenerAbort = new AbortController();
+    this.menuListenerAbort = listenerAbort;
+    const listenerOptions = { signal: listenerAbort.signal };
 
-    // Validate name on every keystroke
-    elements.nameInput.addEventListener('input', () => {
+    const handleNameInput = (): void => {
       const v = elements.nameInput.value.trim();
       if (v) localStorage.setItem(STORAGE_KEY, v);
       this.validateName(elements);
-    });
-    elements.matchSizeSelect.addEventListener('change', () => {
+    };
+    const handleMatchSizeChange = (): void => {
       localStorage.setItem(MATCH_SIZE_STORAGE_KEY, elements.matchSizeSelect.value);
-    });
-    if (!isTouchDevice()) {
-      elements.nameInput.focus();
-    }
-
-    elements.playSoloButton.addEventListener('click', () => {
+    };
+    const handlePlaySolo = (): void => {
       if (!this.checkNameBeforePlay(elements)) return;
       const selection = this.saveSelection();
       this.fadeOut(() => this.onPlaySolo?.(selection));
-    });
-    elements.playOnlineButton.addEventListener('click', () => {
+    };
+    const handlePlayOnline = (): void => {
       if (!this.checkNameBeforePlay(elements)) return;
       const selection = this.saveSelection();
       this.fadeOut(() => this.onPlayOnline?.(selection));
-    });
-    elements.browseRoomsButton.addEventListener('click', () => {
+    };
+    const handleBrowseRooms = (): void => {
       if (!this.checkNameBeforePlay(elements)) return;
       this.onBrowseOnline?.(this.saveSelection());
-    });
-    elements.openInstructionsButton.addEventListener('click', () => {
+    };
+    const handleOpenInstructions = (): void => {
       this.onOpenInstructions?.();
-    });
-    elements.openSettingsButton.addEventListener('click', () => {
+    };
+    const handleOpenSettings = (): void => {
       this.onOpenSettings?.();
-    });
-    elements.openCreditsButton.addEventListener('click', () => {
+    };
+    const handleOpenCredits = (): void => {
       this.onOpenCredits?.();
-    });
-    elements.playTutorialButton.addEventListener('click', () => {
+    };
+    const handlePlayTutorial = (): void => {
       if (!this.checkNameBeforePlay(elements)) return;
       const name = this.menu?.nameInput.value.trim() || DEFAULT_PLAYER_NAME;
       this.fadeOut(() => this.onPlayTutorial?.({ name, teamSize: 1, noBots: true }));
-    });
-
-    // Enter anywhere in the menu triggers PLAY SOLO (quickest path).
-    // Using the root container so it also fires while the name input is focused.
-    elements.root.addEventListener('keydown', (ev: KeyboardEvent) => {
+    };
+    const handleRootKeyDown = (ev: KeyboardEvent): void => {
       if (ev.key !== 'Enter') return;
       const target = ev.target;
       if (
@@ -94,10 +91,46 @@ export class MainMenu {
       }
       ev.preventDefault();
       elements.playSoloButton.click();
-    });
+    };
+
+    // Validate name on every keystroke
+    elements.nameInput.addEventListener('input', handleNameInput, listenerOptions);
+    elements.matchSizeSelect.addEventListener('change', handleMatchSizeChange, listenerOptions);
+    if (!isTouchDevice()) {
+      elements.nameInput.focus();
+    }
+
+    elements.playSoloButton.addEventListener('click', handlePlaySolo, listenerOptions);
+    elements.playOnlineButton.addEventListener('click', handlePlayOnline, listenerOptions);
+    elements.browseRoomsButton.addEventListener('click', handleBrowseRooms, listenerOptions);
+    elements.openInstructionsButton.addEventListener('click', handleOpenInstructions, listenerOptions);
+    elements.openSettingsButton.addEventListener('click', handleOpenSettings, listenerOptions);
+    elements.openCreditsButton.addEventListener('click', handleOpenCredits, listenerOptions);
+    elements.playTutorialButton.addEventListener('click', handlePlayTutorial, listenerOptions);
+
+    // Enter anywhere in the menu triggers PLAY SOLO (quickest path).
+    // Using the root container so it also fires while the name input is focused.
+    elements.root.addEventListener('keydown', handleRootKeyDown, listenerOptions);
+
+    this.disposeMenuListeners = () => {
+      elements.nameInput.removeEventListener('input', handleNameInput);
+      elements.matchSizeSelect.removeEventListener('change', handleMatchSizeChange);
+      elements.playSoloButton.removeEventListener('click', handlePlaySolo);
+      elements.playOnlineButton.removeEventListener('click', handlePlayOnline);
+      elements.browseRoomsButton.removeEventListener('click', handleBrowseRooms);
+      elements.openInstructionsButton.removeEventListener('click', handleOpenInstructions);
+      elements.openSettingsButton.removeEventListener('click', handleOpenSettings);
+      elements.openCreditsButton.removeEventListener('click', handleOpenCredits);
+      elements.playTutorialButton.removeEventListener('click', handlePlayTutorial);
+      elements.root.removeEventListener('keydown', handleRootKeyDown);
+    };
   }
 
   public hide(): void {
+    this.menuListenerAbort?.abort();
+    this.menuListenerAbort = null;
+    this.disposeMenuListeners?.();
+    this.disposeMenuListeners = null;
     this.menu?.container.remove();
     this.menu = null;
   }

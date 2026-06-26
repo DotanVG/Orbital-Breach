@@ -171,6 +171,8 @@ export class MobileControls {
   private styleEl: HTMLStyleElement | null = null;
   private input: InputManager;
   private phase = '';
+  private readonly listenerAbort = new AbortController();
+  private readonly listenerCleanups: Array<() => void> = [];
 
   constructor(input: InputManager) {
     this.input = input;
@@ -243,6 +245,19 @@ export class MobileControls {
     return this.container.style.display !== 'none';
   }
 
+  public dispose(): void {
+    this.hide();
+    this.listenerAbort.abort();
+    for (const cleanup of this.listenerCleanups.splice(0).reverse()) {
+      cleanup();
+    }
+    this.lookPointers.clear();
+    this.joystickPointerId = -1;
+    this.container.remove();
+    this.styleEl?.remove();
+    this.styleEl = null;
+  }
+
   /** Called every frame from gameApp to sync controls to player state. */
   public setPhase(phase: string): void {
     this.phase = phase;
@@ -301,30 +316,41 @@ export class MobileControls {
   }
 
   private bindLookArea(): void {
-    this.lookArea.addEventListener('pointerdown', (e) => {
+    const listenerOptions = { signal: this.listenerAbort.signal };
+    const handlePointerDown = (e: PointerEvent): void => {
       e.preventDefault();
       this.lookArea.setPointerCapture(e.pointerId);
       this.lookPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    });
+    };
 
-    this.lookArea.addEventListener('pointermove', (e) => {
+    const handlePointerMove = (e: PointerEvent): void => {
       const prev = this.lookPointers.get(e.pointerId);
       if (!prev) return;
       const dx = (e.clientX - prev.x) * MOBILE_LOOK_SCALE;
       const dy = (e.clientY - prev.y) * MOBILE_LOOK_SCALE;
       this.input.setMobileLookDelta(dx, dy);
       this.lookPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    });
+    };
 
-    const endLook = (e: PointerEvent): void => {
+    const handlePointerEnd = (e: PointerEvent): void => {
       this.lookPointers.delete(e.pointerId);
     };
-    this.lookArea.addEventListener('pointerup', endLook);
-    this.lookArea.addEventListener('pointercancel', endLook);
+
+    this.lookArea.addEventListener('pointerdown', handlePointerDown, listenerOptions);
+    this.lookArea.addEventListener('pointermove', handlePointerMove, listenerOptions);
+    this.lookArea.addEventListener('pointerup', handlePointerEnd, listenerOptions);
+    this.lookArea.addEventListener('pointercancel', handlePointerEnd, listenerOptions);
+    this.listenerCleanups.push(() => {
+      this.lookArea.removeEventListener('pointerdown', handlePointerDown);
+      this.lookArea.removeEventListener('pointermove', handlePointerMove);
+      this.lookArea.removeEventListener('pointerup', handlePointerEnd);
+      this.lookArea.removeEventListener('pointercancel', handlePointerEnd);
+    });
   }
 
   private bindJoystick(): void {
-    this.joystickBase.addEventListener('pointerdown', (e) => {
+    const listenerOptions = { signal: this.listenerAbort.signal };
+    const handlePointerDown = (e: PointerEvent): void => {
       e.preventDefault();
       e.stopPropagation();
       if (this.joystickPointerId !== -1) return;
@@ -334,21 +360,30 @@ export class MobileControls {
       this.joystickCenterX = rect.left + rect.width / 2;
       this.joystickCenterY = rect.top + rect.height / 2;
       this.updateJoystick(e.clientX, e.clientY);
-    });
+    };
 
-    this.joystickBase.addEventListener('pointermove', (e) => {
+    const handlePointerMove = (e: PointerEvent): void => {
       if (e.pointerId !== this.joystickPointerId) return;
       this.updateJoystick(e.clientX, e.clientY);
-    });
+    };
 
-    const endJoystick = (e: PointerEvent): void => {
+    const handlePointerEnd = (e: PointerEvent): void => {
       if (e.pointerId !== this.joystickPointerId) return;
       this.joystickPointerId = -1;
       this.joystickThumb.style.transform = 'translate(-50%, -50%)';
       this.input.setMobileMoveAxes(0, 0);
     };
-    this.joystickBase.addEventListener('pointerup', endJoystick);
-    this.joystickBase.addEventListener('pointercancel', endJoystick);
+
+    this.joystickBase.addEventListener('pointerdown', handlePointerDown, listenerOptions);
+    this.joystickBase.addEventListener('pointermove', handlePointerMove, listenerOptions);
+    this.joystickBase.addEventListener('pointerup', handlePointerEnd, listenerOptions);
+    this.joystickBase.addEventListener('pointercancel', handlePointerEnd, listenerOptions);
+    this.listenerCleanups.push(() => {
+      this.joystickBase.removeEventListener('pointerdown', handlePointerDown);
+      this.joystickBase.removeEventListener('pointermove', handlePointerMove);
+      this.joystickBase.removeEventListener('pointerup', handlePointerEnd);
+      this.joystickBase.removeEventListener('pointercancel', handlePointerEnd);
+    });
   }
 
   private updateJoystick(clientX: number, clientY: number): void {
@@ -371,10 +406,11 @@ export class MobileControls {
 
   // FIRE: hold = shoot; drag = look (issues 2D + 3)
   private bindFireBtn(): void {
+    const listenerOptions = { signal: this.listenerAbort.signal };
     const lastPos = new Map<number, { x: number; y: number }>();
     const active = new Set<number>();
 
-    this.fireBtn.addEventListener('pointerdown', (e) => {
+    const handlePointerDown = (e: PointerEvent): void => {
       e.preventDefault();
       e.stopPropagation();
       this.fireBtn.setPointerCapture(e.pointerId);
@@ -382,18 +418,18 @@ export class MobileControls {
       lastPos.set(e.pointerId, { x: e.clientX, y: e.clientY });
       this.fireBtn.classList.add('mob-pressed');
       this.input.setMobileFireHeld(true);
-    });
+    };
 
-    this.fireBtn.addEventListener('pointermove', (e) => {
+    const handlePointerMove = (e: PointerEvent): void => {
       const prev = lastPos.get(e.pointerId);
       if (!prev) return;
       const dx = (e.clientX - prev.x) * MOBILE_LOOK_SCALE;
       const dy = (e.clientY - prev.y) * MOBILE_LOOK_SCALE;
       this.input.setMobileLookDelta(dx, dy);
       lastPos.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    });
+    };
 
-    const end = (e: PointerEvent): void => {
+    const handlePointerEnd = (e: PointerEvent): void => {
       active.delete(e.pointerId);
       lastPos.delete(e.pointerId);
       if (active.size === 0) {
@@ -401,17 +437,26 @@ export class MobileControls {
         this.input.setMobileFireHeld(false);
       }
     };
-    this.fireBtn.addEventListener('pointerup', end);
-    this.fireBtn.addEventListener('pointercancel', end);
+    this.fireBtn.addEventListener('pointerdown', handlePointerDown, listenerOptions);
+    this.fireBtn.addEventListener('pointermove', handlePointerMove, listenerOptions);
+    this.fireBtn.addEventListener('pointerup', handlePointerEnd, listenerOptions);
+    this.fireBtn.addEventListener('pointercancel', handlePointerEnd, listenerOptions);
+    this.listenerCleanups.push(() => {
+      this.fireBtn.removeEventListener('pointerdown', handlePointerDown);
+      this.fireBtn.removeEventListener('pointermove', handlePointerMove);
+      this.fireBtn.removeEventListener('pointerup', handlePointerEnd);
+      this.fireBtn.removeEventListener('pointercancel', handlePointerEnd);
+    });
   }
 
   // JUMP / LAUNCH: hold = Space (charge); drag down = charge power via aimingActive routing;
   // drag horizontal = look. Single-finger launch with haptic feedback.
   private bindJumpBtn(): void {
+    const listenerOptions = { signal: this.listenerAbort.signal };
     const lastPos = new Map<number, { x: number; y: number }>();
     const active = new Set<number>();
 
-    this.jumpBtn.addEventListener('pointerdown', (e) => {
+    const handlePointerDown = (e: PointerEvent): void => {
       e.preventDefault();
       e.stopPropagation();
       this.jumpBtn.setPointerCapture(e.pointerId);
@@ -419,9 +464,9 @@ export class MobileControls {
       lastPos.set(e.pointerId, { x: e.clientX, y: e.clientY });
       this.jumpBtn.classList.add('mob-pressed');
       this.input.setMobileJumpHeld(true);
-    });
+    };
 
-    this.jumpBtn.addEventListener('pointermove', (e) => {
+    const handlePointerMove = (e: PointerEvent): void => {
       const prev = lastPos.get(e.pointerId);
       if (!prev) return;
       // setMobileLookDelta handles routing: when aimingActive, dy → aimDy (charge);
@@ -430,9 +475,9 @@ export class MobileControls {
       const dy = (e.clientY - prev.y) * MOBILE_LOOK_SCALE;
       this.input.setMobileLookDelta(dx, dy);
       lastPos.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    });
+    };
 
-    const end = (e: PointerEvent): void => {
+    const handlePointerEnd = (e: PointerEvent): void => {
       active.delete(e.pointerId);
       lastPos.delete(e.pointerId);
       if (active.size === 0) {
@@ -440,29 +485,45 @@ export class MobileControls {
         this.input.setMobileJumpHeld(false);
       }
     };
-    this.jumpBtn.addEventListener('pointerup', end);
-    this.jumpBtn.addEventListener('pointercancel', end);
+    this.jumpBtn.addEventListener('pointerdown', handlePointerDown, listenerOptions);
+    this.jumpBtn.addEventListener('pointermove', handlePointerMove, listenerOptions);
+    this.jumpBtn.addEventListener('pointerup', handlePointerEnd, listenerOptions);
+    this.jumpBtn.addEventListener('pointercancel', handlePointerEnd, listenerOptions);
+    this.listenerCleanups.push(() => {
+      this.jumpBtn.removeEventListener('pointerdown', handlePointerDown);
+      this.jumpBtn.removeEventListener('pointermove', handlePointerMove);
+      this.jumpBtn.removeEventListener('pointerup', handlePointerEnd);
+      this.jumpBtn.removeEventListener('pointercancel', handlePointerEnd);
+    });
   }
 
   // VIEW TOGGLE: tap = switch 1st/3rd person
   private bindViewBtn(): void {
-    this.viewBtn.addEventListener('pointerdown', (e) => {
+    const listenerOptions = { signal: this.listenerAbort.signal };
+    const handlePointerDown = (e: PointerEvent): void => {
       e.preventDefault();
       e.stopPropagation();
       this.viewBtn.classList.add('mob-pressed');
       this.onViewToggle?.();
+    };
+    const handlePointerEnd = (): void => { this.viewBtn.classList.remove('mob-pressed'); };
+    this.viewBtn.addEventListener('pointerdown', handlePointerDown, listenerOptions);
+    this.viewBtn.addEventListener('pointerup', handlePointerEnd, listenerOptions);
+    this.viewBtn.addEventListener('pointercancel', handlePointerEnd, listenerOptions);
+    this.listenerCleanups.push(() => {
+      this.viewBtn.removeEventListener('pointerdown', handlePointerDown);
+      this.viewBtn.removeEventListener('pointerup', handlePointerEnd);
+      this.viewBtn.removeEventListener('pointercancel', handlePointerEnd);
     });
-    const end = (): void => { this.viewBtn.classList.remove('mob-pressed'); };
-    this.viewBtn.addEventListener('pointerup', end);
-    this.viewBtn.addEventListener('pointercancel', end);
   }
 
   // GRAB: one-shot press; drag = look
   private bindGrabBtn(): void {
+    const listenerOptions = { signal: this.listenerAbort.signal };
     const lastPos = new Map<number, { x: number; y: number }>();
     const active = new Set<number>();
 
-    this.grabBtn.addEventListener('pointerdown', (e) => {
+    const handlePointerDown = (e: PointerEvent): void => {
       e.preventDefault();
       e.stopPropagation();
       this.grabBtn.setPointerCapture(e.pointerId);
@@ -470,26 +531,34 @@ export class MobileControls {
       lastPos.set(e.pointerId, { x: e.clientX, y: e.clientY });
       this.grabBtn.classList.add('mob-pressed');
       this.input.pressMobileGrab();
-    });
+    };
 
-    this.grabBtn.addEventListener('pointermove', (e) => {
+    const handlePointerMove = (e: PointerEvent): void => {
       const prev = lastPos.get(e.pointerId);
       if (!prev) return;
       const dx = (e.clientX - prev.x) * MOBILE_LOOK_SCALE;
       const dy = (e.clientY - prev.y) * MOBILE_LOOK_SCALE;
       this.input.setMobileLookDelta(dx, dy);
       lastPos.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    });
+    };
 
-    const end = (e: PointerEvent): void => {
+    const handlePointerEnd = (e: PointerEvent): void => {
       active.delete(e.pointerId);
       lastPos.delete(e.pointerId);
       if (active.size === 0) {
         this.grabBtn.classList.remove('mob-pressed');
       }
     };
-    this.grabBtn.addEventListener('pointerup', end);
-    this.grabBtn.addEventListener('pointercancel', end);
+    this.grabBtn.addEventListener('pointerdown', handlePointerDown, listenerOptions);
+    this.grabBtn.addEventListener('pointermove', handlePointerMove, listenerOptions);
+    this.grabBtn.addEventListener('pointerup', handlePointerEnd, listenerOptions);
+    this.grabBtn.addEventListener('pointercancel', handlePointerEnd, listenerOptions);
+    this.listenerCleanups.push(() => {
+      this.grabBtn.removeEventListener('pointerdown', handlePointerDown);
+      this.grabBtn.removeEventListener('pointermove', handlePointerMove);
+      this.grabBtn.removeEventListener('pointerup', handlePointerEnd);
+      this.grabBtn.removeEventListener('pointercancel', handlePointerEnd);
+    });
   }
 }
 

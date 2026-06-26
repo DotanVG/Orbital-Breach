@@ -36,6 +36,8 @@ export class SoundEngine {
   private musicVolumePct = 60;
   private sfxVolumePct = 50;
   private activeCountdownSource: AudioBufferSourceNode | null = null;
+  private activeCountdownCleanup: (() => void) | null = null;
+  private readonly remoteShotCleanups = new Set<() => void>();
   private laserToggle = 0; // alternates 0/1 for laser1/laser2
 
   constructor(camera: THREE.Camera, scene: THREE.Scene) {
@@ -171,11 +173,22 @@ export class SoundEngine {
     anchor.add(audio);
     audio.play();
 
-    audio.source?.addEventListener('ended', () => {
+    const source = audio.source;
+    if (!source) return;
+
+    const handleEnded = (): void => {
+      cleanup();
+    };
+    const cleanup = (): void => {
+      source.removeEventListener('ended', handleEnded);
+      this.remoteShotCleanups.delete(cleanup);
+      try { audio.stop(); } catch { /* already stopped */ }
       anchor.remove(audio);
       this.scene.remove(anchor);
       audio.disconnect();
-    });
+    };
+    source.addEventListener('ended', handleEnded);
+    this.remoteShotCleanups.add(cleanup);
   }
 
   public playCountdown(): void {
@@ -186,17 +199,37 @@ export class SoundEngine {
     src.connect(this.sfx2dGain);
     src.start();
     this.activeCountdownSource = src;
-    src.addEventListener('ended', () => {
+    const handleEnded = (): void => {
+      cleanup();
+    };
+    const cleanup = (): void => {
+      src.removeEventListener('ended', handleEnded);
+      if (this.activeCountdownCleanup === cleanup) {
+        this.activeCountdownCleanup = null;
+      }
       if (this.activeCountdownSource === src) {
         this.activeCountdownSource = null;
       }
-    });
+    };
+    src.addEventListener('ended', handleEnded);
+    this.activeCountdownCleanup = cleanup;
   }
 
   public stopCountdown(): void {
     if (!this.activeCountdownSource) return;
-    try { this.activeCountdownSource.stop(); } catch { /* already ended */ }
+    const src = this.activeCountdownSource;
+    this.activeCountdownCleanup?.();
+    try { src.stop(); } catch { /* already ended */ }
     this.activeCountdownSource = null;
+  }
+
+  public dispose(): void {
+    this.stopMusic();
+    this.stopCountdown();
+    for (const cleanup of Array.from(this.remoteShotCleanups)) {
+      cleanup();
+    }
+    this.listener.removeFromParent();
   }
 
   public playHit(): void {

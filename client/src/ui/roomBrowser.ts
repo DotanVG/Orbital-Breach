@@ -338,6 +338,8 @@ export class RoomBrowser {
   private readonly createButton: HTMLButtonElement;
   private readonly refreshButton: HTMLButtonElement;
   private inviteRoomId: string | null = null;
+  private readonly listenerAbort = new AbortController();
+  private disposeRootListeners: (() => void) | null = null;
 
   public onJoinRoom: ((roomId: string) => void) | null = null;
   public onCreateRoom: ((target: MultiplayerCreateRoomTarget) => void) | null = null;
@@ -363,18 +365,20 @@ export class RoomBrowser {
     this.maxPlayersSelect.innerHTML = MAX_PLAYER_OPTIONS
       .map((players) => `<option value="${players}">${players} Players</option>`)
       .join("");
+    const listenerOptions = { signal: this.listenerAbort.signal };
 
-    this.query<HTMLButtonElement>("#rb-close").addEventListener("click", () => {
+    const closeButton = this.query<HTMLButtonElement>("#rb-close");
+    const handleClose = (): void => {
       this.hide();
       this.onClose?.();
-    });
-    this.refreshButton.addEventListener("click", () => {
+    };
+    const handleRefresh = (): void => {
       void this.refresh();
-    });
-    this.createButton.addEventListener("click", () => {
+    };
+    const handleCreate = (): void => {
       this.handleCreate();
-    });
-    this.inviteCard.addEventListener("click", (event) => {
+    };
+    const handleInviteClick = (event: Event): void => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) {
         return;
@@ -383,8 +387,8 @@ export class RoomBrowser {
       if (target.closest("[data-join-invite]") && this.inviteRoomId) {
         this.onJoinRoom?.(this.inviteRoomId);
       }
-    });
-    this.roomList.addEventListener("click", (event) => {
+    };
+    const handleRoomListClick = (event: Event): void => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) {
         return;
@@ -395,7 +399,21 @@ export class RoomBrowser {
       if (roomId) {
         this.onJoinRoom?.(roomId);
       }
-    });
+    };
+
+    closeButton.addEventListener("click", handleClose, listenerOptions);
+    this.refreshButton.addEventListener("click", handleRefresh, listenerOptions);
+    this.createButton.addEventListener("click", handleCreate, listenerOptions);
+    this.inviteCard.addEventListener("click", handleInviteClick, listenerOptions);
+    this.roomList.addEventListener("click", handleRoomListClick, listenerOptions);
+
+    this.disposeRootListeners = () => {
+      closeButton.removeEventListener("click", handleClose);
+      this.refreshButton.removeEventListener("click", handleRefresh);
+      this.createButton.removeEventListener("click", handleCreate);
+      this.inviteCard.removeEventListener("click", handleInviteClick);
+      this.roomList.removeEventListener("click", handleRoomListClick);
+    };
   }
 
   public async show(options?: { inviteRoomId?: string | null; defaultTeamSize?: MatchTeamSize }): Promise<void> {
@@ -412,6 +430,13 @@ export class RoomBrowser {
   public hide(): void {
     this.root.style.display = "none";
     this.setStatus("");
+  }
+
+  public dispose(): void {
+    this.listenerAbort.abort();
+    this.disposeRootListeners?.();
+    this.disposeRootListeners = null;
+    this.root.remove();
   }
 
   private async refresh(): Promise<void> {

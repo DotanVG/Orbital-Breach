@@ -640,6 +640,8 @@ export class SessionMenu {
   private readonly collisionVisInput: HTMLInputElement;
   private readonly collisionVisValue: HTMLSpanElement;
   private readonly disposeFullscreenListener: () => void;
+  private readonly listenerAbort = new AbortController();
+  private disposeRootListeners: (() => void) | null = null;
   private settings = loadSettings();
   private currentConfig: SessionMenuConfig | null = null;
 
@@ -657,7 +659,9 @@ export class SessionMenu {
     this.launcher.className = "ob-session-launcher";
     this.launcher.setAttribute("aria-label", "Settings");
     this.launcher.innerHTML = SESSION_MENU_GEAR_ICON;
-    this.launcher.addEventListener("click", () => this.onLauncherRequest?.());
+    const handleLauncherClick = (): void => this.onLauncherRequest?.();
+    const listenerOptions = { signal: this.listenerAbort.signal };
+    this.launcher.addEventListener("click", handleLauncherClick, listenerOptions);
     document.body.appendChild(this.launcher);
 
     this.root = document.createElement("div");
@@ -859,58 +863,87 @@ export class SessionMenu {
     this.collisionVisInput = this.query("#session-menu-collisionvis");
     this.collisionVisValue = this.query("#session-menu-collisionvis-value");
 
-    this.resumeButton.addEventListener("click", () => this.onResume?.());
-    this.mainMenuButton.addEventListener("click", () => this.onMainMenu?.());
-    this.openInstructionsButton.addEventListener("click", () => this.showView("instructions"));
-    this.openCreditsButton.addEventListener("click", () => this.showView("credits"));
-    this.backToSettingsFromInstructionsButton.addEventListener("click", () => this.showView("settings"));
-    this.backToSettingsButton.addEventListener("click", () => this.showView("settings"));
-
-    this.sensitivityInput.addEventListener("input", () => {
+    const handleResumeClick = (): void => this.onResume?.();
+    const handleMainMenuClick = (): void => this.onMainMenu?.();
+    const handleOpenInstructionsClick = (): void => this.showView("instructions");
+    const handleOpenCreditsClick = (): void => this.showView("credits");
+    const handleBackToSettingsFromInstructionsClick = (): void => this.showView("settings");
+    const handleBackToSettingsClick = (): void => this.showView("settings");
+    const handleSensitivityInput = (): void => {
       this.settings.mouseSensitivity = Number(this.sensitivityInput.value) / 10000;
       this.persistSettings();
       this.renderSettings();
       this.onSettingsChange?.(this.getSettings());
-    });
-    this.soundtrackInput.addEventListener("change", () => {
+    };
+    const handleSoundtrackChange = (): void => {
       this.settings.soundtrackEnabled = this.soundtrackInput.checked;
       this.persistSettings();
       this.renderSettings();
       this.onSettingsChange?.(this.getSettings());
-    });
-    this.fullscreenInput.addEventListener("change", () => {
+    };
+    const handleFullscreenChange = (): void => {
       this.settings.fullscreenEnabled = this.fullscreenInput.checked;
       this.persistSettings();
       this.renderSettings();
       this.onSettingsChange?.(this.getSettings());
-    });
-    this.musicInput.addEventListener("input", () => {
+    };
+    const handleMusicInput = (): void => {
       this.settings.musicVolume = Number(this.musicInput.value);
       this.persistSettings();
       this.renderSettings();
       this.onSettingsChange?.(this.getSettings());
-    });
-    this.sfxInput.addEventListener("input", () => {
+    };
+    const handleSfxInput = (): void => {
       this.settings.sfxVolume = Number(this.sfxInput.value);
       this.persistSettings();
       this.renderSettings();
       this.onSettingsChange?.(this.getSettings());
-    });
-    this.cameraSelect.addEventListener("change", () => {
+    };
+    const handleCameraChange = (): void => {
       this.settings.defaultCameraMode = this.cameraSelect.value === "third" ? "third" : "first";
       this.persistSettings();
       this.renderSettings();
       this.onSettingsChange?.(this.getSettings());
-    });
-    this.collisionVisInput.addEventListener("change", () => {
+    };
+    const handleCollisionVisChange = (): void => {
       this.settings.collisionVisEnabled = this.collisionVisInput.checked;
       this.persistSettings();
       this.renderSettings();
       this.onSettingsChange?.(this.getSettings());
-    });
+    };
+
+    this.resumeButton.addEventListener("click", handleResumeClick, listenerOptions);
+    this.mainMenuButton.addEventListener("click", handleMainMenuClick, listenerOptions);
+    this.openInstructionsButton.addEventListener("click", handleOpenInstructionsClick, listenerOptions);
+    this.openCreditsButton.addEventListener("click", handleOpenCreditsClick, listenerOptions);
+    this.backToSettingsFromInstructionsButton.addEventListener("click", handleBackToSettingsFromInstructionsClick, listenerOptions);
+    this.backToSettingsButton.addEventListener("click", handleBackToSettingsClick, listenerOptions);
+    this.sensitivityInput.addEventListener("input", handleSensitivityInput, listenerOptions);
+    this.soundtrackInput.addEventListener("change", handleSoundtrackChange, listenerOptions);
+    this.fullscreenInput.addEventListener("change", handleFullscreenChange, listenerOptions);
+    this.musicInput.addEventListener("input", handleMusicInput, listenerOptions);
+    this.sfxInput.addEventListener("input", handleSfxInput, listenerOptions);
+    this.cameraSelect.addEventListener("change", handleCameraChange, listenerOptions);
+    this.collisionVisInput.addEventListener("change", handleCollisionVisChange, listenerOptions);
     this.disposeFullscreenListener = onFullscreenChange(() => {
       this.syncFullscreenFromBrowser();
     });
+    this.disposeRootListeners = () => {
+      this.launcher.removeEventListener("click", handleLauncherClick);
+      this.resumeButton.removeEventListener("click", handleResumeClick);
+      this.mainMenuButton.removeEventListener("click", handleMainMenuClick);
+      this.openInstructionsButton.removeEventListener("click", handleOpenInstructionsClick);
+      this.openCreditsButton.removeEventListener("click", handleOpenCreditsClick);
+      this.backToSettingsFromInstructionsButton.removeEventListener("click", handleBackToSettingsFromInstructionsClick);
+      this.backToSettingsButton.removeEventListener("click", handleBackToSettingsClick);
+      this.sensitivityInput.removeEventListener("input", handleSensitivityInput);
+      this.soundtrackInput.removeEventListener("change", handleSoundtrackChange);
+      this.fullscreenInput.removeEventListener("change", handleFullscreenChange);
+      this.musicInput.removeEventListener("input", handleMusicInput);
+      this.sfxInput.removeEventListener("input", handleSfxInput);
+      this.cameraSelect.removeEventListener("change", handleCameraChange);
+      this.collisionVisInput.removeEventListener("change", handleCollisionVisChange);
+    };
 
     this.renderSettings();
   }
@@ -975,6 +1008,9 @@ export class SessionMenu {
   }
 
   public dispose(): void {
+    this.listenerAbort.abort();
+    this.disposeRootListeners?.();
+    this.disposeRootListeners = null;
     this.disposeFullscreenListener();
     this.root.remove();
     this.launcher.remove();
