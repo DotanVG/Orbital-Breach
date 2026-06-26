@@ -8,6 +8,7 @@ import {
 import { isApparentFullscreen, isFullscreenSupported, onFullscreenChange } from "./fullscreen";
 import { getInstructionsContent, type InstructionsContent } from "./instructionsContent";
 import { GITHUB_ICON_SVG, ITCH_ICON_SVG } from "./linkIcons";
+import { escapeHtml } from "./escapeHtml";
 import { isTouchDevice } from "../platform";
 
 export interface SessionSettings {
@@ -1128,19 +1129,6 @@ function buildInstructionItem(item: { title: string; body: string }, wide = fals
       <div class="ob-session-instruction-body">${escapeHtml(item.body)}</div>
     </article>
   `;
-}
-
-function escapeHtml(raw: string): string {
-  return raw.replace(/[&<>"']/g, (ch) => {
-    switch (ch) {
-      case "&": return "&amp;";
-      case "<": return "&lt;";
-      case ">": return "&gt;";
-      case '"': return "&quot;";
-      case "'": return "&#39;";
-      default: return ch;
-    }
-  });
 }
 
 function loadSettings(): SessionSettings {

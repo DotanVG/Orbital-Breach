@@ -6,6 +6,7 @@ import {
   type MultiplayerRoomSnapshot,
 } from "../../../shared/multiplayer";
 import QRCode from "qrcode";
+import { escapeHtml } from "./escapeHtml";
 
 const CYAN = "#7ffcff";
 const MAGENTA = "#ff7df8";
@@ -1435,23 +1436,4 @@ function playlistLabel(size: MatchTeamSize): string {
     case 20:
       return "20v20 War";
   }
-}
-
-function escapeHtml(raw: string): string {
-  return raw.replace(/[&<>"']/g, (ch) => {
-    switch (ch) {
-      case "&":
-        return "&amp;";
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case "\"":
-        return "&quot;";
-      case "'":
-        return "&#39;";
-      default:
-        return ch;
-    }
-  });
 }

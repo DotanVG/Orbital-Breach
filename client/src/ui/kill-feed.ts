@@ -1,3 +1,7 @@
+import { escapeHtml } from "./escapeHtml";
+
+export { escapeHtml };
+
 export class KillFeed {
   private container: HTMLDivElement;
   private localPlayerName = "";
@@ -100,23 +104,4 @@ export class KillFeed {
     setTimeout(() => { entry.style.opacity = "0"; }, 4500);
     setTimeout(() => { entry.remove(); }, 5000);
   }
-}
-
-export function escapeHtml(raw: string): string {
-  return raw.replace(/[&<>"']/g, (ch) => {
-    switch (ch) {
-      case "&":
-        return "&amp;";
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case '"':
-        return "&quot;";
-      case "'":
-        return "&#39;";
-      default:
-        return ch;
-    }
-  });
 }
