@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_PLAYER_NAME } from "../shared/callSigns";
 import { buildBotName } from "../shared/multiplayer";
 import { OrbitalLobbyRoom } from "../server/src/colyseus/OrbitalLobbyRoom";
 import { ActorState, LobbyMemberState, OrbitalLobbyState } from "../server/src/colyseus/state";
@@ -179,5 +180,57 @@ describe("OrbitalLobbyRoom onJoin", () => {
     expect(room.state.members.has("bot-0")).toBe(false);
     expect(room.state.actors.has("bot-0")).toBe(false);
     expect(room.state.actors.has("bot-1")).toBe(true);
+  });
+
+  it("falls back to the default call sign when the requested name is blank", () => {
+    const room = createRoom();
+    room.state.phase = "LOBBY";
+
+    room.onJoin({ sessionId: "human-1" } as never, { name: "   " });
+
+    expect(room.state.members.get("human-1")?.name).toBe(DEFAULT_PLAYER_NAME);
+  });
+
+  it("falls back to the default call sign for profanity hidden behind unicode separators", () => {
+    const room = createRoom();
+    room.state.phase = "LOBBY";
+
+    room.onJoin({ sessionId: "human-1" } as never, { name: "n\u200Bi\u200Bgger" });
+
+    expect(room.state.members.get("human-1")?.name).toBe(DEFAULT_PLAYER_NAME);
+  });
+
+  it("preserves ASCII payload-like names for downstream HTML escaping", () => {
+    const room = createRoom();
+    room.state.phase = "LOBBY";
+    const payload = "<svg onload=a()>";
+
+    expect(payload.length).toBe(16);
+    room.onJoin({ sessionId: "human-1" } as never, { name: payload });
+
+    expect(room.state.members.get("human-1")?.name).toBe(payload);
+  });
+});
+
+describe("OrbitalLobbyRoom fill_bots", () => {
+  it("ignores fill_bots messages once the round is already playing", () => {
+    const room = createRoom();
+    room.state.phase = "PLAYING";
+    room.state.teamSize = 2;
+    room.state.maxPlayers = 4;
+
+    addMember(room, "human-1", { name: "Alpha", team: 0 });
+    addMember(room, "human-2", { name: "Bravo", team: 1 });
+    addMember(room, "bot-0", { name: buildBotName(0, 0), team: 0, isBot: true });
+
+    const handleFillBotsMessage = (room as unknown as {
+      handleFillBotsMessage(message: { fill: boolean }): void;
+    }).handleFillBotsMessage.bind(room);
+
+    handleFillBotsMessage({ fill: false });
+    handleFillBotsMessage({ fill: true });
+
+    expect(Array.from(room.state.members.keys())).toEqual(["human-1", "human-2", "bot-0"]);
+    expect(room.setMetadata).not.toHaveBeenCalled();
   });
 });

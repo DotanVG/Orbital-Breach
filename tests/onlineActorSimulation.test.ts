@@ -95,4 +95,21 @@ describe("isHitReportDistancePlausible", () => {
     const target = makeActor({ posX: MAX_HIT_REPORT_DISTANCE });
     expect(isHitReportDistancePlausible(shooter, target)).toBe(true);
   });
+
+  it("distinguishes distances just inside and just outside the maximum", () => {
+    const shooter = makeActor();
+
+    expect(
+      isHitReportDistancePlausible(
+        shooter,
+        makeActor({ posX: MAX_HIT_REPORT_DISTANCE - 1e-6 }),
+      ),
+    ).toBe(true);
+    expect(
+      isHitReportDistancePlausible(
+        shooter,
+        makeActor({ posX: MAX_HIT_REPORT_DISTANCE + 1e-6 }),
+      ),
+    ).toBe(false);
+  });
 });
