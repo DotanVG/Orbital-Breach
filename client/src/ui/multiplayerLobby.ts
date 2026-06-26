@@ -852,6 +852,8 @@ export class MultiplayerLobby {
   private inviteQrForUrl = "";
   private inviteQrPendingUrl = "";
   private inviteQrRequestId = 0;
+  private readonly listenerAbort = new AbortController();
+  private disposeRootListeners: (() => void) | null = null;
 
   public onLeaveLobby: (() => void) | null = null;
   public onReadyChange: ((ready: boolean) => void) | null = null;
@@ -900,34 +902,57 @@ export class MultiplayerLobby {
 
     this.teamSizeSelect.innerHTML = MATCH_TEAM_SIZES.map((size) =>
       `<option value="${size}">${playlistLabel(size)}</option>`).join("");
+    const listenerOptions = { signal: this.listenerAbort.signal };
 
-    this.readyButton.addEventListener("click", () => {
+    const handleReadyClick = (): void => {
       const state = this.latestState;
       if (!state) return;
       const self = this.getSelf(state);
       this.onReadyChange?.(!self?.ready);
-    });
-    this.switchTeamButton.addEventListener("click", () => {
+    };
+    const handleSwitchTeamClick = (): void => {
       const state = this.latestState;
       if (!state) return;
       this.onSwitchTeam?.(state.selfTeam === 0 ? 1 : 0);
-    });
-    this.fillBotsButton.addEventListener("click", () => this.onFillBots?.(true));
-    this.clearBotsButton.addEventListener("click", () => this.onFillBots?.(false));
-    this.settingsButton.addEventListener("click", () => this.onOpenSettings?.());
-    this.leaveButton.addEventListener("click", () => this.onLeaveLobby?.());
-    this.copyInviteButton.addEventListener("click", () => {
+    };
+    const handleFillBotsClick = (): void => this.onFillBots?.(true);
+    const handleClearBotsClick = (): void => this.onFillBots?.(false);
+    const handleSettingsClick = (): void => this.onOpenSettings?.();
+    const handleLeaveClick = (): void => this.onLeaveLobby?.();
+    const handleCopyInviteClick = (): void => {
       void this.copyInviteUrl();
-    });
-    this.shareInviteButton.addEventListener("click", () => {
+    };
+    const handleShareInviteClick = (): void => {
       void this.shareInviteUrl();
-    });
-    this.teamSizeSelect.addEventListener("change", () => {
+    };
+    const handleTeamSizeChange = (): void => {
       const teamSize = Number(this.teamSizeSelect.value);
       if (MATCH_TEAM_SIZES.includes(teamSize as MatchTeamSize)) {
         this.onTeamSizeChange?.(teamSize as MatchTeamSize);
       }
-    });
+    };
+
+    this.readyButton.addEventListener("click", handleReadyClick, listenerOptions);
+    this.switchTeamButton.addEventListener("click", handleSwitchTeamClick, listenerOptions);
+    this.fillBotsButton.addEventListener("click", handleFillBotsClick, listenerOptions);
+    this.clearBotsButton.addEventListener("click", handleClearBotsClick, listenerOptions);
+    this.settingsButton.addEventListener("click", handleSettingsClick, listenerOptions);
+    this.leaveButton.addEventListener("click", handleLeaveClick, listenerOptions);
+    this.copyInviteButton.addEventListener("click", handleCopyInviteClick, listenerOptions);
+    this.shareInviteButton.addEventListener("click", handleShareInviteClick, listenerOptions);
+    this.teamSizeSelect.addEventListener("change", handleTeamSizeChange, listenerOptions);
+
+    this.disposeRootListeners = () => {
+      this.readyButton.removeEventListener("click", handleReadyClick);
+      this.switchTeamButton.removeEventListener("click", handleSwitchTeamClick);
+      this.fillBotsButton.removeEventListener("click", handleFillBotsClick);
+      this.clearBotsButton.removeEventListener("click", handleClearBotsClick);
+      this.settingsButton.removeEventListener("click", handleSettingsClick);
+      this.leaveButton.removeEventListener("click", handleLeaveClick);
+      this.copyInviteButton.removeEventListener("click", handleCopyInviteClick);
+      this.shareInviteButton.removeEventListener("click", handleShareInviteClick);
+      this.teamSizeSelect.removeEventListener("change", handleTeamSizeChange);
+    };
   }
 
   public showConnecting(playerName: string): void {
@@ -963,6 +988,13 @@ export class MultiplayerLobby {
   public hide(): void {
     this.root.style.display = "none";
     this.latestState = null;
+  }
+
+  public dispose(): void {
+    this.listenerAbort.abort();
+    this.disposeRootListeners?.();
+    this.disposeRootListeners = null;
+    this.root.remove();
   }
 
   public setStatus(text: string, kind: LobbyEventMessage["type"], connecting = false): void {

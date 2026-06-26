@@ -358,6 +358,8 @@ export function sortDebriefPlayers(players: DebriefPlayer[], playerTeam: 0 | 1):
 
 export class DebriefScreen {
   private readonly root: HTMLDivElement;
+  private actionListenerAbort: AbortController | null = null;
+  private disposeActionListeners: (() => void) | null = null;
   public onMainMenu: (() => void) | null = null;
   public onPlayAgain: (() => void) | null = null;
 
@@ -374,6 +376,10 @@ export class DebriefScreen {
   }
 
   public show(data: DebriefData): void {
+    this.actionListenerAbort?.abort();
+    this.actionListenerAbort = null;
+    this.disposeActionListeners?.();
+    this.disposeActionListeners = null;
     this.root.innerHTML = this.buildHtml(data);
     this.root.classList.toggle("ob-debrief-theme--cyan", getDebriefThemeTeam(data.playerTeam) === 0);
     this.root.classList.toggle("ob-debrief-theme--magenta", getDebriefThemeTeam(data.playerTeam) === 1);
@@ -388,8 +394,25 @@ export class DebriefScreen {
       primaryActionButton.textContent = data.primaryActionLabel;
     }
 
-    mainMenuButton?.addEventListener("click", () => { this.hide(); this.onMainMenu?.(); });
-    primaryActionButton?.addEventListener("click", () => { this.hide(); this.onPlayAgain?.(); });
+    const handleMainMenu = (): void => {
+      this.hide();
+      this.onMainMenu?.();
+    };
+    const handlePlayAgain = (): void => {
+      this.hide();
+      this.onPlayAgain?.();
+    };
+    const listenerAbort = new AbortController();
+    this.actionListenerAbort = listenerAbort;
+    const listenerOptions = { signal: listenerAbort.signal };
+
+    mainMenuButton?.addEventListener("click", handleMainMenu, listenerOptions);
+    primaryActionButton?.addEventListener("click", handlePlayAgain, listenerOptions);
+
+    this.disposeActionListeners = () => {
+      mainMenuButton?.removeEventListener("click", handleMainMenu);
+      primaryActionButton?.removeEventListener("click", handlePlayAgain);
+    };
 
     const focusTarget = primaryActionButton ?? mainMenuButton;
     requestAnimationFrame(() => {
@@ -398,10 +421,18 @@ export class DebriefScreen {
   }
 
   public hide(): void {
+    this.actionListenerAbort?.abort();
+    this.actionListenerAbort = null;
+    this.disposeActionListeners?.();
+    this.disposeActionListeners = null;
     this.root.classList.remove("ob-debrief-visible");
   }
 
   public dispose(): void {
+    this.actionListenerAbort?.abort();
+    this.actionListenerAbort = null;
+    this.disposeActionListeners?.();
+    this.disposeActionListeners = null;
     this.root.remove();
   }
 
