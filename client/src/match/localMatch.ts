@@ -1,138 +1,60 @@
 import * as THREE from "three";
-import { ACTOR_COLLISION_RADIUS, GRAB_RADIUS, HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_POINT_TARGET, PLAYER_RADIUS } from "../../../shared/constants";
-import { DEFAULT_PLAYER_NAME, getBotCallSign } from "../../../shared/callSigns";
+import { HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_POINT_TARGET } from "../../../shared/constants";
+import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { findMatchWinner } from "../../../shared/match-flow";
-import { getSoloBotFill, type SoloMatchConfig } from "../../../shared/match";
+import type { SoloMatchConfig } from "../../../shared/match";
+import type { EnemyPlayerInfo, FullPlayerInfo } from "../../../shared/schema";
 import {
   classifyHitZone,
   findFullFreezeWinner,
   generateSpawnPositions,
-  maxLaunchPower,
-  resolveActorCollisions,
 } from "../../../shared/player-logic";
-import type { EnemyPlayerInfo, FullPlayerInfo, PlayerPhase, DamageState } from "../../../shared/schema";
-import type { Vec3 } from "../../../shared/vec3";
-import { v3 } from "../../../shared/vec3";
 import { Arena } from "../arena/arena";
 import { CameraController } from "../camera";
-import {
-  bounceArena,
-  clampBreachRoom,
-  integrateBreachRoom,
-  integrateZeroG,
-  type PhysicsState,
-} from "../physics";
-import { LocalPlayer } from "../player";
 import { addOutboundVibeJamPortal } from "../game/portal/vibeJamPortal";
 import type { PortalParams } from "../game/portal/parsePortalParams";
-import { ArenaQueryAdapter } from "./arenaQueryAdapter";
+import { LocalPlayer } from "../player";
 import {
-  buildBarGraph,
-  type BarRouteGraph,
-  BotBrain,
-  createBotPersonality,
-} from "./botBrain";
-import { buildHudRosters } from "./rosterView";
-import { SimulatedPlayerAvatar } from "./simulatedPlayerAvatar";
+  buildEnemySnapshots,
+  buildScoreActors,
+  findBotById,
+  getActorMeta,
+  getTeamActorCount,
+  recordFreezeKill,
+  resolveLocalActorOverlap,
+} from "./localMatchActors";
+import { ArenaQueryAdapter } from "./arenaQueryAdapter";
+import { buildBarGraph, type BarRouteGraph } from "./botBrain";
+import {
+  applyHitToBot,
+  buildBots,
+  resetBotsForRound,
+  settleSpawnOnFloor,
+  tickBot,
+  tickBotPassive,
+} from "./localMatchBots";
+import {
+  LOCAL_PLAYER_ID,
+  type BotState,
+  type LocalMatchEvent,
+  type LocalMatchStatsActor,
+  type ProjectileActorTarget,
+  type ProjectileHitEvent,
+  type SpawnProjectileEvent,
+} from "./localMatchTypes";
+import {
+  buildLocalHudRosters,
+  buildLocalMatchStatsActors,
+  buildLocalProjectileTargets,
+} from "./localMatchView";
 
-const LOCAL_PLAYER_ID = "local-player";
-const BREACH_ENTRY_CARRY_TIME = 0.55;
-const BREACH_ENTRY_CARRY_DAMPING_PER_60HZ = 0.9;
-const ZERO_CARRY = new THREE.Vector3();
-
-export interface ProjectileActorTarget {
-  active: boolean;
-  id: string;
-  pos: THREE.Vector3;
-  radius: number;
-  team: 0 | 1;
-}
-
-export interface ProjectileHitEvent {
-  direction: THREE.Vector3;
-  impactPoint: THREE.Vector3;
-  ownerId: string;
-  targetId: string;
-}
-
-export interface SpawnProjectileEvent {
-  direction: THREE.Vector3;
-  origin: THREE.Vector3;
-  ownerId: string;
-  team: 0 | 1;
-}
-
-export interface LocalMatchStatsActor {
-  id: string;
-  name: string;
-  team: 0 | 1;
-  isBot: boolean;
-  isSelf: boolean;
-  freezes: number;
-  frozen: number;
-  position: Vec3;
-}
-
-export type LocalMatchEvent =
-  | {
-    type: "hitConfirm";
-    team: 0 | 1;
-  }
-  | {
-    type: "freeze";
-    killerName: string;
-    killerTeam: 0 | 1;
-    victimName: string;
-    victimTeam: 0 | 1;
-  }
-  | {
-    type: "score";
-    scorerId: string;
-    scorerName: string;
-    scorerTeam: 0 | 1;
-  }
-  | {
-    type: "roundTie";
-  }
-  | {
-    reason: "breach" | "fullFreeze";
-    type: "roundWin";
-    winningTeam: 0 | 1;
-  }
-  | {
-    type: "matchEnd";
-    winningTeam: 0 | 1;
-    finalScore: { team0: number; team1: number };
-  };
-
-interface BotState {
-  avatar: SimulatedPlayerAvatar;
-  brain: BotBrain;
-  currentBreachTeam: 0 | 1;
-  damage: DamageState;
-  deaths: number;
-  grabbedBarPos: THREE.Vector3 | null;
-  id: string;
-  isBot: true;
-  kills: number;
-  launchPower: number;
-  name: string;
-  phase: PlayerPhase;
-  phys: PhysicsState;
-  breachEntryCarry: THREE.Vector3;
-  breachEntryCarryTimer: number;
-  rot: { yaw: number; pitch: number };
-  team: 0 | 1;
-}
-
-interface ActorDescriptor {
-  damage: DamageState;
-  id: string;
-  name: string;
-  phase: PlayerPhase;
-  pos: THREE.Vector3;
-  team: 0 | 1;
-}
+export type {
+  LocalMatchEvent,
+  LocalMatchStatsActor,
+  ProjectileActorTarget,
+  ProjectileHitEvent,
+  SpawnProjectileEvent,
+} from "./localMatchTypes";
 
 export class LocalMatch {
   private barGraph: BarRouteGraph = buildBarGraph([]);
@@ -148,12 +70,13 @@ export class LocalMatch {
   public constructor(private scene: THREE.Scene) {}
 
   public startNewGame(config: SoloMatchConfig): void {
+    this.dispose();
     this.config = config;
     this.celebratingTeam = null;
     this.score = { team0: 0, team1: 0 };
     this.roundResolved = false;
     this.roundSeed = 0;
-    this.rebuildBots();
+    this.bots = buildBots(this.scene, config);
   }
 
   public resetForRound(
@@ -170,13 +93,13 @@ export class LocalMatch {
 
     const team0Slots = generateSpawnPositions(
       0,
-      this.getTeamActorCount(0),
+      getTeamActorCount(this.config, this.bots, 0),
       query,
       this.roundSeed * 11 + 7,
     ).map((slot) => settleSpawnOnFloor(slot, query, 0));
     const team1Slots = generateSpawnPositions(
       1,
-      this.getTeamActorCount(1),
+      getTeamActorCount(this.config, this.bots, 1),
       query,
       this.roundSeed * 17 + 13,
     ).map((slot) => settleSpawnOnFloor(slot, query, 1));
@@ -187,10 +110,8 @@ export class LocalMatch {
       player.resetForNewRound(arena, humanSpawnOverride ?? team1Slots.shift());
     }
 
-    const team0Bots = this.bots.filter((bot) => bot.team === 0);
-    const team1Bots = this.bots.filter((bot) => bot.team === 1);
-    resetBotsForRound(team0Bots, team0Slots, this.roundSeed, query);
-    resetBotsForRound(team1Bots, team1Slots, this.roundSeed, query);
+    resetBotsForRound(this.bots.filter((bot) => bot.team === 0), team0Slots, this.roundSeed, query);
+    resetBotsForRound(this.bots.filter((bot) => bot.team === 1), team1Slots, this.roundSeed, query);
   }
 
   public dispose(): void {
@@ -209,28 +130,7 @@ export class LocalMatch {
   }
 
   public getMatchStatsActors(player: LocalPlayer): LocalMatchStatsActor[] {
-    return [
-      {
-        id: LOCAL_PLAYER_ID,
-        name: this.config.humanName,
-        team: this.config.humanTeam,
-        isBot: false,
-        isSelf: true,
-        freezes: player.kills,
-        frozen: player.deaths,
-        position: toVec3(player.getPosition()),
-      },
-      ...this.bots.map((bot) => ({
-        id: bot.id,
-        name: bot.name,
-        team: bot.team,
-        isBot: true,
-        isSelf: false,
-        freezes: bot.kills,
-        frozen: bot.deaths,
-        position: toVec3(bot.phys.pos),
-      })),
-    ];
+    return buildLocalMatchStatsActors(this.config, this.bots, player);
   }
 
   public addOutboundVibeJamPortal(params: PortalParams): void {
@@ -238,57 +138,11 @@ export class LocalMatch {
   }
 
   public getHudRosters(player: LocalPlayer): { ownTeam: FullPlayerInfo[]; enemyTeam: EnemyPlayerInfo[] } {
-    const actors = [
-      {
-        id: LOCAL_PLAYER_ID,
-        name: this.config.humanName,
-        team: this.config.humanTeam,
-        isBot: false,
-        kills: player.kills,
-        deaths: player.deaths,
-        phase: player.phase,
-        frozen: player.damage.frozen,
-        ping: 0,
-      },
-      ...this.bots.map((bot) => ({
-        id: bot.id,
-        name: bot.name,
-        team: bot.team,
-        isBot: true,
-        kills: bot.kills,
-        deaths: bot.deaths,
-        phase: bot.phase,
-        frozen: bot.damage.frozen,
-        ping: 0,
-      })),
-    ];
-
-    return buildHudRosters(LOCAL_PLAYER_ID, this.config.humanTeam, actors);
+    return buildLocalHudRosters(this.config, this.bots, player);
   }
 
   public getProjectileTargets(player: LocalPlayer): ProjectileActorTarget[] {
-    const humanCentre = player.getPosition().clone();
-    humanCentre.y += HITBOX_OFFSET_Y;
-    return [
-      {
-        active: player.phase !== "RESPAWNING" && player.phase !== "BREACH" && !player.damage.frozen,
-        id: LOCAL_PLAYER_ID,
-        pos: humanCentre,
-        radius: HITBOX_RADIUS,
-        team: this.config.humanTeam,
-      },
-      ...this.bots.map((bot) => {
-        const botCentre = bot.phys.pos.clone();
-        botCentre.y += HITBOX_OFFSET_Y;
-        return {
-          active: bot.phase !== "RESPAWNING" && bot.phase !== "BREACH" && !bot.damage.frozen,
-          id: bot.id,
-          pos: botCentre,
-          radius: HITBOX_RADIUS,
-          team: bot.team,
-        };
-      }),
-    ];
+    return buildLocalProjectileTargets(this.config, this.bots, player);
   }
 
   public handleProjectileHit(
@@ -298,10 +152,7 @@ export class LocalMatch {
   ): void {
     if (this.roundResolved) return;
 
-    const owner = this.getActorMeta(event.ownerId, player);
-    // Projectile impacts freeze targets but must not push them — a frozen
-    // player being shoved around the arena is disorienting and lets stray
-    // shots double as crowd control, which is not the design intent.
+    const owner = getActorMeta(this.config, this.bots, event.ownerId);
     const impulse = event.direction.clone().normalize().multiplyScalar(0);
 
     if (event.targetId === LOCAL_PLAYER_ID) {
@@ -315,7 +166,7 @@ export class LocalMatch {
       const frozen = player.applyHit(zone, impulse);
       if (frozen) {
         if (owner) {
-          this.recordFreezeKill(event.ownerId, player);
+          recordFreezeKill(this.bots, event.ownerId, player);
           this.emitEvent({
             type: "freeze",
             killerName: owner.name,
@@ -329,12 +180,12 @@ export class LocalMatch {
       return;
     }
 
-    const bot = this.bots.find((candidate) => candidate.id === event.targetId);
+    const bot = findBotById(this.bots, event.targetId);
     if (!bot) return;
 
     const zone = classifyHitZone(
-      toVec3(event.impactPoint),
-      toVec3(bot.phys.pos),
+      { x: event.impactPoint.x, y: event.impactPoint.y, z: event.impactPoint.z },
+      { x: bot.phys.pos.x, y: bot.phys.pos.y, z: bot.phys.pos.z },
       yawForward(bot.rot.yaw),
       HITBOX_OFFSET_Y,
       HITBOX_RADIUS,
@@ -348,7 +199,7 @@ export class LocalMatch {
     }
     if (frozen) {
       if (owner) {
-        this.recordFreezeKill(event.ownerId, player);
+        recordFreezeKill(this.bots, event.ownerId, player);
         this.emitEvent({
           type: "freeze",
           killerName: owner.name,
@@ -374,31 +225,23 @@ export class LocalMatch {
     isRoundPlaying: boolean,
   ): SpawnProjectileEvent[] {
     const shots: SpawnProjectileEvent[] = [];
-    const query = new ArenaQueryAdapter(arena);
 
     if (isRoundPlaying && !this.roundResolved) {
-      const enemySnapshots = this.buildEnemySnapshots(player);
+      const enemySnapshots = buildEnemySnapshots(this.config, this.bots, player);
+      const query = new ArenaQueryAdapter(arena);
       for (const bot of this.bots) {
-        this.tickBot(
-          bot,
-          dt,
-          arena,
-          query,
-          enemySnapshots[bot.team],
-          shots,
-        );
+        tickBot(bot, dt, arena, query, this.barGraph, enemySnapshots[bot.team], shots);
       }
 
       this.checkForBreachScore(arena, player);
       this.checkFullFreezeWin(player);
     } else {
       for (const bot of this.bots) {
-        this.tickBotPassive(bot, arena, dt);
+        tickBotPassive(bot, arena, dt);
       }
     }
 
-    this.resolveActorOverlap(player);
-
+    resolveLocalActorOverlap(this.bots, player);
     for (const bot of this.bots) {
       bot.avatar.update(
         bot.phys.pos,
@@ -414,32 +257,10 @@ export class LocalMatch {
     return shots;
   }
 
-  private buildEnemySnapshots(player: LocalPlayer): Record<0 | 1, Array<{ id: string; phase: PlayerPhase; pos: Vec3; team: 0 | 1 }>> {
-    const actors = [
-      {
-        id: LOCAL_PLAYER_ID,
-        phase: player.phase,
-        pos: toVec3(player.getPosition()),
-        team: this.config.humanTeam,
-      },
-      ...this.bots.map((bot) => ({
-        id: bot.id,
-        phase: bot.phase,
-        pos: toVec3(bot.phys.pos),
-        team: bot.team,
-      })),
-    ];
-
-    return {
-      0: actors.filter((actor) => actor.team === 1),
-      1: actors.filter((actor) => actor.team === 0),
-    };
-  }
-
-  private checkForBreachScore(arena: Arena, player: LocalPlayer): void {
+  private checkForBreachScore(arena: Pick<Arena, "isGoalDoorOpen" | "isDeepInBreachRoom" | "isInBreachRoom">, player: LocalPlayer): void {
     if (this.roundResolved) return;
 
-    const actors = this.getActorsForScore(player);
+    const actors = buildScoreActors(this.config, this.bots, player);
     for (const actor of actors) {
       if ((actor.phase !== "FLOATING" && actor.phase !== "BREACH") || actor.damage.frozen) continue;
 
@@ -454,7 +275,7 @@ export class LocalMatch {
         player.currentBreachTeam = enemyTeam;
         player.phase = "BREACH";
       } else {
-        const bot = this.getBot(actor.id);
+        const bot = findBotById(this.bots, actor.id);
         if (!bot) continue;
         bot.currentBreachTeam = enemyTeam;
         bot.phase = "BREACH";
@@ -472,8 +293,8 @@ export class LocalMatch {
       { team: this.config.humanTeam, frozen: player.damage.frozen },
       ...this.bots.map((bot) => ({ team: bot.team, frozen: bot.damage.frozen })),
     ]);
-
     if (winner === null) return;
+
     this.roundResolved = true;
     if (winner === 0) this.score.team0 += 1;
     else this.score.team1 += 1;
@@ -488,10 +309,10 @@ export class LocalMatch {
     reason: "breach" | "fullFreeze",
   ): void {
     if (this.roundResolved) return;
+
     this.roundResolved = true;
     if (team === 0) this.score.team0 += 1;
     else this.score.team1 += 1;
-
     this.emitEvent({
       type: "score",
       scorerId,
@@ -516,537 +337,11 @@ export class LocalMatch {
     });
   }
 
-  private recordFreezeKill(actorId: string, player: LocalPlayer): void {
-    if (actorId === LOCAL_PLAYER_ID) {
-      player.kills += 1;
-      return;
-    }
-
-    const bot = this.getBot(actorId);
-    if (bot) {
-      bot.kills += 1;
-    }
-  }
-
   private emitEvent(event: LocalMatchEvent): void {
     this.onEvent?.(event);
   }
-
-  private getActorMeta(id: string, player: LocalPlayer): { name: string; team: 0 | 1 } | null {
-    if (id === LOCAL_PLAYER_ID) {
-      return {
-        name: this.config.humanName,
-        team: this.config.humanTeam,
-      };
-    }
-
-    const bot = this.getBot(id);
-    if (!bot) return null;
-    return {
-      name: bot.name,
-      team: bot.team,
-    };
-  }
-
-  private getActorsForScore(player: LocalPlayer): ActorDescriptor[] {
-    return [
-      {
-        id: LOCAL_PLAYER_ID,
-        name: this.config.humanName,
-        team: this.config.humanTeam,
-        damage: player.damage,
-        phase: player.phase,
-        pos: player.getPosition(),
-      },
-      ...this.bots.map((bot) => ({
-        id: bot.id,
-        name: bot.name,
-        team: bot.team,
-        damage: bot.damage,
-        phase: bot.phase,
-        pos: bot.phys.pos,
-      })),
-    ];
-  }
-
-  private getBot(id: string): BotState | undefined {
-    return this.bots.find((candidate) => candidate.id === id);
-  }
-
-  private getTeamActorCount(team: 0 | 1): number {
-    const humanCount = this.config.humanTeam === team ? 1 : 0;
-    const botCount = this.bots.filter((bot) => bot.team === team).length;
-    return humanCount + botCount;
-  }
-
-  private rebuildBots(): void {
-    this.dispose();
-
-    if (this.config.noBots) return;
-
-    const fill = getSoloBotFill(this.config.teamSize, this.config.humanTeam);
-    for (let i = 0; i < fill.team0Bots; i += 1) {
-      this.bots.push(createBotState(this.scene, `bot-cyan-${i}`, getBotCallSign(i), 0));
-    }
-
-    for (let i = 0; i < fill.team1Bots; i += 1) {
-      const idx = fill.team0Bots + i;
-      this.bots.push(createBotState(this.scene, `bot-magenta-${i}`, getBotCallSign(idx), 1));
-    }
-  }
-
-  private resolveActorOverlap(player: LocalPlayer): void {
-    resolveActorCollisions([
-      {
-        active: player.phase !== "RESPAWNING",
-        anchored: isAnchored(player.phase),
-        pos: player.getPosition(),
-        radius: ACTOR_COLLISION_RADIUS,
-        vel: player.phys.vel,
-      },
-      ...this.bots.map((bot) => ({
-        active: bot.phase !== "RESPAWNING",
-        anchored: isAnchored(bot.phase),
-        pos: bot.phys.pos,
-        radius: ACTOR_COLLISION_RADIUS,
-        vel: bot.phys.vel,
-      })),
-    ]);
-  }
-
-  private tickBot(
-    bot: BotState,
-    dt: number,
-    arena: Arena,
-    query: ArenaQueryAdapter,
-    enemies: Array<{ id: string; phase: PlayerPhase; pos: Vec3; team: 0 | 1 }>,
-    shots: SpawnProjectileEvent[],
-  ): void {
-    if (bot.phase === "FROZEN") {
-      integrateFrozenDrift(bot, arena, dt);
-      return;
-    }
-
-    const command = bot.brain.tick(
-      {
-        currentBreachTeam: bot.currentBreachTeam,
-        damage: bot.damage,
-        phase: bot.phase,
-        pos: toVec3(bot.phys.pos),
-        rot: bot.rot,
-        team: bot.team,
-      },
-      query,
-      this.barGraph,
-      enemies,
-      dt,
-    );
-
-    bot.rot.yaw = command.lookYaw;
-    bot.rot.pitch = command.lookPitch;
-
-    if (command.fire && bot.phase !== "BREACH" && !bot.damage.rightArm && command.fireDirection) {
-      const forward = toThree(command.fireDirection).normalize();
-      shots.push({
-        direction: forward.clone(),
-        origin: bot.phys.pos.clone().addScaledVector(forward, PLAYER_RADIUS + 0.25),
-        ownerId: bot.id,
-        team: bot.team,
-      });
-    }
-
-    switch (bot.phase) {
-      case "BREACH":
-        this.updateBotBreach(bot, command, arena, query, dt);
-        break;
-      case "FLOATING":
-        this.updateBotFloating(bot, command, arena, query, dt);
-        break;
-      case "GRABBING":
-        if (!bot.grabbedBarPos) {
-          bot.phase = "FLOATING";
-          return;
-        }
-        bot.phys.vel.set(0, 0, 0);
-        bot.phys.pos.copy(bot.grabbedBarPos);
-        if (command.aimHeld) {
-          bot.phase = "AIMING";
-          bot.launchPower = 0;
-        }
-        break;
-      case "AIMING":
-        if (!bot.grabbedBarPos) {
-          bot.phase = "FLOATING";
-          return;
-        }
-        bot.phys.vel.set(0, 0, 0);
-        bot.phys.pos.copy(bot.grabbedBarPos);
-        bot.launchPower = Math.min(
-          maxLaunchPower(bot.damage),
-          bot.launchPower + (maxLaunchPower(bot.damage) * dt) / bot.brain.getLaunchChargeSeconds(),
-        );
-        if (!command.aimHeld) {
-          launchBot(bot);
-        }
-        break;
-      default:
-        break;
-    }
-  }
-
-  private tickBotPassive(
-    bot: BotState,
-    arena: Arena,
-    dt: number,
-  ): void {
-    switch (bot.phase) {
-      case "BREACH":
-        this.stepBotBreachPhysics(bot, arena, dt);
-        break;
-      case "FLOATING":
-        integrateFloating(bot, arena, dt);
-        const breachTeam = getEnteredBreachTeam(arena, bot.phys.pos);
-        if (breachTeam !== null) {
-          enterBotBreachRoom(bot, breachTeam);
-        }
-        break;
-      case "FROZEN":
-        integrateFrozenDrift(bot, arena, dt);
-        break;
-      case "GRABBING":
-      case "AIMING":
-        if (bot.grabbedBarPos) {
-          bot.phys.vel.set(0, 0, 0);
-          bot.phys.pos.copy(bot.grabbedBarPos);
-        } else {
-          bot.phase = "FLOATING";
-        }
-        break;
-      default:
-        break;
-    }
-  }
-
-  private updateBotBreach(
-    bot: BotState,
-    command: ReturnType<BotBrain["tick"]>,
-    arena: Arena,
-    query: ArenaQueryAdapter,
-    dt: number,
-  ): void {
-    const center = arena.getBreachRoomCenter(bot.currentBreachTeam);
-    const openAxis = arena.getBreachOpenAxis(bot.currentBreachTeam);
-    const openSign = arena.getBreachOpenSign(bot.currentBreachTeam);
-    const yawForwardVec = new THREE.Vector3(-Math.sin(bot.rot.yaw), 0, -Math.cos(bot.rot.yaw));
-    const yawRightVec = new THREE.Vector3(Math.cos(bot.rot.yaw), 0, -Math.sin(bot.rot.yaw));
-
-    integrateBreachRoom(
-      bot.phys,
-      command.walkAxes,
-      yawForwardVec,
-      yawRightVec,
-      false,
-      isOnBreachGround(bot, center.y),
-      bot.breachEntryCarryTimer > 0 ? bot.breachEntryCarry : ZERO_CARRY,
-      dt,
-    );
-    decayBreachEntryCarry(bot, isOnBreachGround(bot, center.y), dt);
-    clampBreachRoom(bot.phys, center, openAxis, openSign, arena.isGoalDoorOpen(bot.currentBreachTeam));
-
-    if (command.grab && !bot.damage.leftArm && arena.isGoalDoorOpen(bot.currentBreachTeam)) {
-      const nearest = query.getNearestBar(toVec3(bot.phys.pos), GRAB_RADIUS);
-      if (nearest) {
-        bot.grabbedBarPos = toThree(nearest.pos);
-        bot.phase = "GRABBING";
-      }
-    }
-
-    if (!arena.isInBreachRoom(bot.phys.pos, bot.currentBreachTeam)) {
-      bot.phase = "FLOATING";
-    }
-  }
-
-  private updateBotFloating(
-    bot: BotState,
-    command: ReturnType<BotBrain["tick"]>,
-    arena: Arena,
-    query: ArenaQueryAdapter,
-    dt: number,
-  ): void {
-    integrateFloating(bot, arena, dt);
-
-    const breachTeam = getEnteredBreachTeam(arena, bot.phys.pos);
-    if (breachTeam !== null) {
-      enterBotBreachRoom(bot, breachTeam);
-      return;
-    }
-
-    if (command.grab && !bot.damage.leftArm && command.targetBar) {
-      const nearest = query.getNearestBar(toVec3(bot.phys.pos), GRAB_RADIUS);
-      if (nearest) {
-        bot.grabbedBarPos = toThree(nearest.pos);
-        bot.phase = "GRABBING";
-      }
-    }
-  }
-
-  private stepBotBreachPhysics(bot: BotState, arena: Arena, dt: number): void {
-    const center = arena.getBreachRoomCenter(bot.currentBreachTeam);
-    const openAxis = arena.getBreachOpenAxis(bot.currentBreachTeam);
-    const openSign = arena.getBreachOpenSign(bot.currentBreachTeam);
-    const yawForwardVec = new THREE.Vector3(-Math.sin(bot.rot.yaw), 0, -Math.cos(bot.rot.yaw));
-    const yawRightVec = new THREE.Vector3(Math.cos(bot.rot.yaw), 0, -Math.sin(bot.rot.yaw));
-
-    integrateBreachRoom(
-      bot.phys,
-      { x: 0, z: 0 },
-      yawForwardVec,
-      yawRightVec,
-      false,
-      isOnBreachGround(bot, center.y),
-      bot.breachEntryCarryTimer > 0 ? bot.breachEntryCarry : ZERO_CARRY,
-      dt,
-    );
-    decayBreachEntryCarry(bot, isOnBreachGround(bot, center.y), dt);
-    clampBreachRoom(bot.phys, center, openAxis, openSign, arena.isGoalDoorOpen(bot.currentBreachTeam));
-  }
 }
 
-function createDamageState(): DamageState {
-  return {
-    frozen: false,
-    leftArm: false,
-    leftLeg: false,
-    rightArm: false,
-    rightLeg: false,
-  };
-}
-
-function createBotState(scene: THREE.Scene, id: string, name: string, team: 0 | 1): BotState {
-  const personality = createBotPersonality(id, team);
-  return {
-    avatar: new SimulatedPlayerAvatar(scene, team, name),
-    brain: new BotBrain(personality),
-    currentBreachTeam: team,
-    damage: createDamageState(),
-    deaths: 0,
-    grabbedBarPos: null,
-    id,
-    isBot: true,
-    kills: 0,
-    launchPower: 0,
-    name,
-    phase: "BREACH",
-    phys: { pos: new THREE.Vector3(), vel: new THREE.Vector3() },
-    breachEntryCarry: new THREE.Vector3(),
-    breachEntryCarryTimer: 0,
-    rot: { yaw: 0, pitch: 0 },
-    team,
-  };
-}
-
-function applyHitToBot(
-  bot: BotState,
-  zone: ReturnType<typeof classifyHitZone>,
-  impulse: THREE.Vector3,
-): boolean {
-  bot.phys.vel.add(impulse);
-
-  switch (zone) {
-    case "head":
-    case "body":
-      return promoteBotToFullFreeze(bot);
-    case "rightArm":
-      bot.damage.rightArm = true;
-      if (allBotLimbsDamaged(bot)) return promoteBotToFullFreeze(bot);
-      return false;
-    case "leftArm":
-      bot.damage.leftArm = true;
-      if (bot.phase === "GRABBING" || bot.phase === "AIMING") {
-        bot.phase = "FLOATING";
-        bot.grabbedBarPos = null;
-      }
-      if (allBotLimbsDamaged(bot)) return promoteBotToFullFreeze(bot);
-      return false;
-    case "leftLeg":
-      bot.damage.leftLeg = true;
-      bot.launchPower = Math.min(bot.launchPower, maxLaunchPower(bot.damage));
-      if (allBotLimbsDamaged(bot)) return promoteBotToFullFreeze(bot);
-      return false;
-    case "rightLeg":
-      bot.damage.rightLeg = true;
-      bot.launchPower = Math.min(bot.launchPower, maxLaunchPower(bot.damage));
-      if (allBotLimbsDamaged(bot)) return promoteBotToFullFreeze(bot);
-      return false;
-  }
-}
-
-function allBotLimbsDamaged(bot: BotState): boolean {
-  return bot.damage.leftArm && bot.damage.rightArm && bot.damage.leftLeg && bot.damage.rightLeg;
-}
-
-function promoteBotToFullFreeze(bot: BotState): true {
-  if (!bot.damage.frozen) {
-    bot.damage.frozen = true;
-    bot.deaths += 1;
-  }
-  bot.phase = "FROZEN";
-  bot.grabbedBarPos = null;
-  return true;
-}
-
-function integrateFloating(bot: BotState, arena: Arena, dt = 0): void {
-  const goalAxis = arena.getBreachOpenAxis(bot.team);
-  const perpAxis: "x" | "z" = goalAxis === "z" ? "x" : "z";
-  const team0FaceSign = (-arena.getBreachOpenSign(0)) as 1 | -1;
-  const team1FaceSign = (-arena.getBreachOpenSign(1)) as 1 | -1;
-  const portalFacesOpen = {
-    positive:
-      (team0FaceSign === 1 && arena.isGoalDoorOpen(0))
-      || (team1FaceSign === 1 && arena.isGoalDoorOpen(1)),
-    negative:
-      (team0FaceSign === -1 && arena.isGoalDoorOpen(0))
-      || (team1FaceSign === -1 && arena.isGoalDoorOpen(1)),
-  };
-
-  integrateZeroG(bot.phys, dt);
-  bounceArena(bot.phys, goalAxis, perpAxis, portalFacesOpen);
-  arena.bounceObstacles(bot.phys);
-}
-
-/**
- * Frozen drift: zero-G + fully solid arena walls. Frozen bodies cannot
- * breach — including back into their own room. Limb-damaged (but not
- * frozen) allies get their limbs healed only by drifting home via the
- * FLOATING branch (see integrateFloating + returnBotToOwnBreach).
- */
-function integrateFrozenDrift(bot: BotState, arena: Arena, dt = 0): void {
-  integrateZeroG(bot.phys, dt);
-  bounceArena(bot.phys);
-  arena.bounceObstacles(bot.phys);
-}
-
-function isAnchored(phase: PlayerPhase): boolean {
-  return phase === "GRABBING" || phase === "AIMING";
-}
-
-function isOnBreachGround(bot: BotState, centerY: number): boolean {
-  const floorY = centerY - 3 + PLAYER_RADIUS;
-  return bot.phys.pos.y <= floorY + 0.08;
-}
-
-function launchBot(bot: BotState): void {
-  const forward = directionFromRotation(bot.rot.yaw, bot.rot.pitch);
-  bot.phys.pos.addScaledVector(forward, PLAYER_RADIUS + 0.8);
-  bot.phys.vel.copy(forward).multiplyScalar(bot.launchPower);
-  bot.breachEntryCarry.set(0, 0, 0);
-  bot.breachEntryCarryTimer = 0;
-  bot.grabbedBarPos = null;
-  bot.launchPower = 0;
-  bot.phase = "FLOATING";
-}
-
-function directionFromRotation(yaw: number, pitch: number): THREE.Vector3 {
-  const cy = Math.cos(yaw);
-  const sy = Math.sin(yaw);
-  const cp = Math.cos(pitch);
-  const sp = Math.sin(pitch);
-  return new THREE.Vector3(-sy * cp, sp, -cy * cp).normalize();
-}
-
-function resetBotsForRound(
-  bots: BotState[],
-  spawnSlots: Vec3[],
-  roundSeed: number,
-  query: ArenaQueryAdapter,
-): void {
-  for (let i = 0; i < bots.length; i += 1) {
-    const bot = bots[i];
-    const spawn = spawnSlots[i] ?? spawnSlots[spawnSlots.length - 1] ?? { x: 0, y: 0, z: 0 };
-    bot.currentBreachTeam = bot.team;
-    bot.damage = createDamageState();
-    bot.grabbedBarPos = null;
-    bot.launchPower = 0;
-    bot.phase = "BREACH";
-    bot.phys.pos.set(spawn.x, spawn.y, spawn.z);
-    bot.phys.vel.set(0, 0, 0);
-    bot.breachEntryCarry.set(0, 0, 0);
-    bot.breachEntryCarryTimer = 0;
-    bot.rot = exitRotation(query, bot.team);
-    bot.brain.resetForRound(roundSeed * 37 + i * 13 + bot.team);
-    bot.avatar.update(bot.phys.pos, bot.damage, bot.phase, bot.rot.yaw, 0, 0);
-  }
-}
-
-function getEnteredBreachTeam(arena: Arena, pos: THREE.Vector3): 0 | 1 | null {
-  if (arena.isInBreachRoom(pos, 0)) return 0;
-  if (arena.isInBreachRoom(pos, 1)) return 1;
-  return null;
-}
-
-function enterBotBreachRoom(bot: BotState, team: 0 | 1): void {
-  // Frozen bots cannot drift home — the arena walls are solid while FROZEN.
-  // A wounded-but-FLOATING bot that makes it back heals its limb damage.
-  bot.currentBreachTeam = team;
-  bot.damage.leftArm = false;
-  bot.damage.rightArm = false;
-  bot.damage.leftLeg = false;
-  bot.damage.rightLeg = false;
-  bot.phase = "BREACH";
-  bot.breachEntryCarry.copy(bot.phys.vel);
-  bot.breachEntryCarry.y = 0;
-  bot.breachEntryCarryTimer = BREACH_ENTRY_CARRY_TIME;
-}
-
-function settleSpawnOnFloor(
-  spawn: Vec3,
-  query: ArenaQueryAdapter,
-  team: 0 | 1,
-): Vec3 {
-  const center = query.getBreachRoomCenter(team);
-  const floorY = center.y - 3 + PLAYER_RADIUS + 0.08;
-  return {
-    x: spawn.x,
-    y: floorY,
-    z: spawn.z,
-  };
-}
-
-function exitRotation(query: ArenaQueryAdapter, team: 0 | 1): { yaw: number; pitch: number } {
-  const axis = query.getBreachOpenAxis(team);
-  const sign = query.getBreachOpenSign(team);
-  const dir = axis === "x"
-    ? new THREE.Vector3(sign, 0, 0)
-    : axis === "y"
-      ? new THREE.Vector3(0, sign, 0)
-      : new THREE.Vector3(0, 0, sign);
-  return {
-    yaw: Math.atan2(-dir.x, -dir.z),
-    pitch: Math.asin(Math.max(-1, Math.min(1, dir.y))),
-  };
-}
-
-function toVec3(vec: THREE.Vector3): Vec3 {
-  return { x: vec.x, y: vec.y, z: vec.z };
-}
-
-function toThree(vec: Vec3): THREE.Vector3 {
-  return new THREE.Vector3(vec.x, vec.y, vec.z);
-}
-
-function decayBreachEntryCarry(bot: BotState, onGround: boolean, dt: number): void {
-  if (onGround) {
-    bot.breachEntryCarry.set(0, 0, 0);
-    bot.breachEntryCarryTimer = 0;
-    return;
-  }
-  if (bot.breachEntryCarryTimer <= 0) return;
-  bot.breachEntryCarryTimer = Math.max(0, bot.breachEntryCarryTimer - dt);
-  const damp = Math.pow(BREACH_ENTRY_CARRY_DAMPING_PER_60HZ, dt * 60);
-  bot.breachEntryCarry.multiplyScalar(damp);
-  bot.breachEntryCarry.y = 0;
-}
-
-function yawForward(yaw: number): Vec3 {
-  return v3.normalize({ x: -Math.sin(yaw), y: 0, z: -Math.cos(yaw) });
+function yawForward(yaw: number): { x: number; y: number; z: number } {
+  return { x: -Math.sin(yaw), y: 0, z: -Math.cos(yaw) };
 }
