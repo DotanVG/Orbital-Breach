@@ -64,6 +64,7 @@ const MAX_KILLS = 9999;
 const POS_CLAMP = ARENA_SIZE * 4;
 const VEL_CLAMP = MAX_SPEED * 4;
 const PLAYER_UPDATE_MIN_MS = 40;
+const REPORT_MESSAGE_MIN_MS = PLAYER_UPDATE_MIN_MS;
 
 const VALID_PHASES = new Set<string>(["BREACH", "FLOATING", "GRABBING", "AIMING", "FROZEN", "RESPAWNING"]);
 
@@ -97,6 +98,8 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   private countdownPreparedRound = false;
   private roundResolved = false;
   private lastPlayerUpdate = new Map<string, number>();
+  private lastHitReport = new Map<string, number>();
+  private lastBreachReport = new Map<string, number>();
   private listing: MultiplayerRoomListing = "quick";
   private visibility: MultiplayerRoomVisibility = "public";
 
@@ -379,6 +382,11 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     const shooter = this.state.actors.get(client.sessionId);
     if (!shooter || shooter.frozen || shooter.rightArm || shooter.phase === "RESPAWNING") return;
 
+    const now = Date.now();
+    const last = this.lastHitReport.get(client.sessionId) ?? 0;
+    if (now - last < REPORT_MESSAGE_MIN_MS) return;
+    this.lastHitReport.set(client.sessionId, now);
+
     const targetId = String(message.targetId ?? "").slice(0, 64);
     const target = this.state.actors.get(targetId);
     if (!target || target.frozen || target.team === shooter.team) return;
@@ -427,6 +435,11 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
     const actor = this.state.actors.get(client.sessionId);
     if (!actor || actor.frozen) return;
+
+    const now = Date.now();
+    const last = this.lastBreachReport.get(client.sessionId) ?? 0;
+    if (now - last < REPORT_MESSAGE_MIN_MS) return;
+    this.lastBreachReport.set(client.sessionId, now);
 
     // The report is only a hint: the point is awarded when the server's
     // last-known position for this actor is inside the enemy breach room.
@@ -730,12 +743,16 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.state.actors.clear();
     this.bots.clear();
     this.lastPlayerUpdate.clear();
+    this.lastHitReport.clear();
+    this.lastBreachReport.clear();
   }
 
   private removePresence(id: string): void {
     this.state.actors.delete(id);
     this.bots.remove(id);
     this.lastPlayerUpdate.delete(id);
+    this.lastHitReport.delete(id);
+    this.lastBreachReport.delete(id);
   }
 
 
