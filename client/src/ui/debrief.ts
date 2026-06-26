@@ -1,4 +1,5 @@
 import { injectDesignTokens } from "./designTokens";
+import { escapeHtml } from "./escapeHtml";
 
 export interface DebriefPlayer {
   id: string;
@@ -327,12 +328,6 @@ function injectStyle(): void {
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.appendChild(style);
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c
-  );
 }
 
 export function getDebriefThemeTeam(playerTeam: 0 | 1): 0 | 1 {

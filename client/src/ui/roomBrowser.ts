@@ -10,6 +10,7 @@ import {
 } from "../../../shared/multiplayer";
 import { fetchPublicRoomDirectory } from "../net/roomDirectory";
 import { injectDesignTokens } from "./designTokens";
+import { escapeHtml } from "./escapeHtml";
 
 const MAX_PLAYER_OPTIONS = MATCH_TEAM_SIZES.map((teamSize) => getMaxPlayersForTeamSize(teamSize));
 
@@ -587,23 +588,4 @@ function renderRoomCard(room: MultiplayerRoomDirectoryEntry): string {
       </div>
     </div>
   `;
-}
-
-function escapeHtml(raw: string): string {
-  return raw.replace(/[&<>\"']/g, (char) => {
-    switch (char) {
-      case "&":
-        return "&amp;";
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case "\"":
-        return "&quot;";
-      case "'":
-        return "&#39;";
-      default:
-        return char;
-    }
-  });
 }

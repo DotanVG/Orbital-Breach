@@ -1,4 +1,5 @@
 import type { EnemyPlayerInfo, FullPlayerInfo } from "../../../../shared/schema";
+import { escapeHtml } from "../../ui/escapeHtml";
 
 export interface ScoreboardRenderOptions {
   ownTeamId: 0 | 1;
@@ -140,23 +141,4 @@ function formatPing(ping: number): string {
 
 function teamName(teamId: 0 | 1): string {
   return teamId === 0 ? "Cyan" : "Magenta";
-}
-
-function escapeHtml(raw: string): string {
-  return raw.replace(/[&<>"']/g, (ch) => {
-    switch (ch) {
-      case "&":
-        return "&amp;";
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case '"':
-        return "&quot;";
-      case "'":
-        return "&#39;";
-      default:
-        return ch;
-    }
-  });
 }

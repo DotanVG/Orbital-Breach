@@ -3,6 +3,7 @@ import type { MatchTeamSize } from "../../../../shared/match";
 import { GITHUB_REPO_URL, ITCH_IO_URL } from "../creditsContent";
 import { GITHUB_ICON_SVG, ITCH_ICON_SVG } from "../linkIcons";
 import { injectDesignTokens } from "../designTokens";
+import { escapeHtml } from "../escapeHtml";
 import { SESSION_MENU_GEAR_ICON } from "../sessionMenu";
 
 /* ─────────────────────────────────────────────
@@ -1044,15 +1045,3 @@ function initMenuFx(container: HTMLElement): void {
 /* ─────────────────────────────────────────────
    UTIL
 ───────────────────────────────────────────── */
-function escapeHtml(raw: string): string {
-  return raw.replace(/[&<>"']/g, (ch) => {
-    switch (ch) {
-      case "&":  return "&amp;";
-      case "<":  return "&lt;";
-      case ">":  return "&gt;";
-      case '"':  return "&quot;";
-      case "'":  return "&#39;";
-      default:   return ch;
-    }
-  });
-}
