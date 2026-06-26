@@ -201,6 +201,36 @@ const CSS = `
     animation: ob-mp-status-dot 1.1s ease-in-out infinite;
   }
 
+  .ob-mp-reconnect {
+    display: none;
+    gap: 12px;
+    margin-top: 16px;
+    padding: 16px;
+    border: 1px solid rgba(255, 120, 150, 0.28);
+    background:
+      linear-gradient(180deg, rgba(255, 120, 150, 0.08), rgba(255, 120, 150, 0.02)),
+      rgba(12, 10, 18, 0.84);
+  }
+
+  .ob-mp-reconnect-title {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .ob-mp-reconnect-copy {
+    color: #f5dfe6;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .ob-mp-reconnect-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
   .ob-mp-controls {
     display: flex;
     flex-wrap: wrap;
@@ -413,6 +443,11 @@ const CSS = `
 
   .ob-mp-button--settings {
     border-color: rgba(127, 252, 255, 0.24);
+  }
+
+  .ob-mp-button--reconnect {
+    border-color: rgba(127, 252, 255, 0.26);
+    box-shadow: 0 0 18px rgba(127, 252, 255, 0.08) inset;
   }
 
   .ob-mp-summary {
@@ -819,6 +854,11 @@ function injectStyle(): void {
 export class MultiplayerLobby {
   private root: HTMLDivElement;
   private status: HTMLDivElement;
+  private reconnectPanel: HTMLDivElement;
+  private reconnectTitle: HTMLDivElement;
+  private reconnectCopy: HTMLDivElement;
+  private reconnectButton: HTMLButtonElement;
+  private reconnectMenuButton: HTMLButtonElement;
   private phase: HTMLDivElement;
   private meta: HTMLDivElement;
   private score: HTMLDivElement;
@@ -859,6 +899,8 @@ export class MultiplayerLobby {
   public onFillBots: ((fill: boolean) => void) | null = null;
   public onOpenSettings: (() => void) | null = null;
   public onTeamSizeChange: ((teamSize: MatchTeamSize) => void) | null = null;
+  public onReconnect: (() => void) | null = null;
+  public onReturnToMenu: (() => void) | null = null;
 
   public constructor() {
     injectStyle();
@@ -869,6 +911,11 @@ export class MultiplayerLobby {
     document.body.appendChild(this.root);
 
     this.status = this.query("#mp-status");
+    this.reconnectPanel = this.query("#mp-reconnect");
+    this.reconnectTitle = this.query("#mp-reconnect-title");
+    this.reconnectCopy = this.query("#mp-reconnect-copy");
+    this.reconnectButton = this.query("#mp-reconnect-btn");
+    this.reconnectMenuButton = this.query("#mp-reconnect-menu");
     this.phase = this.query("#mp-phase");
     this.meta = this.query("#mp-meta");
     this.score = this.query("#mp-score");
@@ -916,6 +963,8 @@ export class MultiplayerLobby {
     this.clearBotsButton.addEventListener("click", () => this.onFillBots?.(false));
     this.settingsButton.addEventListener("click", () => this.onOpenSettings?.());
     this.leaveButton.addEventListener("click", () => this.onLeaveLobby?.());
+    this.reconnectButton.addEventListener("click", () => this.onReconnect?.());
+    this.reconnectMenuButton.addEventListener("click", () => this.onReturnToMenu?.());
     this.copyInviteButton.addEventListener("click", () => {
       void this.copyInviteUrl();
     });
@@ -931,10 +980,19 @@ export class MultiplayerLobby {
   }
 
   public showConnecting(playerName: string): void {
+    this.hideReconnectPrompt();
+    this.latestState = null;
     this.root.style.display = "flex";
     this.phase.textContent = "Handshake";
     this.meta.textContent = "Establishing room session";
     this.score.textContent = "0 - 0";
+    this.readyButton.disabled = true;
+    this.switchTeamButton.disabled = true;
+    this.fillBotsButton.disabled = true;
+    this.clearBotsButton.disabled = true;
+    this.settingsButton.disabled = false;
+    this.leaveButton.disabled = false;
+    this.teamSizeSelect.disabled = true;
     this.playlistCard.innerHTML = renderSummaryCard("playlist", "Connecting", "Contacting the online room.");
     this.queueCard.innerHTML = renderSummaryCard("queue", "Assembling", "Waiting for the queue state.");
     this.teamCard.innerHTML = renderSummaryCard("team", "Seat", "Finding your squad slot.");
@@ -963,6 +1021,7 @@ export class MultiplayerLobby {
   public hide(): void {
     this.root.style.display = "none";
     this.latestState = null;
+    this.hideReconnectPrompt();
   }
 
   public setStatus(text: string, kind: LobbyEventMessage["type"], connecting = false): void {
@@ -978,6 +1037,7 @@ export class MultiplayerLobby {
   }
 
   public render(state: MultiplayerRoomSnapshot): void {
+    this.hideReconnectPrompt();
     this.latestState = state;
     this.show();
     const counts = getLobbyMemberCounts(state.members);
@@ -1046,6 +1106,32 @@ export class MultiplayerLobby {
     this.team0Roster.innerHTML = renderRoster(team0Members, state.sessionId, 0);
     this.team1Roster.innerHTML = renderRoster(team1Members, state.sessionId, 1);
     void this.renderInvite(state);
+  }
+
+  public showReconnectPrompt(options: {
+    title: string;
+    body: string;
+    status: string;
+  }): void {
+    this.root.style.display = "flex";
+    this.reconnectTitle.textContent = options.title;
+    this.reconnectCopy.textContent = options.body;
+    this.reconnectPanel.style.display = "grid";
+    if (!this.latestState) {
+      this.phase.textContent = "Offline";
+      this.meta.textContent = "Reconnect required";
+    }
+
+    this.readyButton.disabled = true;
+    this.switchTeamButton.disabled = true;
+    this.fillBotsButton.disabled = true;
+    this.clearBotsButton.disabled = true;
+    this.settingsButton.disabled = true;
+    this.leaveButton.disabled = true;
+    this.copyInviteButton.disabled = true;
+    this.shareInviteButton.disabled = true;
+    this.teamSizeSelect.disabled = true;
+    this.setStatus(options.status, "error");
   }
 
   private getSelf(state: MultiplayerRoomSnapshot) {
@@ -1143,6 +1229,12 @@ export class MultiplayerLobby {
   private query<T extends HTMLElement>(selector: string): T {
     return this.root.querySelector<T>(selector) as T;
   }
+
+  private hideReconnectPrompt(): void {
+    this.reconnectPanel.style.display = "none";
+    this.reconnectTitle.textContent = "";
+    this.reconnectCopy.textContent = "";
+  }
 }
 
 function buildMarkup(): string {
@@ -1166,6 +1258,15 @@ function buildMarkup(): string {
 
       <div class="ob-mp-body">
         <div id="mp-status" class="ob-mp-status"></div>
+
+        <div id="mp-reconnect" class="ob-mp-reconnect">
+          <div id="mp-reconnect-title" class="ob-mp-reconnect-title"></div>
+          <div id="mp-reconnect-copy" class="ob-mp-reconnect-copy"></div>
+          <div class="ob-mp-reconnect-actions">
+            <button id="mp-reconnect-btn" class="ob-mp-button ob-mp-button--reconnect">Reconnect</button>
+            <button id="mp-reconnect-menu" class="ob-mp-button ob-mp-button--leave">Main Menu</button>
+          </div>
+        </div>
 
         <div class="ob-mp-controls">
           <label class="ob-mp-select-wrap">
