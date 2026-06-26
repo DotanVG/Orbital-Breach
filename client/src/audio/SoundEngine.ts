@@ -3,7 +3,7 @@ import * as THREE from 'three';
 const AUDIO_URLS = {
   laser1: '/audio/laser-1.wav',
   laser2: '/audio/laser-2.wav',
-  countdown: '/audio/countdown.wav',
+  countdown: '/audio/countdown.ogg',
   music: '/audio/main-theme.ogg',
   hit: '/audio/hit.wav',
 } as const;
