@@ -49,19 +49,30 @@ type ColyseusRoomState = {
 };
 
 export class NetClient {
-  private client: ColyseusClient | null = SERVER_URL ? new ColyseusClient(SERVER_URL) : null;
+  private readonly client: ColyseusClient | null;
   private room: Room | null = null;
+  private ignoredLeaveRoomId: string | null = null;
+  private connectionIssueReported = false;
 
   public onStateChange: ((snapshot: MultiplayerRoomSnapshot) => void) | null = null;
   public onLobbyEvent: ((event: LobbyEventMessage) => void) | null = null;
   public onLeave: (() => void) | null = null;
+  public onConnectionError: ((error: Error) => void) | null = null;
   public onFreezeEvent: ((event: FreezeEventMessage) => void) | null = null;
   public onPlayerLeaveEvent: ((event: PlayerLeaveEventMessage) => void) | null = null;
   public onRoundResultEvent: ((event: RoundResultEventMessage) => void) | null = null;
   public onShotEvent: ((event: ShotEventMessage) => void) | null = null;
 
+  public constructor(client: ColyseusClient | null = SERVER_URL ? new ColyseusClient(SERVER_URL) : null) {
+    this.client = client;
+  }
+
   public async connect(options: MultiplayerJoinOptions): Promise<MultiplayerRoomSnapshot> {
-    await this.disconnect(false);
+    try {
+      await this.disconnect(false);
+    } catch (error) {
+      console.warn("Previous online room disconnect failed before reconnect.", error);
+    }
 
     if (!this.client) {
       throw new Error(
@@ -69,8 +80,15 @@ export class NetClient {
       );
     }
 
-    const room = await this.connectToTarget(options);
+    let room: Room;
+    try {
+      room = await this.connectToTarget(options);
+    } catch (error) {
+      throw toNetworkError(error, "Could not reach the online room. Check that the server is running.");
+    }
 
+    this.connectionIssueReported = false;
+    this.ignoredLeaveRoomId = null;
     this.room = room;
     room.onStateChange((state) => {
       this.onStateChange?.(buildSnapshot(room, state as ColyseusRoomState));
@@ -91,7 +109,14 @@ export class NetClient {
       this.onShotEvent?.(event);
     });
     room.onLeave(() => {
-      this.room = null;
+      if (this.ignoredLeaveRoomId === room.roomId) {
+        this.ignoredLeaveRoomId = null;
+        return;
+      }
+      if (this.room === room) {
+        this.room = null;
+      }
+      this.connectionIssueReported = true;
       this.onLeave?.();
     });
 
@@ -101,8 +126,19 @@ export class NetClient {
   public async disconnect(consented = true): Promise<void> {
     const room = this.room;
     this.room = null;
-    if (room) {
+    if (!room) {
+      return;
+    }
+
+    this.ignoredLeaveRoomId = room.roomId;
+    try {
       await room.leave(consented);
+    } catch (error) {
+      console.warn("Online room disconnect failed.", error);
+    } finally {
+      if (this.ignoredLeaveRoomId === room.roomId) {
+        this.ignoredLeaveRoomId = null;
+      }
     }
   }
 
@@ -171,8 +207,49 @@ export class NetClient {
   }
 
   private send<T>(type: string, message: T): void {
-    this.room?.send(type, message);
+    const room = this.room;
+    if (!room) {
+      return;
+    }
+
+    try {
+      room.send(type, message);
+    } catch (error) {
+      this.handleConnectionIssue(room, error, `send:${type}`);
+    }
   }
+
+  private handleConnectionIssue(room: Room, error: unknown, action: string): void {
+    console.warn(`Online room ${action} failed.`, error);
+    if (this.room === room) {
+      this.room = null;
+    }
+    this.ignoredLeaveRoomId = room.roomId;
+    if (this.connectionIssueReported) {
+      return;
+    }
+    this.connectionIssueReported = true;
+    this.onConnectionError?.(toNetworkError(error, "Connection to the online room was lost."));
+  }
+}
+
+function toNetworkError(error: unknown, fallback: string): Error {
+  if (error instanceof Error) {
+    const message = error.message.trim();
+    if (message.length > 0 && !isGenericNetworkFailure(message)) {
+      return error;
+    }
+  }
+
+  return new Error(fallback);
+}
+
+function isGenericNetworkFailure(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  return normalized === "failed to fetch"
+    || normalized === "fetch failed"
+    || normalized === "network error"
+    || normalized === "websocket is not open";
 }
 
 function buildSnapshot(

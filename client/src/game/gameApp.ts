@@ -82,6 +82,9 @@ export class App {
   private latestOnlineSnapshot: MultiplayerRoomSnapshot | null = null;
   private previousOnlinePhase: MultiplayerRoomSnapshot["phase"] | null = null;
   private onlinePlayerName = DEFAULT_PLAYER_NAME;
+  private lastOnlineSelection: PlaySelection | null = null;
+  private lastOnlineTarget: MultiplayerJoinTarget | null = null;
+  private onlineReconnectPending = false;
   private onlineBreachReported = false;
   private combatPresentationActive = false;
   private embedMode = false;
@@ -377,11 +380,30 @@ export class App {
     this.net.onLeave = () => {
       if (this.isUserExitingOnline) return;
       if (this.appMode !== "online") return;
-      void this.requestLeaveOnline("server_disconnect");
+      this.handleOnlineConnectionFailure(
+        "Connection to the online room was lost.",
+        "connection_lost",
+      );
+    };
+    this.net.onConnectionError = (error) => {
+      if (this.isUserExitingOnline) return;
+      if (this.appMode !== "online") return;
+      this.handleOnlineConnectionFailure(
+        error.message.trim().length > 0
+          ? error.message
+          : "Connection to the online room was lost.",
+        "connection_lost",
+      );
     };
 
     this.multiplayer.onLeaveLobby = () => {
       void this.requestLeaveOnline("user_exit");
+    };
+    this.multiplayer.onReconnect = () => {
+      void this.retryOnlineConnection();
+    };
+    this.multiplayer.onReturnToMenu = () => {
+      void this.forceLeaveOnline();
     };
     this.multiplayer.onReadyChange = (ready) => {
       this.net.setReady(ready);
@@ -877,9 +899,7 @@ export class App {
     return snap.members.filter((m) => !m.isBot && m.id !== snap.sessionId).length;
   }
 
-  private async requestLeaveOnline(
-    reason: "user_exit" | "server_disconnect" | "join_failed",
-  ): Promise<void> {
+  private async requestLeaveOnline(reason: "user_exit"): Promise<void> {
     if (this.isUserExitingOnline) return;
 
     if (reason === "user_exit" && this.countOtherHumans() > 0) {
@@ -895,9 +915,79 @@ export class App {
     await this.forceLeaveOnline();
   }
 
+  private handleOnlineConnectionFailure(
+    message: string,
+    reason: "join_failed" | "connection_lost",
+  ): void {
+    if (this.isUserExitingOnline || this.appMode !== "online") {
+      return;
+    }
+
+    if (this.onlineReconnectPending) {
+      this.multiplayer.showReconnectPrompt({
+        title: "Connection Interrupted",
+        body: "The room link is still down. Retry the same room or fall back to the main menu.",
+        status: message,
+      });
+      return;
+    }
+
+    this.onlineReconnectPending = true;
+    this.onlineSessionToken += 1;
+    this.closeSessionMenu();
+    this.debrief.hide();
+    this.clearCelebrationState();
+    this.pendingOnlineDebrief = null;
+    this.onlineMatchConcluding = false;
+    if (this.matchEndHandle) {
+      clearTimeout(this.matchEndHandle);
+      this.matchEndHandle = null;
+    }
+
+    if (this.onlineGameActive) {
+      this.endOnlineGame();
+    } else if (this.latestOnlineSnapshot) {
+      this.multiplayer.render(this.latestOnlineSnapshot);
+    } else {
+      this.multiplayer.showConnecting(this.onlinePlayerName);
+    }
+
+    this.onlineGameActive = false;
+    this.onlineRoundActive = false;
+    this.onlineBreachReported = false;
+    this.killFeed.setVisible(false);
+    this.mobileControls?.hide();
+    this.input.setMobileControlsActive(false);
+    this.input.setUiBlocked(false);
+    this.restorePointerLockAfterScoreboard = false;
+    this.input.exitPointerLock();
+    this.cursor.show();
+    this.hud.setVisible(false);
+    this.hud.hideRoundEnd();
+    this.sessionMenu.setLauncherVisible(true);
+
+    this.multiplayer.showReconnectPrompt({
+      title: reason === "join_failed" ? "Handshake Failed" : "Connection Interrupted",
+      body: reason === "join_failed"
+        ? "The room session never finished opening. Retry the same destination or return to the main menu."
+        : "The current room stopped responding. Reconnect to the same lobby or return to the main menu.",
+      status: message,
+    });
+  }
+
+  private async retryOnlineConnection(): Promise<void> {
+    if (!this.lastOnlineSelection || !this.lastOnlineTarget) {
+      await this.forceLeaveOnline();
+      return;
+    }
+
+    await this.startOnlineLobby(this.lastOnlineSelection, this.lastOnlineTarget);
+  }
+
   private async forceLeaveOnline(): Promise<void> {
     if (this.isUserExitingOnline) return;
     this.isUserExitingOnline = true;
+    this.onlineReconnectPending = false;
     this.onlineSessionToken += 1;
     try {
       await this.returnToMenuFromOnline();
@@ -1070,9 +1160,12 @@ export class App {
     this.appMode = "online";
     this.syncBackgroundInputPolicy();
     this.onlinePlayerName = selection.name;
+    this.lastOnlineSelection = selection;
+    this.lastOnlineTarget = resolvedTarget;
     this.killFeed.setLocalPlayerName(selection.name);
     this.onlineGameActive = false;
     this.onlineRoundActive = false;
+    this.onlineReconnectPending = false;
     this.onlineBreachReported = false;
     this.onlineMatchConcluding = false;
     this.matchStats.reset();
@@ -1109,6 +1202,7 @@ export class App {
       }
       this.latestOnlineSnapshot = snapshot;
       this.previousOnlinePhase = snapshot.phase;
+      this.lastOnlineTarget = { kind: "roomId", roomId: snapshot.roomId };
       if (snapshot.phase === "COUNTDOWN") {
         this.beginOnlineRound(snapshot);
       } else {
@@ -1122,11 +1216,7 @@ export class App {
       const message = error instanceof Error && error.message.trim().length > 0
         ? error.message
         : "Could not reach the Colyseus server. Check that the server is running.";
-      this.multiplayer.setStatus(
-        message,
-        "error",
-      );
-      await this.requestLeaveOnline("join_failed");
+      this.handleOnlineConnectionFailure(message, "join_failed");
     }
   }
 
@@ -1147,6 +1237,9 @@ export class App {
     this.pendingOnlineDebrief = null;
     this.latestOnlineSnapshot = null;
     this.previousOnlinePhase = null;
+    this.lastOnlineSelection = null;
+    this.lastOnlineTarget = null;
+    this.onlineReconnectPending = false;
     this.helpVisible = false;
     if (this.matchEndHandle) { clearTimeout(this.matchEndHandle); this.matchEndHandle = null; }
     this.onlineMatch.dispose();
