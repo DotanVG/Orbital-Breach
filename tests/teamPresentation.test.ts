@@ -65,11 +65,12 @@ describe("player-relative team UI helpers", () => {
 
   it("gives Play Online a dedicated hover style instead of generic secondary cyan only", () => {
     const menuView = readFileSync(new URL("../client/src/ui/menu/menuView.ts", import.meta.url), "utf8");
+    const menuViewStyle = readFileSync(new URL("../client/src/ui/menu/menuViewStyleLayout.ts", import.meta.url), "utf8");
 
-    expect(menuView).toContain("ob-btn-online::before");
-    expect(menuView).toContain(".ob-btn-online:hover");
+    expect(menuViewStyle).toContain("ob-btn-online::before");
+    expect(menuViewStyle).toContain(".ob-btn-online:hover");
+    expect(menuViewStyle).toContain("#ffd670");
     expect(menuView).toContain('id === "btn-play-online" ? " ob-btn-online"');
-    expect(menuView).toContain("#ffd670");
   });
 
   it("marks friendly and hostile teams relative to the local player", () => {
