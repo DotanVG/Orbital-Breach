@@ -1108,15 +1108,18 @@ function escapeHtml(raw: string): string {
 }
 
 function loadSettings(): SessionSettings {
-  const sensitivity = Number(localStorage.getItem(STORAGE_KEYS.mouseSensitivity) ?? DEFAULT_SETTINGS.mouseSensitivity);
+  const rawSensitivity = localStorage.getItem(STORAGE_KEYS.mouseSensitivity);
+  const sensitivity = rawSensitivity !== null ? parseFloat(rawSensitivity) : DEFAULT_SETTINGS.mouseSensitivity;
   // Always default music to ON — never persist "off" state across sessions.
   // Stale "0" values from prior sessions would silently gate all audio on mobile.
   localStorage.removeItem(STORAGE_KEYS.soundtrackEnabled);
   const fullscreenEnabled = isFullscreenSupported()
     ? localStorage.getItem(STORAGE_KEYS.fullscreenEnabled)
     : "false";
-  const musicVolume = Number(localStorage.getItem(STORAGE_KEYS.musicVolume) ?? DEFAULT_SETTINGS.musicVolume);
-  const sfxVolume = Number(localStorage.getItem(STORAGE_KEYS.sfxVolume) ?? DEFAULT_SETTINGS.sfxVolume);
+  const rawMusicVolume = localStorage.getItem(STORAGE_KEYS.musicVolume);
+  const musicVolume = rawMusicVolume !== null ? parseFloat(rawMusicVolume) : DEFAULT_SETTINGS.musicVolume;
+  const rawSfxVolume = localStorage.getItem(STORAGE_KEYS.sfxVolume);
+  const sfxVolume = rawSfxVolume !== null ? parseFloat(rawSfxVolume) : DEFAULT_SETTINGS.sfxVolume;
   const savedCameraMode = localStorage.getItem(STORAGE_KEYS.defaultCameraMode);
 
   return {
