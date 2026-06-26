@@ -10,11 +10,9 @@ const itchIndex = readFileSync(path.join(repoRoot, "itch/index.html"), "utf8");
 const soundEngine = readFileSync(path.join(repoRoot, "client/src/audio/SoundEngine.ts"), "utf8");
 
 describe("asset cleanup regressions", () => {
-  it("uses the canonical deployed art asset for the itch shell", () => {
-    expect(itchIndex).toContain("https://orbital-breach.vercel.app/orbital-breach-art.png");
-    expect(itchIndex).not.toContain("./orbital-breach-art.png");
-    expect(existsSync(path.join(repoRoot, "client/public/orbital-breach-art.png"))).toBe(true);
-    expect(existsSync(path.join(repoRoot, "itch/orbital-breach-art.png"))).toBe(false);
+  it("itch shell references local splash art", () => {
+    expect(itchIndex).toContain("./orbital-breach-art.png");
+    expect(existsSync(path.join(repoRoot, "itch/orbital-breach-art.png"))).toBe(true);
   });
 
   it("loads countdown audio from the ogg asset", () => {
