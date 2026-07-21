@@ -2,6 +2,19 @@ import * as THREE from 'three';
 import { bulletHitPoint } from './game/bulletCollision';
 import { clamp } from './util/math';
 
+// ponytail: pre-allocated scratch — reused every frame, never returned to callers
+const _v3a      = new THREE.Vector3();
+const _v3b      = new THREE.Vector3();
+const _v3c      = new THREE.Vector3();
+const _qa       = new THREE.Quaternion();
+const _qb       = new THREE.Quaternion();
+const _qc       = new THREE.Quaternion();
+const _qd       = new THREE.Quaternion();
+const _qe       = new THREE.Quaternion();
+const _AX       = new THREE.Vector3(1, 0, 0);
+const _AY       = new THREE.Vector3(0, 1, 0);
+const _LOOK_BACK = new THREE.Quaternion().setFromAxisAngle(_AY, Math.PI);
+
 /**
  * Dual-mode camera controller:
  *
@@ -64,11 +77,11 @@ export class CameraController {
 
       // Extract yaw from zeroGQuat so gravity-mode WASD controls start correctly
       // (this is the *destination* orientation that the slerp converges toward)
-      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.zeroGQuat);
-      const flatForward = new THREE.Vector3(forward.x, 0, forward.z);
-      if (flatForward.lengthSq() > 1e-6) {
-        flatForward.normalize();
-        this.yaw = Math.atan2(-flatForward.x, -flatForward.z);
+      _v3a.set(0, 0, -1).applyQuaternion(this.zeroGQuat);
+      _v3b.set(_v3a.x, 0, _v3a.z);
+      if (_v3b.lengthSq() > 1e-6) {
+        _v3b.normalize();
+        this.yaw = Math.atan2(-_v3b.x, -_v3b.z);
       }
       this.pitch = 0;
     }
@@ -103,11 +116,11 @@ export class CameraController {
   public applyMouseDelta(dx: number, dy: number, sensitivity: number): void {
     if (this.zeroGMode) {
       // Free-look: rotate around camera's own local axes — no pitch cap
-      const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.zeroGQuat);
-      const camUp    = new THREE.Vector3(0, 1, 0).applyQuaternion(this.zeroGQuat);
-      const qH = new THREE.Quaternion().setFromAxisAngle(camUp,    -dx * sensitivity);
-      const qV = new THREE.Quaternion().setFromAxisAngle(camRight,  -dy * sensitivity);
-      this.zeroGQuat.premultiply(qH).premultiply(qV);
+      _v3a.set(1, 0, 0).applyQuaternion(this.zeroGQuat); // camRight
+      _v3b.set(0, 1, 0).applyQuaternion(this.zeroGQuat); // camUp
+      _qa.setFromAxisAngle(_v3b, -dx * sensitivity);      // qH
+      _qb.setFromAxisAngle(_v3a, -dy * sensitivity);      // qV
+      this.zeroGQuat.premultiply(_qa).premultiply(_qb);
       this.zeroGQuat.normalize();
     } else {
       // Gravity mode: classic yaw + clamped pitch
@@ -126,12 +139,10 @@ export class CameraController {
       // landing body as gravity snaps the player back to the breach-room floor.
       const t = this.returnTransitionProgress;
       const ease = 1 - Math.pow(1 - t, 5);
-      return new THREE.Quaternion()
-        .copy(this.returnTransitionFrom)
-        .slerp(this.gravityQuaternion(), ease);
+      return _qe.copy(this.returnTransitionFrom).slerp(this.gravityQuaternion(), ease);
     }
 
-    return this.zeroGMode ? this.zeroGQuat.clone() : this.gravityQuaternion();
+    return this.zeroGMode ? this.zeroGQuat : this.gravityQuaternion();
   }
 
   /** Full 3D forward — used for launch direction and projectile firing. */
@@ -172,22 +183,20 @@ export class CameraController {
 
     if (isSelfie) {
       // Selfie mode: look backwards at character
-      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quat);
-      const camPos = position.clone().add(forward.multiplyScalar(THIRD_PERSON_DISTANCE));
-      this.camera.position.copy(camPos);
+      _v3a.set(0, 0, -1).applyQuaternion(quat);
+      this.camera.position.copy(position).addScaledVector(_v3a, THIRD_PERSON_DISTANCE);
 
       // Rotate camera to look exactly opposite
-      const lookBackQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
-      this.camera.quaternion.copy(quat).multiply(lookBackQuat);
+      this.camera.quaternion.copy(quat).multiply(_LOOK_BACK);
 
     } else if (isThirdPerson) {
       // Third person: camera is behind and slightly up
-      const backward = new THREE.Vector3(0, 0, 1).applyQuaternion(quat);
-      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quat);
-      const desiredCamPos = position.clone()
-        .add(backward.multiplyScalar(THIRD_PERSON_DISTANCE))
-        .add(up.multiplyScalar(THIRD_PERSON_HEIGHT));
-      const camPos = this.resolveThirdPersonCameraPosition(position, desiredCamPos, collisionBoxes);
+      _v3a.set(0, 0, 1).applyQuaternion(quat);  // backward
+      _v3b.set(0, 1, 0).applyQuaternion(quat);  // up
+      _v3c.copy(position)
+        .addScaledVector(_v3a, THIRD_PERSON_DISTANCE)
+        .addScaledVector(_v3b, THIRD_PERSON_HEIGHT);
+      const camPos = this.resolveThirdPersonCameraPosition(position, _v3c, collisionBoxes);
       this.camera.position.copy(camPos);
       this.camera.quaternion.copy(quat);
 
@@ -235,7 +244,7 @@ export class CameraController {
     this.pitch = 0;
     // Seed zeroGQuat to match so the yaw extraction in setZeroGMode(false) is
     // correct if it fires on the first frame (i.e. player was previously floating).
-    this.zeroGQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    this.zeroGQuat.setFromAxisAngle(_AY, yaw);
     // Force gravity mode immediately — no transition needed at round start.
     this.zeroGMode             = false;
     this.returnTransitioning   = false;
@@ -245,9 +254,9 @@ export class CameraController {
   // ── Private helpers ───────────────────────────────────────────────
 
   private gravityQuaternion(): THREE.Quaternion {
-    const qYaw   = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
-    const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), this.pitch);
-    return qYaw.multiply(qPitch);
+    _qc.setFromAxisAngle(_AY, this.yaw);
+    _qd.setFromAxisAngle(_AX, this.pitch);
+    return _qc.multiply(_qd);
   }
 
   private resolveThirdPersonCameraPosition(
