@@ -15,9 +15,7 @@ workspace:
 hooks:
   after_create: |
     git clone --depth 1 --branch staging https://github.com/DotanVG/Orbital-Breach.git .
-    npm install
-    npm install --prefix client
-    npm install --prefix server
+    CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$PWD" node .claude/hooks/session-start.mjs
   before_run: |
     git fetch origin
     git merge --ff-only origin/staging
@@ -25,7 +23,14 @@ agent:
   max_concurrent_agents: 3
   max_turns: 20
 codex:
-  command: codex app-server
+  command: >-
+    codex
+    --config 'model="gpt-5.6-sol"'
+    --config 'model_reasoning_effort="high"'
+    --config 'agents.default_subagent_model="gpt-5.6-terra"'
+    --config 'agents.default_subagent_reasoning_effort="medium"'
+    --config 'agents.max_concurrent_threads_per_session=2'
+    app-server
   approval_policy: never
   thread_sandbox: danger-full-access
   stall_timeout_ms: 1800000
@@ -107,6 +112,29 @@ Key commands:
 3. Run `pull` skill to sync with `origin/staging`. Record result.
 4. Reproduce the bug/verify current behavior before changing code.
 5. Write hierarchical plan in workpad with acceptance criteria and TODOs.
+
+## Agent orchestration
+
+The primary Sol agent owns the ticket, workpad, implementation, integration,
+validation decisions, Git operations, PR, and final report. It is the only
+agent allowed to edit source files.
+
+Use the project agents under `.codex/agents/` deliberately:
+
+- `code_explorer` maps unfamiliar client, server, shared-protocol, and network paths before edits.
+- `visual_qa` reproduces and verifies first-person controls, HUD, camera, multiplayer, reconnect, and responsive behavior.
+- `reviewer` performs the final correctness, protocol, lifecycle, security, performance, and regression review.
+- `verifier` runs the required client, server, and test command suite once the working tree is stable.
+
+Delegation rules:
+
+1. Delegate only bounded, independent work with a concrete evidence-based output.
+2. Run at most two subagents concurrently.
+3. Parallelize independent reads or final review plus verification; keep dependent work sequential.
+4. Do not spawn multiple implementation agents or allow agents to edit overlapping files.
+5. For gameplay or visual changes, run `visual_qa` before editing to establish a baseline and after editing; multiplayer behavior must be checked with the minimum number of clients needed to exercise the change.
+6. For medium/high-risk changes, run `reviewer` after implementation and resolve every material finding before handoff.
+7. Treat subagent completion as evidence, not completion of the ticket; the primary agent must synthesize results and verify every acceptance criterion.
 
 ## Step 2: Execution
 

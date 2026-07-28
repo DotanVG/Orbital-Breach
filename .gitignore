@@ -12,5 +12,7 @@ CLAUDE.local.md
 # Root-level dev tooling (concurrently) — not part of deployable code
 /package.json
 /package-lock.json
-/.codex
+/.codex/*
+!/.codex/agents/
+!/.codex/agents/*.toml
 graphify-out/
