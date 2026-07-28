@@ -3,8 +3,10 @@ import type { HitReportMessage } from "../shared/multiplayer";
 import type * as ActorDamageModule from "../server/src/colyseus/actorDamage";
 import type * as OnlineActorSimulationModule from "../server/src/colyseus/onlineActorSimulation";
 
-const applyHitToOnlineActor = vi.fn(() => false);
-const isActorInEnemyBreachRoom = vi.fn(() => true);
+const { applyHitToOnlineActor, isActorInEnemyBreachRoom } = vi.hoisted(() => ({
+  applyHitToOnlineActor: vi.fn(() => false),
+  isActorInEnemyBreachRoom: vi.fn(() => false),
+}));
 
 vi.mock("../server/src/colyseus/actorDamage", async () => {
   const actual = await vi.importActual<typeof ActorDamageModule>("../server/src/colyseus/actorDamage");
