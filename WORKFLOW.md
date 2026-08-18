@@ -136,6 +136,10 @@ Delegation rules:
 6. For medium/high-risk changes, run `reviewer` after implementation and resolve every material finding before handoff.
 7. Treat subagent completion as evidence, not completion of the ticket; the primary agent must synthesize results and verify every acceptance criterion.
 
+## Page freshness metadata
+
+Before the final commit for any change intended to ship, update `meta[name="date"]` in `client/index.html` to the current ISO 8601 timestamp, including its timezone offset. Confirm the date again before opening the PR or promoting to production. Skip only local investigations that will not be deployed.
+
 ## Step 2: Execution
 
 1. Implement against workpad TODOs.
