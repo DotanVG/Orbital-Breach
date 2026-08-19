@@ -1,0 +1,5 @@
+[features]
+# `hooks` is the current key. Codex CLI 0.118 still accepts only the deprecated
+# alias locally, so keep both until that compatibility window closes.
+hooks = true
+codex_hooks = true

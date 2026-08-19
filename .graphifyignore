@@ -1,0 +1,89 @@
+# Graphify 0.9.30 reads Git-ignore-style patterns from this file in addition
+# to .gitignore. Keep the graph focused on textual source and project docs.
+
+# Graphify and repository metadata
+graphify-out/
+.git/
+.claude/
+.codex/
+.agents/
+scripts/
+.vercel/
+.worktrees/
+.claude/worktrees/
+
+# Dependencies, generated output and caches
+**/node_modules/
+**/dist/
+**/build/
+**/out/
+**/coverage/
+**/.cache/
+**/.vite/
+**/.turbo/
+**/.pytest_cache/
+**/__pycache__/
+*.tsbuildinfo
+*.map
+*.min.js
+*.min.css
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# The root development harness package is intentionally gitignored but relevant
+# to repository-wide tests. Graphify's later negation overrides that one file.
+!package.json
+
+# Deployment/package material and game assets
+itch/
+raw/
+client/public/
+server/public/
+**/assets/
+
+# Secrets and local environment files
+.env
+.env.*
+**/.env
+**/.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*credentials*
+*secret*
+
+# Binary artwork, models, fonts, archives, audio and video
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.avif
+*.bmp
+*.ico
+*.svg
+*.glb
+*.gltf
+*.fbx
+*.obj
+*.bin
+*.woff
+*.woff2
+*.ttf
+*.otf
+*.zip
+*.7z
+*.rar
+*.gz
+*.mp3
+*.wav
+*.ogg
+*.flac
+*.m4a
+*.aac
+*.mp4
+*.webm
+*.mov
+*.avi

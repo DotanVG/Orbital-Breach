@@ -159,7 +159,9 @@ This repo uses an AI-assisted workflow driven by [Symphony](https://github.com/o
 | `WORKFLOW.md` | Symphony orchestration prompt and execution contract: tracker state routing, kickoff steps, validation expectations, PR handoff, and the `origin/staging` sync rules used by the orchestrator |
 | `.claude/settings.json` | Shared Claude project settings, plugin wiring, and hooks |
 | `.claude/hooks/` | Repository guardrails such as post-edit validation and git-operation safety checks |
-| `.claude/skills/` | Repo-local Claude/Codex skills, including graphify and project-specific workflow helpers |
+| `.claude/skills/` | Repo-local Claude Code skills, including the canonical Graphify runbook |
+| `.agents/skills/` | Codex repo-local skills; the Graphify adapter points to the canonical runbook without claiming cross-platform discovery |
+| `.codex/hooks.json` | Optional Codex lifecycle hook that announces an existing local graph without building one |
 | `.worktreeinclude` | Local-only Claude/Codex files copied into new worktrees when they exist locally |
 | `CLAUDE.md` | Project memory: branch strategy, architecture invariants, and testing expectations |
 
@@ -169,14 +171,60 @@ The combination of Linear (issue tracking) + Symphony (orchestration) + Claude/C
 
 ### Knowledge Graph
 
-`graphify-out/` is a local-only, gitignored knowledge graph for the codebase. Claude/Codex picks it up through `.claude/skills/graphify/SKILL.md`, so AI sessions can query the graph without extra setup.
-
-Regenerate it after major refactors or any large structural update:
+Graphify is optional, local-only development tooling that turns source
+relationships into a clustered JSON graph, an interactive HTML view and an
+audit report. Install the verified `graphifyy` distribution (its command and
+module are both named `graphify`):
 
 ```bash
-graphify extract . --backend ollama --model llama3
-graphify cluster-only .
+uv tool install "graphifyy==0.9.30"
 ```
+
+The same commands work in PowerShell and Bash:
+
+```bash
+# Full, source-focused rebuild (backs up an existing graph first)
+node scripts/graphify.mjs build
+
+# Incremental update after material structural changes
+node scripts/graphify.mjs update
+
+# Intentional bounded query
+node scripts/graphify.mjs query "Which files must change when the shared multiplayer protocol changes?"
+
+# Shortest path, node explanation and freshness/integration checks
+node scripts/graphify.mjs path "InputManager" "ProjectileSystem"
+node scripts/graphify.mjs explain "NetClient"
+node scripts/graphify.mjs status
+node scripts/graphify.mjs check
+```
+
+Equivalent npm aliases live in the tracked client package, for example
+`npm run graph:build --prefix client` and
+`npm run graph:query --prefix client -- "<question>"`. Graphify is not a client
+dependency and is never included in the shipped bundle.
+
+When an authenticated Claude Code CLI is available, builds use deterministic
+AST extraction for code and semantic extraction for useful documentation.
+Otherwise they fall back safely to code-only extraction; artwork, audio and
+video are excluded by `.graphifyignore`. Generated files stay under
+`graphify-out/` and are gitignored because they are machine-local, potentially
+large and tied to a particular checkout state.
+
+Claude Code discovers `.claude/skills/graphify/SKILL.md`; Codex discovers the
+adapter at `.agents/skills/graphify/SKILL.md`; Symphony receives the policy
+directly from `WORKFLOW.md`. Claude Code and Codex each have a lightweight
+session hook that only announces a graph that already exists. Codex project
+hooks activate only in trusted checkouts; `AGENTS.md` remains authoritative
+when hooks are unavailable or disabled. For unfamiliar architecture, debugging,
+cross-cutting or likely multi-file tasks, agents prefer a bounded graph query,
+then open and verify source. They skip Graphify for clearly isolated edits, and
+a missing graph never blocks work.
+
+Run `node scripts/graphify.mjs status` to compare the graph's recorded commit
+with `HEAD`, notice relevant working-tree changes and check Graphify's pending
+semantic-update marker. Update after structural changes and perform a full
+rebuild after a major refactor.
 
 ## Repository Map
 
