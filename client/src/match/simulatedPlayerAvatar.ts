@@ -59,13 +59,13 @@ export class SimulatedPlayerAvatar {
     pos: THREE.Vector3,
     damage: DamageState,
     phase: PlayerPhase,
-    yaw: number,
+    orientation: THREE.Quaternion,
     dt: number,
     moveSpeed: number,
     celebrating = false,
   ): void {
     this.root.position.copy(pos);
-    this.root.rotation.set(0, yaw, 0);
+    this.root.quaternion.copy(orientation);
     const visible = phase !== "RESPAWNING";
     this.root.visible = visible;
     this.gun.setVisible(visible);
