@@ -632,11 +632,24 @@ export class LocalPlayer {
   public static classifyHitZone(
     impactPoint: THREE.Vector3,
     playerPos: THREE.Vector3,
-    playerFacing: THREE.Vector3,
+    playerFacing: THREE.Vector3 | THREE.Quaternion,
     hitOffsetY = 0,
     hitRadius?: number,
   ): HitZone {
-    return classifyHitZone(impactPoint, playerPos, playerFacing, hitOffsetY, hitRadius);
+    return classifyHitZone(
+      impactPoint,
+      playerPos,
+      playerFacing instanceof THREE.Quaternion
+        ? {
+          x: playerFacing.x,
+          y: playerFacing.y,
+          z: playerFacing.z,
+          w: playerFacing.w,
+        }
+        : playerFacing,
+      hitOffsetY,
+      hitRadius,
+    );
   }
 
   public resetForNewRound(arena: Arena, spawnOverride?: { x: number; y: number; z: number }): void {
@@ -722,6 +735,10 @@ export class LocalPlayer {
 
   public getMesh(): THREE.Group {
     return this.mesh;
+  }
+
+  public getVisualQuaternion(): THREE.Quaternion {
+    return this.mesh.quaternion.clone();
   }
 
   public setTeam(team: 0 | 1): void {

@@ -9,6 +9,7 @@ import {
   resolveActorCollisions,
   spawnPosition,
 } from "../shared/player-logic";
+import { IDENTITY_QUATERNION, quaternionFromYawPitchRoll } from "../shared/hitZoneColliders";
 import {
   BOTH_LEGS_HIT_LAUNCH_FACTOR,
   HITBOX_OFFSET_Y,
@@ -16,6 +17,7 @@ import {
   MAX_LAUNCH_SPEED,
   ONE_LEG_HIT_LAUNCH_FACTOR,
 } from "../shared/constants";
+import { defaultHitZoneColliders } from "../client/src/player/hitZoneColliders";
 
 describe("classifyHitZone", () => {
   const playerPos = { x: 0, y: 0, z: 0 };
@@ -75,6 +77,98 @@ describe("classifyHitZone", () => {
     expect(
       classifyHitZone({ x: 0, y: 0.2, z: 0 }, playerPos, facing, -0.35),
     ).toBe("head");
+  });
+
+  it("keeps the normalized collider layout symmetric around the model centerline", () => {
+    // Assert the symmetry property directly rather than snapshotting the whole
+    // array — left/right pairs must mirror across x (opposite, equal magnitude)
+    // and share the same y, z, and extents. Note arms and legs use opposite
+    // x-sign conventions (leftArm is +x, leftLeg is -x), so we pair them up
+    // explicitly instead of assuming a single sign rule.
+    const byZone = (zone: string) =>
+      defaultHitZoneColliders.find((collider) => collider.zone === zone)!;
+    const pairs: Array<[string, string]> = [
+      ["leftArm", "rightArm"],
+      ["leftLeg", "rightLeg"],
+    ];
+    for (const [leftZone, rightZone] of pairs) {
+      const left = byZone(leftZone);
+      const right = byZone(rightZone);
+      expect(left.position.x).toBeCloseTo(-right.position.x, 6);
+      expect(left.position.x).not.toBe(0);
+      expect(left.position.y).toBeCloseTo(right.position.y, 6);
+      expect(left.position.z).toBeCloseTo(right.position.z, 6);
+      expect(left.size).toEqual(right.size);
+    }
+
+    // Centerline colliders sit on x = 0.
+    expect(byZone("head").position.x).toBe(0);
+    expect(byZone("body").position.x).toBe(0);
+  });
+
+  it("classifies left vs right arm against the rotating colliders (identity orientation)", () => {
+    // A shot landing on each arm collider's own position must classify as that
+    // arm. This guards the left/right mapping that drives grab-drop behavior:
+    // a leftArm hit drops the player's grab, a rightArm hit does not.
+    const leftArm = defaultHitZoneColliders.find((c) => c.zone === "leftArm")!;
+    const rightArm = defaultHitZoneColliders.find((c) => c.zone === "rightArm")!;
+
+    expect(
+      classifyHitZone(leftArm.position, playerPos, IDENTITY_QUATERNION),
+    ).toBe("leftArm");
+    expect(
+      classifyHitZone(rightArm.position, playerPos, IDENTITY_QUATERNION),
+    ).toBe("rightArm");
+  });
+
+  it("rotates arm zones with the model: a 180-degree yaw swaps which arm a fixed world shot hits", () => {
+    // Same physical impact point in world space. Facing forward it lands on the
+    // left arm; once the alien turns 180 degrees that same spot is now its right
+    // arm. This is the regression that the old yaw-only heuristic could not
+    // express and that a frozen-vs-floating playtest depends on.
+    const worldShot = { x: 0.1375, y: -0.4, z: 0.0175 };
+    expect(
+      classifyHitZone(worldShot, playerPos, IDENTITY_QUATERNION),
+    ).toBe("leftArm");
+    expect(
+      classifyHitZone(worldShot, playerPos, quaternionFromYawPitchRoll(Math.PI)),
+    ).toBe("rightArm");
+  });
+
+  it("keeps arm zones attached through a 90-degree yaw", () => {
+    // Rotate each arm collider's local position by +90 deg yaw (Ry: x'=z, z'=-x)
+    // to get where it sits in world space, then classify the shot there. The arm
+    // must follow the model's rotation. This catches under-rotation bugs in the
+    // quaternion path that identity/180-degree tests (where w = 0) cannot see.
+    const yaw90 = quaternionFromYawPitchRoll(Math.PI / 2);
+    // leftArm local (0.1375, -0.4, 0.0175) -> world (0.0175, -0.4, -0.1375)
+    expect(
+      classifyHitZone({ x: 0.0175, y: -0.4, z: -0.1375 }, playerPos, yaw90),
+    ).toBe("leftArm");
+    // rightArm local (-0.1375, -0.4, 0.0175) -> world (-0.0175, -0.4, 0.1375)
+    expect(
+      classifyHitZone({ x: -0.0175, y: -0.4, z: 0.1375 }, playerPos, yaw90),
+    ).toBe("rightArm");
+  });
+
+  it("classifies hits against rolled alien orientation instead of using yaw-only facing", () => {
+    // Right-leg local point from the normalized collider target, rolled 180
+    // degrees around forward so the collider stays attached to the model.
+    const rolledRightLegHit = {
+      x: -0.0975,
+      y: 0.64,
+      z: -0.01,
+    };
+
+    expect(
+      classifyHitZone(
+        rolledRightLegHit,
+        playerPos,
+        quaternionFromYawPitchRoll(0, 0, Math.PI),
+        HITBOX_OFFSET_Y,
+        HITBOX_RADIUS,
+      ),
+    ).toBe("rightLeg");
   });
 });
 
