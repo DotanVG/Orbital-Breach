@@ -3,12 +3,6 @@
   "installCommand": "npm --prefix client install",
   "buildCommand": "npm --prefix client run build",
   "outputDirectory": "client/dist",
-  "rewrites": [
-    {
-      "source": "/((?!(?:assets/|analytics\\.js$|robots\\.txt$|sitemap\\.xml$)).*)",
-      "destination": "/index.html"
-    }
-  ],
   "headers": [
     {
       "source": "/assets/([^/]+-[A-Za-z0-9_-]{8}\\.[A-Za-z0-9]+)",
