@@ -6,7 +6,7 @@ export function filmShots() {
   const add = (scenario: FilmScenario, camera: FilmCamera, takes: number, seconds = 15, director = false) => {
     for (let take = 1; take <= takes; take++) shots.push({
       name: `${scenario}_${director ? 'director' : camera}_${String(take).padStart(2, '0')}`,
-      scenario, camera, seconds, seed: 14 + take, director,
+      scenario, camera, seconds, seed: scenario === 'launch' ? 16 : 14 + take, director,
       scale: scenario === 'war' || scenario === 'victory' || director ? 1 : 0.5,
     });
   };

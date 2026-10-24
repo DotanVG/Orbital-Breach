@@ -156,9 +156,12 @@ export class FilmMode {
     const type = event.type === 'roundWin' ? event.reason : event.type;
     this.log(type);
     if (event.type === 'score') this.targetId = event.scorerId;
-    if (event.type === 'freeze') this.targetId = this.ctx.match.getSpectatorActors().find(a => a.name === event.killerName)?.id ?? this.targetId;
     const next = this.options.director ? directorCamera(type, this.shotAge) : null;
-    if (next) this.setCamera(next);
+    if (next) {
+      if (event.type === 'freeze') this.targetId = this.ctx.match.getSpectatorActors().find(a => a.name === event.killerName)?.id ?? this.targetId;
+      this.targetAge = 0;
+      this.setCamera(next);
+    }
   }
 
   private log(type: string, actor?: string): void {
@@ -354,7 +357,7 @@ export class FilmMode {
     const camera = ctx.sceneMgr.getCamera();
     const current = actors.find(a => a.id === this.targetId);
     let target = this.options.target !== 'auto' ? actors.find(a => a.id === this.options.target) : current;
-    if (!target || (this.options.target === 'auto' && this.targetAge > 4 && !ctx.player.isVictoryDanceActive())) {
+    if (!target || (this.options.target === 'auto' && this.targetAge > 4 && (target.damage.frozen || this.options.director) && !ctx.player.isVictoryDanceActive())) {
       const interest = (a: BotState) => {
         const enemy = ctx.arena.getBreachRoomCenter((1 - a.team) as 0 | 1);
         return (a.damage.frozen ? -100 : 0) + (a.phase === 'AIMING' ? 25 : 0) + ((this.firing.get(a.id)?.until ?? 0) > this.elapsed ? 12 : 0) + Math.min(15, a.phys.vel.length())
