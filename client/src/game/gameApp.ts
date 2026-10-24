@@ -446,6 +446,7 @@ export class App {
         else {
           this.menu.hide();
           this.startSoloMatch({ name: "Film spectator", teamSize: options.scenario === "war" ? 20 : 5 });
+          document.body.classList.toggle("ob-film", options.scenario !== "lobby" && options.hud !== "1");
           if (options.scenario === "lobby") this.film!.showLobby(this.multiplayer);
         }
       });

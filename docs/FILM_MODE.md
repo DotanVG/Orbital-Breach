@@ -34,7 +34,7 @@ place opposing bots in a combat volume and tune their existing personalities; fu
 starts with all but one enemy frozen. Breach/victory stage a rail anchor by the enemy
 portal; victory starts at match point and requires a real bot breach. War uses 20v20.
 Lobby stages the real lobby view and QR locally; its room is a visual prop, not joinable.
-Menu/lobby are intentionally static UI takes and retain UI regardless of HUD setting.
+Menu/lobby/debrief are intentionally UI takes and retain UI regardless of HUD setting.
 
 For capture, use `film_hold=1`, wait for `window.__film.ready`, then call
 `window.__film.play()` from local capture tooling. `#film-telemetry` contains JSON
