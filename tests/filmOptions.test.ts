@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { directorCamera, FILM_CAMERAS, FILM_SCENARIOS, filmResponse, parseFilmOptions } from '../client/src/game/film/filmOptions';
+import { filmShots } from '../client/src/game/film/filmShots';
+
+describe('filmShots', () => {
+  it('covers the capture contract with unique names and a long director take per gameplay preset', () => {
+    const shots = filmShots();
+    expect(new Set(shots.map(s => s.name)).size).toBe(shots.length);
+    for (const scenario of ['launch', 'freeze', 'breach', 'fullfreeze', 'war', 'victory']) {
+      expect(shots.some(s => s.scenario === scenario && s.director && s.seconds === 90)).toBe(true);
+      expect(shots.filter(s => s.scenario === scenario && s.camera === 'bot-pov').length).toBeGreaterThanOrEqual(2);
+    }
+    expect(shots.filter(s => s.scenario === 'breach' && s.camera === 'portal-cam')).toHaveLength(3);
+    expect(shots.filter(s => s.scenario === 'freeze' && s.camera === 'bot-pov')).toHaveLength(3);
+  });
+});
 
 describe('Film Mode options', () => {
   it('is disabled in production even with every film parameter', () => {

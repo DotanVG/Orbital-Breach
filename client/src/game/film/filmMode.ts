@@ -4,6 +4,7 @@ import type { BotState, LocalMatchEvent } from '../../match/localMatch';
 import type { GameTickContext } from '../tickContext';
 import type { MultiplayerLobby } from '../../ui/multiplayerLobby';
 import { directorCamera, FILM_CAMERAS, filmResponse, parseFilmOptions, type FilmCamera } from './filmOptions';
+import { filmShots } from './filmShots';
 
 type FilmOptions = NonNullable<ReturnType<typeof parseFilmOptions>>;
 
@@ -23,7 +24,18 @@ export class FilmMode {
   private initialized = false;
   private staged = false;
   private accumulator = 0;
+  private readonly reel = filmShots().filter(s => {
+    const name = new URLSearchParams(location.search).get('film_reel');
+    return name === '1' || name === s.name;
+  });
+  private reelIndex = 0;
+  private reelStart = 0;
+  private reelDistance = 0;
+  private readonly reelPose = new THREE.Vector3();
+  private readonly manifest: object[] = [];
+  private readonly reelTelemetry = document.createElement('script');
   private readonly firing = new Map<string, { direction: THREE.Vector3; until: number }>();
+  private readonly shotCounts = new Map<string, number>();
   private readonly previous = new Map<string, string>();
   private readonly keys = new Set<string>();
   private readonly velocity = new THREE.Vector3();
@@ -41,11 +53,12 @@ export class FilmMode {
   private readonly savedProjection: { fov: number; near: number; far: number };
   private readonly savedPixelRatio: number;
   private readonly keyDown = (e: KeyboardEvent) => {
+    if (e.repeat) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     this.keys.add(e.code);
     const index = Number(e.key) - 1;
     if (index >= 0 && index < FILM_CAMERAS.length) this.setCamera(FILM_CAMERAS[index]);
-    if (e.code === 'KeyP') this.held = !this.held;
+    if (e.code === 'KeyP') { if (this.held) this.play(); else this.held = true; }
     if (e.code === 'KeyR') this.restart();
     if (e.code === 'KeyF') this.options.director = !this.options.director;
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
@@ -63,6 +76,7 @@ export class FilmMode {
 
   constructor(private readonly ctx: GameTickContext, options: FilmOptions, private readonly restart: () => void) {
     this.options = options;
+    if (this.reel.length) this.applyShot();
     this.mode = options.camera;
     this.held = options.hold;
     const camera = ctx.sceneMgr.getCamera();
@@ -82,6 +96,9 @@ export class FilmMode {
     this.telemetry.id = 'film-telemetry';
     this.telemetry.type = 'application/json';
     document.body.append(this.telemetry);
+    this.reelTelemetry.id = 'film-reel';
+    this.reelTelemetry.type = 'application/json';
+    document.body.append(this.reelTelemetry);
     window.addEventListener('keydown', this.keyDown);
     window.addEventListener('keyup', this.keyUp);
     window.addEventListener('blur', this.blur);
@@ -92,6 +109,7 @@ export class FilmMode {
 
   public play(): void {
     this.held = false;
+    if (this.ctx.round.getPhase() === 'COUNTDOWN') this.ctx.round.tick(Math.max(0, this.ctx.round.getCountdown() - 0.75));
     this.elapsed = 0;
     this.frames.length = 0;
     this.events.length = 0;
@@ -122,15 +140,23 @@ export class FilmMode {
     this.staged = false;
     this.previous.clear();
     this.firing.clear();
+    this.shotCounts.clear();
     this.accumulator = 0;
     this.targetAge = 99;
     this.log('round-start');
+    if (!['launch', 'menu', 'lobby'].includes(this.options.scenario)) {
+      const actors = this.ctx.match.getSpectatorActors();
+      this.stage(actors);
+      this.staged = true;
+      for (const a of actors) a.avatar.update(a.phys.pos, a.damage, a.phase, a.rot.yaw, 0, 0);
+    }
   }
 
   public onEvent(event: LocalMatchEvent): void {
     const type = event.type === 'roundWin' ? event.reason : event.type;
     this.log(type);
     if (event.type === 'score') this.targetId = event.scorerId;
+    if (event.type === 'freeze') this.targetId = this.ctx.match.getSpectatorActors().find(a => a.name === event.killerName)?.id ?? this.targetId;
     const next = this.options.director ? directorCamera(type, this.shotAge) : null;
     if (next) this.setCamera(next);
   }
@@ -139,18 +165,23 @@ export class FilmMode {
     this.events.push({ time: this.elapsed, type, actor });
   }
 
-  public tick(realDt: number): void {
+  public tick(realDt: number, gameplayActive = true): void {
     const ctx = this.ctx;
-    this.elapsed += realDt;
+    if (!this.held) this.elapsed += realDt;
     this.frames.push(realDt * 1000);
     if (this.frames.length > 18000) this.frames.shift();
     this.shotAge += realDt;
     this.targetAge += realDt;
     realDt = Math.max(0, Math.min(realDt, 0.1));
-    const dt = 1 / 120;
+    const dt = this.options.scenario === 'war' ? 1 / 60 : 1 / 120;
     const actors = ctx.match.getSpectatorActors();
     this.ready = ++this.warmFrames > 180 && actors.every(a => a.avatar.isReady());
-    if (!this.held) this.accumulator += realDt * this.options.timescale;
+    if (this.warmFrames === 180) {
+      // Reassert the drawing buffer after headed Chrome applies a capture viewport override.
+      ctx.sceneMgr.getRenderer().setSize(window.innerWidth, window.innerHeight);
+      ctx.sceneMgr.getRenderer().resetState();
+    }
+    if (!this.held && gameplayActive && !['menu', 'lobby'].includes(this.options.scenario)) this.accumulator += realDt * this.options.timescale;
     while (!this.held && this.accumulator >= dt) {
       this.accumulator -= dt;
       ctx.round.tick(dt);
@@ -161,10 +192,19 @@ export class FilmMode {
       ctx.arena.update(dt);
       const shots = ctx.match.tick(dt, ctx.arena, ctx.player, ctx.round.isPlaying());
       for (const shot of shots) {
+        if (this.options.scenario === 'freeze') {
+          // Bias the bot's existing shot toward legs first, then torso. Hits still use real projectiles.
+          const count = this.shotCounts.get(shot.ownerId) ?? 0;
+          this.shotCounts.set(shot.ownerId, count + 1);
+          const enemy = actors.filter(a => a.team !== shot.team && !a.damage.frozen)
+            .sort((a, b) => shot.direction.angleTo(a.phys.pos.clone().sub(shot.origin))
+              - shot.direction.angleTo(b.phys.pos.clone().sub(shot.origin)))[0];
+          if (enemy) shot.direction.copy(enemy.phys.pos).add(new THREE.Vector3(0, count < 2 ? -0.65 : -0.35, 0)).sub(shot.origin).normalize();
+        }
         ctx.projectiles.spawn(shot.origin, shot.direction, shot.team, shot.ownerId);
         ctx.sound.playRemoteShot(shot.origin);
         this.log('shot', shot.ownerId);
-        this.firing.set(shot.ownerId, { direction: shot.direction.clone(), until: this.elapsed + 0.9 });
+        this.firing.set(shot.ownerId, { direction: shot.direction.clone(), until: this.elapsed + 1.5 / this.options.timescale });
       }
       ctx.projectiles.update(dt, ctx.arena.getObstacleBulletAABBs(), ctx.arena.getPortalBarrierAABBs(),
         ctx.match.getProjectileTargets(ctx.player), (pos, color) => ctx.arena.triggerPortalImpact(pos, color),
@@ -184,7 +224,7 @@ export class FilmMode {
       }
     }
     this.camera(actors, realDt);
-    const uiShot = ['lobby', 'menu'].includes(this.options.scenario);
+    const uiShot = !gameplayActive || ['lobby', 'menu'].includes(this.options.scenario);
     document.body.classList.toggle('ob-film', !uiShot && this.options.hud !== '1');
     this.minimal.style.display = !uiShot && this.options.hud === 'min' ? '' : 'none';
     const score = ctx.match.getScore();
@@ -197,10 +237,57 @@ export class FilmMode {
         p50: sorted[Math.floor(sorted.length * .5)], p95: sorted[Math.floor(sorted.length * .95)],
         events: this.events, positions: actors.map(a => ({ id: a.id, phase: a.phase, pos: a.phys.pos.toArray() })) });
     }
+    this.captureReel(gameplayActive);
+  }
+
+  private applyShot(): void {
+    const shot = this.reel[this.reelIndex];
+    Object.assign(this.options, { scenario: shot.scenario, camera: shot.camera, seed: shot.seed,
+      timescale: shot.scale, director: shot.director, hud: '0', hold: true });
+    this.mode = shot.camera;
+    this.held = true;
+    this.ready = false;
+    this.initialized = false;
+    this.warmFrames = 0;
+    this.elapsed = 0;
+    this.shotAge = 0;
+    this.reelStart = 0;
+    this.reelDistance = 0;
+  }
+
+  private captureReel(gameplayActive: boolean): void {
+    const shot = this.reel[this.reelIndex];
+    if (!shot) return;
+    if (!this.reelStart && this.ready) {
+      this.play();
+      this.reelStart = Date.now();
+      this.reelPose.copy(this.ctx.sceneMgr.getCamera().position);
+    }
+    if (!this.reelStart) return;
+    const pose = this.ctx.sceneMgr.getCamera().position;
+    this.reelDistance += pose.distanceTo(this.reelPose);
+    this.reelPose.copy(pose);
+    if (this.elapsed < shot.seconds) {
+      if (shot.director && !gameplayActive) this.restart();
+      return;
+    }
+    const frames = [...this.frames].sort((a, b) => a - b);
+    this.manifest.push({ ...shot, start: this.reelStart, end: Date.now(), events: [...this.events],
+      p50: frames[Math.floor(frames.length * .5)], p95: frames[Math.floor(frames.length * .95)],
+      over33ms: frames.filter(t => t > 33.4).length, frames: frames.length, cameraTravel: this.reelDistance });
+    this.reelIndex++;
+    this.reelTelemetry.textContent = JSON.stringify({ complete: this.reelIndex === this.reel.length, shots: this.manifest });
+    if (this.reelIndex === this.reel.length) { this.held = true; return; }
+    this.applyShot();
+    if (!this.reel[this.reelIndex].debrief) this.restart();
   }
 
   private stage(actors: readonly BotState[]): void {
     const scenario = this.options.scenario;
+    if (scenario === 'launch') {
+      // The opening jump is a setup impulse; navigation and every launch stay bot-owned.
+      for (const a of actors) if (a.phase === 'BREACH') a.phys.vel.y = 7;
+    }
     for (const actor of actors) {
       const profile = createBotPersonality(actor.id, actor.team);
       if (['freeze', 'fullfreeze', 'war'].includes(scenario)) {
@@ -270,7 +357,7 @@ export class FilmMode {
     if (!target || (this.options.target === 'auto' && this.targetAge > 4 && !ctx.player.isVictoryDanceActive())) {
       const interest = (a: BotState) => {
         const enemy = ctx.arena.getBreachRoomCenter((1 - a.team) as 0 | 1);
-        return (a.damage.frozen ? -100 : 0) + (a.phase === 'AIMING' ? 25 : 0) + Math.min(15, a.phys.vel.length())
+        return (a.damage.frozen ? -100 : 0) + (a.phase === 'AIMING' ? 25 : 0) + ((this.firing.get(a.id)?.until ?? 0) > this.elapsed ? 12 : 0) + Math.min(15, a.phys.vel.length())
           + Math.max(0, 20 - a.phys.pos.distanceTo(enemy)) + (a.id === this.targetId ? 5 : 0);
       };
       target = [...actors].sort((a, b) => interest(b) - interest(a))[0];
@@ -358,7 +445,7 @@ export class FilmMode {
     window.removeEventListener('mousemove', this.mouse);
     window.removeEventListener('contextmenu', this.contextMenu);
     document.body.classList.remove('ob-film');
-    this.style.remove(); this.minimal.remove(); this.telemetry.remove();
+    this.style.remove(); this.minimal.remove(); this.telemetry.remove(); this.reelTelemetry.remove();
     Object.assign(this.ctx.sceneMgr.getCamera(), this.savedProjection);
     this.ctx.sceneMgr.getRenderer().setPixelRatio(this.savedPixelRatio);
     this.ctx.sceneMgr.getCamera().updateProjectionMatrix();

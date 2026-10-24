@@ -441,7 +441,14 @@ export class App {
     if (import.meta.env.DEV && new URLSearchParams(location.search).get("film") === "1") {
       const [{ FilmMode }, { parseFilmOptions }] = await Promise.all([import("./film/filmMode"), import("./film/filmOptions")]);
       const options = parseFilmOptions(location.search, true)!;
-      this.film = new FilmMode(this.tickCtx, options, () => this.startSoloMatch({ name: "Film spectator", teamSize: options.scenario === "war" ? 20 : 5 }));
+      this.film = new FilmMode(this.tickCtx, options, () => {
+        if (options.scenario === "menu") this.returnToMenuFromSolo();
+        else {
+          this.menu.hide();
+          this.startSoloMatch({ name: "Film spectator", teamSize: options.scenario === "war" ? 20 : 5 });
+          if (options.scenario === "lobby") this.film!.showLobby(this.multiplayer);
+        }
+      });
     }
     this.menu.onPlaySolo = (selection) => {
       this.startSoloMatch(selection);
@@ -541,16 +548,16 @@ export class App {
       this.helpVisible = !this.helpVisible;
     }
 
-    if (gameplayActive && this.appMode === "solo") {
-      if (this.film) this.film.tick(realDt);
-      else tickSoloGame(this.tickCtx, dt);
+    if (this.film) {
+      this.film.tick(realDt, gameplayActive);
+    } else if (gameplayActive && this.appMode === "solo") {
+      tickSoloGame(this.tickCtx, dt);
     } else if (gameplayActive && this.appMode === "online" && this.onlineGameActive) {
       tickOnlineGame(this.tickCtx, dt);
     }
 
     this.syncCombatPresentation(gameplayActive);
     this.syncDesktopOverlayCursor(gameplayActive);
-    if (this.film && this.appMode === "menu") this.film.tick(realDt);
     this.sceneMgr.render();
     requestAnimationFrame((nextTimestamp) => this.loop(nextTimestamp));
   }

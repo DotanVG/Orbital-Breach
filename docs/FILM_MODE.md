@@ -16,6 +16,7 @@ Production builds ignore film parameters and exclude the dynamically imported di
 | `film_seed` | Safe integer arena/bot seed, default `15` |
 | `film_timescale` | `0.1`–`1`, default `1`; `0.5` runs simulation at half speed |
 | `film_hold` | `1` holds the simulation while assets and shaders warm up |
+| `film_reel` | `1` runs the 47-take capture list; an exact take name (e.g. `freeze_bot-pov_01`) runs only that take |
 
 Keys **1–6** select the cameras in table order. **F** toggles director, **P** holds /
 resumes simulation, **R** restarts the preset. Free fly: **WASD**, **Space/Ctrl** up/down,
@@ -24,7 +25,7 @@ resumes simulation, **R** restarts the preset. Free fly: **WASD**, **Space/Ctrl*
 Camera position uses exponential follow and orientation uses quaternion slerp.
 Chase/side/orbit constrain both the desired mount and final follow segment against
 arena collision boxes. POV hides the followed avatar and shows the existing gun.
-Simulation uses fixed 120 Hz steps independent of rendering; camera smoothing uses
+Simulation uses fixed 120 Hz steps (60 Hz in war) independent of rendering; camera smoothing uses
 wall time. Round-end restart/debrief timers retain the game's wall-clock scheduling.
 
 Presets use normal authority, projectile collisions and round scoring. Combat presets
@@ -39,5 +40,13 @@ For capture, use `film_hold=1`, wait for `window.__film.ready`, then call
 events, actor positions, camera pose and recent render-frame p50/p95 milliseconds.
 These are CPU frame intervals, not GPU timings. `window.__film.events` and `frames`
 can be saved with the take for event timestamps and pacing review.
+
+Starting capture via **P** or the reel abbreviates the opening countdown to 0.75
+simulation seconds. The reel warms each take for at least 180 rendered frames,
+then starts automatically. `#film-reel` accumulates a JSON manifest with take names,
+UTC start/end milliseconds, seeds, event timestamps and pacing statistics. Record
+the headed canvas continuously, then split using this manifest. Director takes
+restart after debrief to keep the 90 second capture running. The reel is local
+capture tooling and never connects to a server or posts footage anywhere.
 
 Example: `/?film=1&film_scenario=breach&film_camera=side-track&film_timescale=0.5&film_hold=1`.
