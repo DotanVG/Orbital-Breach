@@ -23,6 +23,7 @@ const CSS = `
   .wc-layer {
     position: absolute;
     background: url('/orbital-breach-art.png') center / contain no-repeat;
+    background-image: image-set(url('/orbital-breach-art.webp') type('image/webp'), url('/orbital-breach-art.png') type('image/png'));
     background-color: #04060e;
     will-change: transform;
     transform-origin: center center;
