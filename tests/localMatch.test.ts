@@ -27,8 +27,8 @@ interface FakePlayer {
   damage: { frozen: boolean; leftArm: boolean; rightArm: boolean; leftLeg: boolean; rightLeg: boolean };
   deaths: number;
   kills: number;
-  phase: "BREACH" | "FLOATING" | "FROZEN";
-  phys: { vel: THREE.Vector3 };
+  phase: "BREACH" | "FLOATING" | "FROZEN" | "RESPAWNING";
+  phys: { pos: THREE.Vector3; vel: THREE.Vector3 };
   resetForNewRound: ReturnType<typeof vi.fn>;
   team: 0 | 1;
   applyHit: ReturnType<typeof vi.fn>;
@@ -42,7 +42,7 @@ function createFakePlayer(team: 0 | 1 = 0): FakePlayer {
     deaths: 0,
     kills: 0,
     phase: "BREACH",
-    phys: { vel: new THREE.Vector3() },
+    phys: { pos: new THREE.Vector3(), vel: new THREE.Vector3() },
     resetForNewRound: vi.fn(),
     team,
     applyHit: vi.fn(() => false),
@@ -64,6 +64,47 @@ describe("LocalMatch", () => {
       humanTeam: 0,
       teamSize: 1,
     });
+  });
+
+  it('fills both spectator teams entirely with bots and excludes the local actor everywhere', () => {
+    match.startNewGame({ humanName: 'Spectator', humanTeam: 0, teamSize: 20, spectator: true });
+    const player = createFakePlayer();
+    const actors = match.getSpectatorActors();
+    expect(actors.filter(a => a.team === 0)).toHaveLength(20);
+    expect(actors.filter(a => a.team === 1)).toHaveLength(20);
+    expect(match.getProjectileTargets(player as never)).toHaveLength(40);
+    expect(match.getMatchStatsActors(player as never)).toHaveLength(40);
+    expect(match.getMatchStatsActors(player as never).every(a => a.isBot && !a.isSelf)).toBe(true);
+    const rosters = match.getHudRosters(player as never);
+    expect([...rosters.ownTeam, ...rosters.enemyTeam].some(a => a.id === 'local-player')).toBe(false);
+  });
+
+  it('awards a bot full-freeze win even though the parked spectator is unfrozen', () => {
+    match.startNewGame({ humanName: 'Spectator', humanTeam: 0, teamSize: 1, spectator: true });
+    const player = createFakePlayer();
+    const [victim, shooter] = match.getSpectatorActors();
+    match.handleProjectileHit({ direction: new THREE.Vector3(1, 0, 0),
+      impactPoint: victim.phys.pos.clone(), ownerId: shooter.id, targetId: victim.id }, player as never, {} as never);
+    expect(player.damage.frozen).toBe(false);
+    expect(events).toContainEqual({ type: 'roundWin', reason: 'fullFreeze', winningTeam: 1 });
+    expect(match.getScore()).toEqual({ team0: 0, team1: 1 });
+  });
+
+  it('parks the spectator instead of resetting a human spawn', () => {
+    match.startNewGame({ humanName: 'Spectator', humanTeam: 0, teamSize: 1, spectator: true });
+    const player = createFakePlayer();
+    const arena = {
+      getAllBarGrabPoints: () => [], getNearestBar: () => null,
+      getBreachOpenAxis: () => 'x' as const,
+      getBreachOpenSign: (team: 0 | 1) => (team === 0 ? -1 : 1) as 1 | -1,
+      getBreachRoomCenter: (team: 0 | 1) => new THREE.Vector3(team === 0 ? -18 : 18, 0, 0),
+      isGoalDoorOpen: () => false, isInBreachRoom: () => true,
+    };
+    match.resetForRound(arena as never, player as never);
+    expect(player.resetForNewRound).not.toHaveBeenCalled();
+    expect(player.phase).toBe('RESPAWNING');
+    expect(player.phys.pos.y).toBe(-1000);
+    expect(player.phys.vel.length()).toBe(0);
   });
 
   it("awards an immediate round win when the last enemy is frozen", () => {

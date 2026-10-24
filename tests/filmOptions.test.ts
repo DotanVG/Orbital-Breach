@@ -15,6 +15,8 @@ describe('filmShots', () => {
     expect(filmShots(32)).toEqual(shots.slice(32));
     expect(filmShots(-1)).toEqual(shots);
     expect(filmShots(999)).toEqual([]);
+    expect(filmShots(0, 'war_orbit_01,war_orbit_02').map(s => s.name)).toEqual(['war_orbit_01', 'war_orbit_02']);
+    expect(filmShots(0, 'unknown')).toEqual([]);
   });
 });
 
@@ -58,5 +60,7 @@ describe('directorCamera', () => {
       expect(directorCamera(event, 2.5)).not.toBeNull();
     }
     expect(directorCamera('unknown', 10)).toBeNull();
+    expect(directorCamera('launch', 3, 'side-track')).toBe('chase');
+    expect(directorCamera('freeze', 3, 'bot-pov')).toBe('chase');
   });
 });

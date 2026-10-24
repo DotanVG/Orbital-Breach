@@ -24,10 +24,9 @@ export class FilmMode {
   private initialized = false;
   private staged = false;
   private accumulator = 0;
-  private readonly reel = filmShots(Number(new URLSearchParams(location.search).get('film_from') ?? 0)).filter(s => {
-    const name = new URLSearchParams(location.search).get('film_reel');
-    return name === '1' || name === s.name;
-  });
+  private readonly reel = filmShots(Number(new URLSearchParams(location.search).get('film_from') ?? 0),
+    new URLSearchParams(location.search).get('film_reel') ?? '');
+  private pendingCamera: FilmCamera | null = null;
   private reelIndex = 0;
   private reelStart = 0;
   private reelDistance = 0;
@@ -135,6 +134,7 @@ export class FilmMode {
     if (!FILM_CAMERAS.includes(mode)) return;
     this.mode = mode;
     this.shotAge = 0;
+    this.pendingCamera = null;
     // One exponential handoff owns both the pose and follow response.
     this.log(`camera:${mode}`);
   }
@@ -142,6 +142,7 @@ export class FilmMode {
   public onRound(): void {
     this.staged = false;
     this.previous.clear();
+    this.pendingCamera = null;
     this.firing.clear();
     this.shotCounts.clear();
     this.accumulator = 0;
@@ -159,7 +160,10 @@ export class FilmMode {
     const type = event.type === 'roundWin' ? event.reason : event.type;
     this.log(type);
     if (event.type === 'score') this.targetId = event.scorerId;
-    const next = this.options.director ? directorCamera(type, this.shotAge) : null;
+    const next = this.options.director ? directorCamera(type, this.shotAge, this.mode) : null;
+    if (this.options.director && !next && ['roundWin', 'matchEnd'].includes(event.type)) {
+      this.pendingCamera = directorCamera(type, 2.5, this.mode);
+    }
     if (next) {
       if (event.type === 'freeze') this.targetId = this.ctx.match.getSpectatorActors().find(a => a.name === event.killerName)?.id ?? this.targetId;
       this.targetAge = 0;
@@ -178,6 +182,10 @@ export class FilmMode {
     if (this.frames.length > 18000) this.frames.shift();
     this.shotAge += realDt;
     this.targetAge += realDt;
+    if (!this.held && this.options.director) {
+      if (this.pendingCamera && this.shotAge >= 2.5) this.setCamera(this.pendingCamera);
+      else if (this.shotAge >= 6.5) this.setCamera(this.mode === 'orbit' ? 'chase' : 'orbit');
+    }
     realDt = Math.max(0, Math.min(realDt, 0.1));
     const dt = this.options.scenario === 'war' ? 1 / 60 : 1 / 120;
     const actors = ctx.match.getSpectatorActors();
@@ -220,10 +228,19 @@ export class FilmMode {
         const state = `${actor.phase}:${Object.values(actor.damage).join(',')}`;
         const previous = this.previous.get(actor.id);
         if (previous && previous !== state) {
+          if (this.options.scenario === 'launch' && actor.phase === 'GRABBING') {
+            // Keep the real grab/charge, then bias the existing brain to launch through the arena.
+            const profile = createBotPersonality(actor.id, actor.team);
+            profile.routeLengthMin = profile.routeLengthMax = 0;
+            profile.barLateralBias = profile.barVerticalBias = 0;
+            profile.aimNoise = 0.025;
+            actor.brain = new BotBrain(profile);
+            actor.brain.resetForRound(this.options.seed);
+          }
           const type = previous.startsWith('AIMING') && actor.phase === 'FLOATING' ? 'launch'
             : actor.damage.frozen ? 'freeze' : state.split(':')[1] !== previous.split(':')[1] ? 'limb-hit' : 'phase';
           this.log(type, actor.id);
-          const next = this.options.director ? directorCamera(type, this.shotAge) : null;
+          const next = this.options.director ? directorCamera(type, this.shotAge, this.mode) : null;
           if (next) { this.targetId = actor.id; this.targetAge = 0; this.setCamera(next); }
         }
         this.previous.set(actor.id, state);
@@ -367,7 +384,7 @@ export class FilmMode {
           + Math.max(0, 20 - a.phys.pos.distanceTo(enemy)) + (a.id === this.targetId ? 5 : 0);
       };
       target = [...actors].sort((a, b) => interest(b) - interest(a))[0];
-      if (target?.id !== this.targetId) { this.targetAge = 0; this.log('target', target?.id); }
+      if (target && target.id !== this.targetId) { this.targetAge = 0; this.log('target', target.id); }
     }
     if (!target) { ctx.gun.setVisible(false); return; }
     this.targetId = target.id;
@@ -377,6 +394,7 @@ export class FilmMode {
     if (firing && firing.until > this.elapsed && target.phase !== 'AIMING') this.forward.copy(firing.direction);
     this.focus.copy(target.phys.pos);
     const t = this.elapsed;
+    const celebrating = this.options.scenario === 'victory' && ctx.player.isVictoryDanceActive();
     if (this.mode === 'bot-pov') {
       this.position.copy(this.focus).add(new THREE.Vector3(0, 0.03 + Math.sin(t * 1.7) * 0.012, 0));
       this.mount.position.copy(this.position);
@@ -384,15 +402,21 @@ export class FilmMode {
     } else if (this.mode === 'chase' || this.mode === 'side-track') {
       if (this.mode === 'side-track' && target.phys.vel.lengthSq() > 1) this.forward.copy(target.phys.vel).normalize();
       this.side.crossVectors(this.forward, THREE.Object3D.DEFAULT_UP).normalize();
-      this.position.copy(this.focus).addScaledVector(this.forward, this.mode === 'chase' ? -3.8 : -2)
-        .addScaledVector(this.side, this.mode === 'chase' ? 0.65 : 6);
-      this.position.y += this.mode === 'chase' ? 1 : 2;
+      this.position.copy(this.focus).addScaledVector(this.forward, this.mode === 'chase' ? celebrating ? -2.2 : -3.8 : -2)
+        .addScaledVector(this.side, this.mode === 'chase' ? 0.65 : celebrating ? 3 : 6);
+      this.position.y += celebrating ? 0.65 : this.mode === 'chase' ? 1 : 2;
       this.mount.position.copy(this.position);
-      this.mount.lookAt(this.focus.clone().addScaledVector(this.forward, this.mode === 'chase' ? 4 : 0.8));
+      this.mount.lookAt(this.focus.clone().addScaledVector(this.forward, celebrating ? 0 : this.mode === 'chase' ? 4 : 0.8));
     } else if (this.mode === 'orbit') {
       const war = this.options.scenario === 'war';
-      this.focus.copy(war ? new THREE.Vector3(0, 1, 0) : target.phys.pos);
-      this.position.copy(this.focus).add(new THREE.Vector3(Math.sin(t * 0.13) * (war ? 17 : 6), war ? 12 : 3, Math.cos(t * 0.13) * (war ? 17 : 6)));
+      this.focus.copy(target.phys.pos);
+      if (war) {
+        this.focus.set(0, 0, 0);
+        for (const actor of actors) this.focus.add(actor.phys.pos);
+        this.focus.divideScalar(actors.length);
+      }
+      const radius = war ? 12 : celebrating ? 3 : 6;
+      this.position.copy(this.focus).add(new THREE.Vector3(Math.sin(t * 0.13) * radius, war ? 7 : celebrating ? 1.2 : 3, Math.cos(t * 0.13) * radius));
       this.mount.position.copy(this.position);
       this.mount.lookAt(this.focus);
     } else if (this.mode === 'portal-cam') {

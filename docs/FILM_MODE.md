@@ -16,7 +16,7 @@ Production builds ignore film parameters and exclude the dynamically imported di
 | `film_seed` | Safe integer arena/bot seed, default `15` |
 | `film_timescale` | `0.1`–`1`, default `1`; `0.5` runs simulation at half speed |
 | `film_hold` | `1` holds the simulation while assets and shaders warm up |
-| `film_reel` | `1` runs the 47-take capture list; an exact take name (e.g. `freeze_bot-pov_01`) runs only that take |
+| `film_reel` | `1` runs the 47-take capture list; exact take names separated by commas select retakes (e.g. `war_orbit_01,war_orbit_02`) |
 | `film_from` | Zero-based reel index for resuming a capture, default `0` |
 
 Keys **1–6** select the cameras in table order. **F** toggles director, **P** holds /
@@ -53,5 +53,8 @@ capture tooling and never connects to a server or posts footage anywhere.
 Film Mode disables dynamic impact point lights to avoid shader compilation pauses
 as the number of active lights changes. Projectile trails, sparks and limb/freeze
 glows stay enabled. Normal gameplay retains its original impact lighting.
+The director alternates launch/combat viewpoints, queues round/match-end cuts until
+the minimum shot length, and uses an orbit/chase fallback after 6.5 seconds without
+a cut. War orbits follow the fight centroid; victory cameras move closer for the dance.
 
 Example: `/?film=1&film_scenario=breach&film_camera=side-track&film_timescale=0.5&film_hold=1`.

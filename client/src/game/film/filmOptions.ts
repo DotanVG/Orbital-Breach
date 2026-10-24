@@ -27,11 +27,11 @@ export function filmResponse(rate: number, dt: number): number {
   return 1 - Math.exp(-rate * Math.max(0, dt));
 }
 
-export function directorCamera(event: string, shotSeconds: number): FilmCamera | null {
+export function directorCamera(event: string, shotSeconds: number, current?: FilmCamera): FilmCamera | null {
   if (shotSeconds < 2.5) return null;
   switch (event) {
-    case 'launch': return 'side-track';
-    case 'limb-hit': case 'freeze': return 'bot-pov';
+    case 'launch': return current === 'side-track' ? 'chase' : 'side-track';
+    case 'limb-hit': case 'freeze': return current === 'bot-pov' ? 'chase' : 'bot-pov';
     case 'breach': return 'portal-cam';
     case 'fullFreeze': case 'roundWin': return 'orbit';
     case 'matchEnd': return 'chase';
