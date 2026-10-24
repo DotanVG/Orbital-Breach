@@ -43,6 +43,7 @@ const CSS = `
   .ob-rb-root::before {
     inset: -28px;
     background: url("/assets/marketing/orbital-breach-bg.png") center / cover no-repeat;
+    background-image: image-set(url("/assets/marketing/orbital-breach-bg.webp") type("image/webp"), url("/assets/marketing/orbital-breach-bg.png") type("image/png"));
     filter: blur(18px);
     opacity: 0.36;
     transform: scale(1.04);
