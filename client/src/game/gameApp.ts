@@ -66,6 +66,7 @@ import type { PortalParams } from "./portal/parsePortalParams";
 const ONLINE_MATCH_DEBRIEF_DELAY_MS = 4000;
 
 export class App {
+  private film: import("./film/filmMode").FilmMode | null = null;
   private appMode: "menu" | "solo" | "online" = "menu";
   private onlineGameActive = false;
   private onlineRoundActive = false;
@@ -162,6 +163,7 @@ export class App {
     this.gun = new GunViewModel(this.sceneMgr.getCamera());
 
     this.match.onEvent = (event) => {
+      this.film?.onEvent(event);
       switch (event.type) {
         case "hitConfirm":
           this.hud.triggerHitConfirm(event.team);
@@ -425,7 +427,7 @@ export class App {
       };
     } else {
       this.sceneMgr.getRenderer().domElement.addEventListener("mousedown", () => {
-        if (this.menu.isVisible() || this.input.isLocked() || this.sessionMenu.isOpen()) return;
+        if (this.film || this.menu.isVisible() || this.input.isLocked() || this.sessionMenu.isOpen()) return;
         if (this.appMode === "solo" && this.round.getPhase() === "LOBBY") return;
         if (this.appMode === "online" && !this.onlineGameActive) return;
         this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
@@ -435,7 +437,12 @@ export class App {
     this.tickCtx = this.createTickContext();
   }
 
-  public start(): void {
+  public async start(): Promise<void> {
+    if (import.meta.env.DEV && new URLSearchParams(location.search).get("film") === "1") {
+      const [{ FilmMode }, { parseFilmOptions }] = await Promise.all([import("./film/filmMode"), import("./film/filmOptions")]);
+      const options = parseFilmOptions(location.search, true)!;
+      this.film = new FilmMode(this.tickCtx, options, () => this.startSoloMatch({ name: "Film spectator", teamSize: options.scenario === "war" ? 20 : 5 }));
+    }
     this.menu.onPlaySolo = (selection) => {
       this.startSoloMatch(selection);
     };
@@ -462,7 +469,14 @@ export class App {
       this.startTutorialMatch(selection);
     };
 
-    if (this.portalArrivalPending) {
+    if (this.film) {
+      if (this.film.options.scenario === "menu") this.menu.show();
+      else {
+        this.menu.hide();
+        this.startSoloMatch({ name: "Film spectator", teamSize: this.film.options.scenario === "war" ? 20 : 5 });
+        if (this.film.options.scenario === "lobby") this.film.showLobby(this.multiplayer);
+      }
+    } else if (this.portalArrivalPending) {
       this.cursor.hide();
       this.startSoloMatch({
         name: this.portalParams.username?.trim() || DEFAULT_PLAYER_NAME,
@@ -510,7 +524,8 @@ export class App {
   // ── Main loop ───────────────────────────────────────────────────────────────
 
   private loop(timestamp: number): void {
-    const dt = Math.min((timestamp - this.lastTime) / 1000, 0.033);
+    const realDt = (timestamp - this.lastTime) / 1000;
+    const dt = Math.min(realDt, 0.033);
     this.lastTime = timestamp;
     const gameplayActive = this.isGameplaySceneActive();
 
@@ -527,13 +542,15 @@ export class App {
     }
 
     if (gameplayActive && this.appMode === "solo") {
-      tickSoloGame(this.tickCtx, dt);
+      if (this.film) this.film.tick(realDt);
+      else tickSoloGame(this.tickCtx, dt);
     } else if (gameplayActive && this.appMode === "online" && this.onlineGameActive) {
       tickOnlineGame(this.tickCtx, dt);
     }
 
     this.syncCombatPresentation(gameplayActive);
     this.syncDesktopOverlayCursor(gameplayActive);
+    if (this.film && this.appMode === "menu") this.film.tick(realDt);
     this.sceneMgr.render();
     requestAnimationFrame((nextTimestamp) => this.loop(nextTimestamp));
   }
@@ -606,6 +623,7 @@ export class App {
       this.player.applyAuthoritativeOnlineState(selfActor);
     }
 
+    this.film?.onRound();
     const openAxis = this.arena.getBreachOpenAxis(this.player.team);
     const openSign = this.arena.getBreachOpenSign(this.player.team);
     this.cam.resetForBreachSpawn(cameraYawFacingBreachOpening(openAxis, openSign));
@@ -664,7 +682,7 @@ export class App {
     this.projectiles.clear();
     clearVibeJamPortals();
 
-    const layout = generateArenaLayout();
+    const layout = generateArenaLayout(this.film?.options.seed);
     this.arena.loadLayout(layout);
     this.debugOverlays.onLayoutLoaded(this.arena);
 
@@ -687,6 +705,7 @@ export class App {
       arrivalThisRound ? PORTAL_ARRIVAL_SPAWN : undefined,
     );
 
+    this.film?.onRound();
     const openAxis = this.arena.getBreachOpenAxis(this.player.team);
     const openSign = this.arena.getBreachOpenSign(this.player.team);
     this.cam.resetForBreachSpawn(cameraYawFacingBreachOpening(openAxis, openSign));
@@ -739,7 +758,7 @@ export class App {
     this.matchEndHandle = setTimeout(() => {
       this.matchEndHandle = null;
       this.showSoloDebrief(winningTeam, finalScore);
-    }, 4000);
+    }, this.film ? 16000 / this.film.options.timescale : 4000);
   }
 
   private showSoloDebrief(
@@ -1041,12 +1060,13 @@ export class App {
       humanTeam: 0,
       teamSize: selection.teamSize,
       noBots: selection.noBots,
+      spectator: this.film !== null,
     });
 
     if (this.mobile) {
       this.input.setMobileControlsActive(true);
       this.mobileControls?.show();
-    } else if (!this.portalArrivalPending) {
+    } else if (!this.portalArrivalPending && !this.film) {
       this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
     }
 
@@ -1218,6 +1238,7 @@ export class App {
     this.hud.hideRoundEnd();
     this.killFeed.setVisible(false);
     this.cursor.show();
+    if (this.film) document.body.classList.remove("ob-film");
     this.debrief.show(data);
   }
 

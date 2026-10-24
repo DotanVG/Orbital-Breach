@@ -105,7 +105,7 @@ export type LocalMatchEvent =
     finalScore: { team0: number; team1: number };
   };
 
-interface BotState {
+export interface BotState {
   avatar: SimulatedPlayerAvatar;
   brain: BotBrain;
   currentBreachTeam: 0 | 1;
@@ -135,6 +135,7 @@ interface ActorDescriptor {
 }
 
 export class LocalMatch {
+  private spectator = false;
   private barGraph: BarRouteGraph = buildBarGraph([]);
   private bots: BotState[] = [];
   private celebratingTeam: 0 | 1 | null = null;
@@ -147,7 +148,8 @@ export class LocalMatch {
 
   public constructor(private scene: THREE.Scene) {}
 
-  public startNewGame(config: SoloMatchConfig): void {
+  public startNewGame(config: SoloMatchConfig & { spectator?: boolean }): void {
+    this.spectator = config.spectator === true;
     this.config = config;
     this.celebratingTeam = null;
     this.score = { team0: 0, team1: 0 };
@@ -181,7 +183,11 @@ export class LocalMatch {
       this.roundSeed * 17 + 13,
     ).map((slot) => settleSpawnOnFloor(slot, query, 1));
 
-    if (this.config.humanTeam === 0) {
+    if (this.spectator) {
+      player.phase = "RESPAWNING";
+      player.phys.pos.set(0, -1000, 0);
+      player.phys.vel.set(0, 0, 0);
+    } else if (this.config.humanTeam === 0) {
       player.resetForNewRound(arena, humanSpawnOverride ?? team0Slots.shift());
     } else {
       player.resetForNewRound(arena, humanSpawnOverride ?? team1Slots.shift());
@@ -198,6 +204,15 @@ export class LocalMatch {
       bot.avatar.dispose(this.scene);
     }
     this.bots = [];
+  }
+
+  /** Director access to existing solo actors; never creates another pilot. */
+  public getSpectatorActors(): readonly BotState[] {
+    return this.spectator ? this.bots : [];
+  }
+
+  public setSpectatorScore(score: { team0: number; team1: number }): void {
+    if (this.spectator) this.score = { ...score };
   }
 
   public setCelebratingTeam(team: 0 | 1 | null): void {
@@ -230,7 +245,7 @@ export class LocalMatch {
         frozen: bot.deaths,
         position: toVec3(bot.phys.pos),
       })),
-    ];
+    ].filter((actor) => !this.spectator || actor.id !== LOCAL_PLAYER_ID);
   }
 
   public addOutboundVibeJamPortal(params: PortalParams): void {
@@ -263,7 +278,7 @@ export class LocalMatch {
       })),
     ];
 
-    return buildHudRosters(LOCAL_PLAYER_ID, this.config.humanTeam, actors);
+    return buildHudRosters(LOCAL_PLAYER_ID, this.config.humanTeam, actors.filter((actor) => !this.spectator || actor.id !== LOCAL_PLAYER_ID));
   }
 
   public getProjectileTargets(player: LocalPlayer): ProjectileActorTarget[] {
@@ -288,7 +303,7 @@ export class LocalMatch {
           team: bot.team,
         };
       }),
-    ];
+    ].filter((actor) => !this.spectator || actor.id !== LOCAL_PLAYER_ID);
   }
 
   public handleProjectileHit(
@@ -431,8 +446,8 @@ export class LocalMatch {
     ];
 
     return {
-      0: actors.filter((actor) => actor.team === 1),
-      1: actors.filter((actor) => actor.team === 0),
+      0: actors.filter((actor) => actor.team === 1 && (!this.spectator || actor.id !== LOCAL_PLAYER_ID)),
+      1: actors.filter((actor) => actor.team === 0 && (!this.spectator || actor.id !== LOCAL_PLAYER_ID)),
     };
   }
 
@@ -469,7 +484,7 @@ export class LocalMatch {
     if (this.roundResolved) return;
 
     const winner = findFullFreezeWinner([
-      { team: this.config.humanTeam, frozen: player.damage.frozen },
+      ...(!this.spectator ? [{ team: this.config.humanTeam, frozen: player.damage.frozen }] : []),
       ...this.bots.map((bot) => ({ team: bot.team, frozen: bot.damage.frozen })),
     ]);
 
@@ -566,7 +581,7 @@ export class LocalMatch {
         phase: bot.phase,
         pos: bot.phys.pos,
       })),
-    ];
+    ].filter((actor) => !this.spectator || actor.id !== LOCAL_PLAYER_ID);
   }
 
   private getBot(id: string): BotState | undefined {
@@ -574,7 +589,7 @@ export class LocalMatch {
   }
 
   private getTeamActorCount(team: 0 | 1): number {
-    const humanCount = this.config.humanTeam === team ? 1 : 0;
+    const humanCount = !this.spectator && this.config.humanTeam === team ? 1 : 0;
     const botCount = this.bots.filter((bot) => bot.team === team).length;
     return humanCount + botCount;
   }
@@ -585,6 +600,10 @@ export class LocalMatch {
     if (this.config.noBots) return;
 
     const fill = getSoloBotFill(this.config.teamSize, this.config.humanTeam);
+    if (this.spectator) {
+      if (this.config.humanTeam === 0) fill.team0Bots += 1;
+      else fill.team1Bots += 1;
+    }
     for (let i = 0; i < fill.team0Bots; i += 1) {
       this.bots.push(createBotState(this.scene, `bot-cyan-${i}`, getBotCallSign(i), 0));
     }
@@ -598,7 +617,7 @@ export class LocalMatch {
   private resolveActorOverlap(player: LocalPlayer): void {
     resolveActorCollisions([
       {
-        active: player.phase !== "RESPAWNING",
+        active: !this.spectator && player.phase !== "RESPAWNING",
         anchored: isAnchored(player.phase),
         pos: player.getPosition(),
         radius: ACTOR_COLLISION_RADIUS,

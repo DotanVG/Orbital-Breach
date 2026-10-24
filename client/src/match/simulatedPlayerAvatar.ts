@@ -123,6 +123,13 @@ export class SimulatedPlayerAvatar {
     this.recoilTimer = RECOIL_DURATION;
   }
 
+  public isReady(): boolean { return this.ready; }
+
+  public setSpectatorVisible(visible: boolean, nameVisible: boolean): void {
+    this.root.visible = visible;
+    this.nameTag.setVisible(visible && nameVisible);
+  }
+
   public dispose(scene: THREE.Scene): void {
     this.disposed = true;
     this.damageGlow.dispose();
