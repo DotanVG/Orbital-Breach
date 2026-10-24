@@ -146,6 +146,7 @@ export class FilmMode {
     this.firing.clear();
     this.shotCounts.clear();
     this.accumulator = 0;
+    this.targetId = '';
     this.targetAge = 99;
     this.log('round-start');
     if (!['launch', 'menu', 'lobby'].includes(this.options.scenario)) {
@@ -159,7 +160,7 @@ export class FilmMode {
   public onEvent(event: LocalMatchEvent): void {
     const type = event.type === 'roundWin' ? event.reason : event.type;
     this.log(type);
-    if (event.type === 'score') this.targetId = event.scorerId;
+    if (event.type === 'score' && this.options.director && this.shotAge >= 2.5) this.targetId = event.scorerId;
     const next = this.options.director ? directorCamera(type, this.shotAge, this.mode) : null;
     if (this.options.director && !next && ['roundWin', 'matchEnd'].includes(event.type)) {
       this.pendingCamera = directorCamera(type, 2.5, this.mode);

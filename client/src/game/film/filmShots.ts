@@ -11,7 +11,7 @@ export function filmShots(from = 0, selection = '1') {
     });
   };
   for (const scenario of ['launch', 'freeze', 'breach', 'fullfreeze', 'war', 'victory'] as const) {
-    add(scenario, 'bot-pov', scenario === 'freeze' ? 3 : 2, scenario === 'victory' ? 25 : 15);
+    add(scenario, 'bot-pov', scenario === 'freeze' ? 3 : 2, scenario === 'victory' ? 8 : 15);
     add(scenario, 'side-track', scenario === 'breach' ? 3 : 2, scenario === 'victory' ? 25 : 15);
   }
   add('breach', 'portal-cam', 3);

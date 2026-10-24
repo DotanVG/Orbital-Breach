@@ -17,6 +17,7 @@ describe('filmShots', () => {
     expect(filmShots(999)).toEqual([]);
     expect(filmShots(0, 'war_orbit_01,war_orbit_02').map(s => s.name)).toEqual(['war_orbit_01', 'war_orbit_02']);
     expect(filmShots(0, 'unknown')).toEqual([]);
+    expect(shots.filter(s => s.scenario === 'victory' && s.camera === 'bot-pov').every(s => s.seconds === 8)).toBe(true);
   });
 });
 
