@@ -1,7 +1,7 @@
 import type { FilmCamera, FilmScenario } from './filmOptions';
 
 /** The local capture reel; every take gets a fresh, warmed bot match. */
-export function filmShots() {
+export function filmShots(from = 0) {
   const shots: { name: string; scenario: FilmScenario; camera: FilmCamera; seconds: number; seed: number; director: boolean; scale: number; debrief?: boolean }[] = [];
   const add = (scenario: FilmScenario, camera: FilmCamera, takes: number, seconds = 15, director = false) => {
     for (let take = 1; take <= takes; take++) shots.push({
@@ -23,5 +23,5 @@ export function filmShots() {
   add('lobby', 'bot-pov', 2, 8);
   add('lobby', 'chase', 2, 8);
   for (const scenario of ['launch', 'freeze', 'breach', 'fullfreeze', 'war', 'victory'] as const) add(scenario, 'chase', 1, 90, true);
-  return shots;
+  return shots.slice(Math.max(0, Math.min(shots.length, Math.trunc(from))));
 }

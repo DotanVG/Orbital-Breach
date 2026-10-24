@@ -12,6 +12,9 @@ describe('filmShots', () => {
     }
     expect(shots.filter(s => s.scenario === 'breach' && s.camera === 'portal-cam')).toHaveLength(3);
     expect(shots.filter(s => s.scenario === 'freeze' && s.camera === 'bot-pov')).toHaveLength(3);
+    expect(filmShots(32)).toEqual(shots.slice(32));
+    expect(filmShots(-1)).toEqual(shots);
+    expect(filmShots(999)).toEqual([]);
   });
 });
 

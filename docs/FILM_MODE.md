@@ -17,6 +17,7 @@ Production builds ignore film parameters and exclude the dynamically imported di
 | `film_timescale` | `0.1`–`1`, default `1`; `0.5` runs simulation at half speed |
 | `film_hold` | `1` holds the simulation while assets and shaders warm up |
 | `film_reel` | `1` runs the 47-take capture list; an exact take name (e.g. `freeze_bot-pov_01`) runs only that take |
+| `film_from` | Zero-based reel index for resuming a capture, default `0` |
 
 Keys **1–6** select the cameras in table order. **F** toggles director, **P** holds /
 resumes simulation, **R** restarts the preset. Free fly: **WASD**, **Space/Ctrl** up/down,
@@ -48,5 +49,9 @@ UTC start/end milliseconds, seeds, event timestamps and pacing statistics. Recor
 the headed canvas continuously, then split using this manifest. Director takes
 restart after debrief to keep the 90 second capture running. The reel is local
 capture tooling and never connects to a server or posts footage anywhere.
+
+Film Mode disables dynamic impact point lights to avoid shader compilation pauses
+as the number of active lights changes. Projectile trails, sparks and limb/freeze
+glows stay enabled. Normal gameplay retains its original impact lighting.
 
 Example: `/?film=1&film_scenario=breach&film_camera=side-track&film_timescale=0.5&film_hold=1`.

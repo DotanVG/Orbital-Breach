@@ -24,7 +24,7 @@ export class FilmMode {
   private initialized = false;
   private staged = false;
   private accumulator = 0;
-  private readonly reel = filmShots().filter(s => {
+  private readonly reel = filmShots(Number(new URLSearchParams(location.search).get('film_from') ?? 0)).filter(s => {
     const name = new URLSearchParams(location.search).get('film_reel');
     return name === '1' || name === s.name;
   });
@@ -52,6 +52,7 @@ export class FilmMode {
   private readonly style = document.createElement('style');
   private readonly savedProjection: { fov: number; near: number; far: number };
   private readonly savedPixelRatio: number;
+  private gunTint: number | null | undefined;
   private readonly keyDown = (e: KeyboardEvent) => {
     if (e.repeat) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -86,6 +87,8 @@ export class FilmMode {
     camera.near = 0.06;
     camera.updateProjectionMatrix();
     ctx.sceneMgr.getRenderer().setPixelRatio(1);
+    // Dynamic point-light counts compile shader variants during hits; emissive VFX remain visible.
+    ctx.projectiles.setHitFlashLights(false);
     this.style.textContent = `body.ob-film > :not(canvas):not(script):not(style):not(.ob-film-score) { visibility:hidden !important; }
       body.ob-film canvas { cursor:none !important; }
       .ob-film-score { position:fixed;top:28px;left:0;right:0;text-align:center;color:white;font:24px monospace;pointer-events:none;z-index:99999; }
@@ -424,7 +427,8 @@ export class FilmMode {
     ctx.player.setWorldModelVisible(false);
     ctx.player.setThirdPersonGunVisible(false);
     ctx.gun.setVisible(this.mode === 'bot-pov');
-    ctx.gun.setFrozenTint(target.damage.frozen || target.damage.rightArm ? target.team === 0 ? 0xff00ff : 0x00ffff : null);
+    const tint = target.damage.frozen || target.damage.rightArm ? target.team === 0 ? 0xff00ff : 0x00ffff : null;
+    if (tint !== this.gunTint) { ctx.gun.setFrozenTint(tint); this.gunTint = tint; }
   }
 
   private constrain(origin: THREE.Vector3, position: THREE.Vector3, boxes: THREE.Box3[]): void {
@@ -451,6 +455,7 @@ export class FilmMode {
     this.style.remove(); this.minimal.remove(); this.telemetry.remove(); this.reelTelemetry.remove();
     Object.assign(this.ctx.sceneMgr.getCamera(), this.savedProjection);
     this.ctx.sceneMgr.getRenderer().setPixelRatio(this.savedPixelRatio);
+    this.ctx.projectiles.setHitFlashLights(true);
     this.ctx.sceneMgr.getCamera().updateProjectionMatrix();
     delete (window as Window & { __film?: FilmMode }).__film;
   }

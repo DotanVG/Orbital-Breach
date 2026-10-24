@@ -58,6 +58,9 @@ type CollisionHit =
   | { kind: "portal"; point: THREE.Vector3; distance: number };
 
 export class ProjectileSystem {
+  private hitFlashLights = true;
+
+  public setHitFlashLights(enabled: boolean): void { this.hitFlashLights = enabled; }
   private flashes: HitFlash[] = [];
   private freeFlashes: number[] = [];
   private projectilePool: Projectile[] = [];
@@ -345,6 +348,7 @@ export class ProjectileSystem {
     distance: number,
     mode: "normal" | "high" | "extreme",
   ): void {
+    if (!this.hitFlashLights) return;
     const flash = this.acquireFlash();
     if (!flash) return;
 
