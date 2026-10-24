@@ -27,6 +27,27 @@ Keep private repo-specific files in `CLAUDE.local.md` and `.claude/settings.loca
 
 ---
 
+## Knowledge graph policy
+
+When `graphify-out/graph.json` exists:
+
+1. For unfamiliar, architectural, debugging, cross-cutting or likely multi-file tasks, query Graphify before performing broad repository exploration.
+2. Use the graph to identify likely files, symbols, dependencies and execution paths.
+3. Open and verify the authoritative source files before editing.
+4. Never trust stale graph data over current source.
+5. For a clearly isolated edit, skip Graphify.
+6. After material structural changes, perform an incremental graph update when practical.
+7. After a major refactor, perform a full rebuild.
+8. Never commit `graphify-out/`.
+9. Do not block ordinary work only because the optional local graph is absent.
+
+Claude Code discovers the canonical skill at
+`.claude/skills/graphify/SKILL.md`. A fast `SessionStart` hook only announces an
+existing graph; it never builds or updates one. Use
+`node scripts/graphify.mjs status` to check freshness.
+
+---
+
 ## Repo layout
 
 ```
@@ -206,6 +227,7 @@ See `docs/TESTING.md` for full guide.
 
 ## Claude Skills
 
+- `graphify` — query or maintain the optional local source knowledge graph
 - `web-game-foundations` — architecture, module boundaries, runtime conventions
 - `three-webgl-game` — Three.js runtime, cameras, loaders, rendering
 - `web-3d-asset-pipeline` — GLB/glTF cleanup, optimization, validation
