@@ -30,22 +30,37 @@ Keep private repo-specific files in `CLAUDE.local.md` and `.claude/settings.loca
 ## Repo layout
 
 ```
-client/src/      Vite + TypeScript browser app
-  app.ts / main.ts / input.ts / camera.ts / physics.ts / combat.ts
-  game/          App composition, round controller, projectile system, weapon fire
-  player/        LocalPlayer facade, animation, combat, grab pose, spawn
-  arena/         Arena facade, breach room queries, walls, obstacle collision, portals
-  render/        SceneManager, HUD, gun viewmodel, materials
-  ui/            MainMenu controller and view
-  net/           Colyseus NetClient
-  audio/         SoundEngine
-server/src/      Node.js Colyseus game server
-  index.ts / room.ts / sim.ts / player.ts / projectile.ts / arena-query.ts
-  bot/brain.ts   Bot AI tick
-shared/          Imported by both client and server
-  schema.ts / constants.ts / physics.ts / arena-gen.ts / player-logic.ts / vec3.ts
-docs/            ARCHITECTURE.md, TESTING.md
+client/src/        Vite + TypeScript browser app
+  main.ts / app.ts / input.ts / camera.ts / physics.ts / combat.ts
+  player.ts / projectile.ts / config.ts / featureFlags.ts / platform.ts / embed.ts
+  game/            gameApp, round controller, projectile system, weapon fire,
+                   solo/online ticks, debug + tuning overlays
+    portal/        Vibe Jam portal params and placement
+  match/           local + online match, bot brain, arena query adapter, roster
+  player/          LocalPlayer, animation, combat, grab/aim pose, spawn, hit zones
+  arena/           Arena facade, breach room queries, walls, obstacle collision, portals
+  render/          SceneManager, gun viewmodel, materials, name tags
+    hud/           HUD view, scoreboard, tutorial
+  ui/              menus, lobby, room browser, debrief, welcome, mobile controls
+    menu/ welcome/ view modules
+  net/             Colyseus client, endpoint, messages, reconciliation, room directory
+  input/           mobile input logic
+  audio/           SoundEngine
+  analytics/       analytics
+  util/            math, pool
+server/src/        Node.js Colyseus game server
+  index.ts / cors.ts
+  colyseus/        OrbitalLobbyRoom, state, onlineActorSimulation, actorDamage,
+                   botAI, roomDirectory
+shared/            Imported by both client and server
+  schema.ts / constants.ts / arena-gen.ts / player-logic.ts / vec3.ts
+  match.ts / match-flow.ts / multiplayer.ts / callSigns.ts / profanity.ts
+tests/             vitest suites
+docs/              ARCHITECTURE.md, TESTING.md
+itch/              itch.io HTML upload bundle (zip its contents)
 ```
+
+When this layout changes, update this section in the same PR.
 
 ---
 
@@ -74,8 +89,10 @@ Feature → staging → main. Never push features directly to main.
 
 ```
 feature/<name>  →  staging    via GitHub PR (squash merge OK)
-staging         →  main       NEVER via GitHub PR — CLI only:
+staging         →  main       NEVER via GitHub PR — CLI fast-forward only
 ```
+
+Promote staging to main:
 
 ```bash
 git fetch origin
