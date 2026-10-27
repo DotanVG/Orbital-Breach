@@ -104,7 +104,7 @@ Debrief awards are generated from match stats:
 | Renderer | Three.js 0.179 |
 | Client | TypeScript 5.9, Vite 7.1 |
 | Multiplayer | `@colyseus/sdk` 0.17, `@colyseus/core` 0.17, `@colyseus/ws-transport` 0.17 |
-| Server | Node.js 18+ runtime, Express 5.2, TypeScript 5.9 |
+| Server | Node.js runtime, Express 5.2, TypeScript 5.9 |
 | Testing | Vitest suite in `tests/` plus the manual smoke checklist in `docs/TESTING.md` |
 | Frontend hosting | Vercel |
 | Backend hosting | Render |
@@ -112,7 +112,7 @@ Debrief awards are generated from match stats:
 
 ## Local Development
 
-Prerequisites: Node.js 18+ and npm.
+Prerequisites: Node 22.x (see .nvmrc) and npm.
 
 Install dependencies:
 

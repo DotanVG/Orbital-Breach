@@ -48,6 +48,7 @@ export function getTargetedChecks(relativePath) {
     relativePath.startsWith('.claude/') ||
     relativePath.startsWith('docs/') ||
     [
+      'AGENTS.md',
       'CLAUDE.md',
       'CLAUDE.local.md',
       'README.md',

@@ -1,31 +1,25 @@
 import { matchMaker, Server } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
-import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import type { ErrorRequestHandler, Request, Response } from "express";
 import { MULTIPLAYER_BROWSER_ROOM_NAME, MULTIPLAYER_ROOM_NAME } from "../../shared/multiplayer";
 import { OrbitalLobbyRoom } from "./colyseus/OrbitalLobbyRoom";
 import { buildPublicRoomDirectory } from "./colyseus/roomDirectory";
+import { buildCorsHeaders, createOriginMatcher, parseOriginList } from "./cors";
 
 const PORT = Number(process.env.PORT || 2567);
 const NODE_ENV = process.env.NODE_ENV ?? "development";
 const IS_PROD = NODE_ENV === "production";
 
-const DEFAULT_ORIGINS = [
-  "https://orbital-breach.vercel.app",
-  "http://localhost:5173",
-  "http://localhost:3000",
-  "http://127.0.0.1:5173",
-];
+const isAllowedOrigin = createOriginMatcher(parseOriginList(process.env.CLIENT_ORIGIN), IS_PROD);
 
-const allowedOrigins = new Set<string>([
-  ...DEFAULT_ORIGINS,
-  ...(process.env.CLIENT_ORIGIN ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean),
-]);
+// Colyseus applies these to every HTTP request (express routes included) and
+// answers every OPTIONS preflight itself, so this is the single CORS policy.
+// Clear the library defaults (ACAO "*" + credentials, PUT/PATCH/DELETE,
+// Authorization), which are merged under getCorsHeaders().
+(matchMaker.controller as { DEFAULT_CORS_HEADERS: Record<string, string> }).DEFAULT_CORS_HEADERS = {};
+matchMaker.controller.getCorsHeaders = (headers) => buildCorsHeaders(headers.get("origin"), isAllowedOrigin);
 
 async function main(): Promise<void> {
   const transport = new WebSocketTransport();
@@ -45,18 +39,6 @@ async function main(): Promise<void> {
         helmet({
           contentSecurityPolicy: false,
           crossOriginResourcePolicy: { policy: "cross-origin" },
-        }),
-      );
-
-      app.use(
-        cors({
-          origin: (origin, cb) => {
-            if (!origin) return cb(null, true);
-            if (allowedOrigins.has(origin)) return cb(null, true);
-            return cb(new Error("CORS: origin not allowed"));
-          },
-          methods: ["GET", "POST", "OPTIONS"],
-          credentials: false,
         }),
       );
 

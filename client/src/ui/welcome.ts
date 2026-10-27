@@ -10,9 +10,16 @@ export class WelcomeScreen {
   public onBreach: (() => void) | null = null;
   public fullscreenOnClick = false;
 
-  private root: HTMLDivElement | null = null;
+  private root: HTMLElement | null = null;
   private stopEffects: (() => void) | null = null;
   private active = false;
+
+  // Capture even BODY-targeted navigation before the game's global listener.
+  private readonly handleNavigationKeyDown = (event: KeyboardEvent): void => {
+    if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.code)) {
+      event.stopPropagation();
+    }
+  };
 
   constructor(private readonly cursor: GlobalCursor) {}
 
@@ -23,6 +30,8 @@ export class WelcomeScreen {
     this.root = root;
     this.active = true;
     this.stopEffects = startWelcomeEffects(root, layer, btn);
+
+    window.addEventListener('keydown', this.handleNavigationKeyDown, true);
 
     btn.addEventListener('mouseenter', () => this.cursor.setHot(true));
     btn.addEventListener('mouseleave', () => this.cursor.setHot(false));
@@ -39,9 +48,11 @@ export class WelcomeScreen {
       }
       this.fadeOut(() => {
         this.hide();
+        document.body.classList.add('game-active');
         this.onBreach?.();
       });
     });
+    btn.focus({ preventScroll: true });
   }
 
   fadeOut(cb: () => void): void {
@@ -52,6 +63,7 @@ export class WelcomeScreen {
   }
 
   hide(): void {
+    window.removeEventListener('keydown', this.handleNavigationKeyDown, true);
     this.stopEffects?.();
     this.stopEffects = null;
     this.root?.remove();

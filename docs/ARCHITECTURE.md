@@ -190,7 +190,7 @@ The production server is a Colyseus + Express app on Render.
 
 | File | Responsibility |
 |---|---|
-| `index.ts` | Express bootstrap: `helmet`, CORS allowlist (`CLIENT_ORIGIN`), rate limit, mount Colyseus transport, expose `/health`, `/wake`, `/rooms` |
+| `index.ts` | Express bootstrap: `helmet`, CORS allowlist via `matchMaker.controller.getCorsHeaders` (`cors.ts`), rate limit, mount Colyseus transport, expose `/health`, `/wake`, `/rooms` |
 | `colyseus/OrbitalLobbyRoom.ts` | Room lifecycle: lobby → ready check → countdown → playing → round-end → match-end, authoritative actor state, hit validation, scoring, bot fill, both win paths, stale-player cleanup |
 | `colyseus/state.ts` | `@colyseus/schema` state classes synced to clients |
 | `colyseus/actorDamage.ts` | Authoritative damage application |
@@ -201,7 +201,7 @@ Environment variables consumed by the server:
 | Var | Purpose |
 |---|---|
 | `PORT` | Render-assigned port |
-| `CLIENT_ORIGIN` | Allowed CORS origin (the Vercel domain) |
+| `CLIENT_ORIGIN` | Extra comma-separated CORS origins. Prod Vercel, this project's Vercel previews, itch.io/itch.zone/hwcdn.net and the itch desktop app are built in (`server/src/cors.ts`) |
 | `PUBLIC_ADDRESS` | Public host advertised in `/rooms` payloads for invite URLs |
 | `NODE_ENV` | `production` on Render |
 
