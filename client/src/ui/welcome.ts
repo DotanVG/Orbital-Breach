@@ -10,7 +10,7 @@ export class WelcomeScreen {
   public onBreach: (() => void) | null = null;
   public fullscreenOnClick = false;
 
-  private root: HTMLDivElement | null = null;
+  private root: HTMLElement | null = null;
   private stopEffects: (() => void) | null = null;
   private active = false;
 
@@ -23,6 +23,13 @@ export class WelcomeScreen {
     this.root = root;
     this.active = true;
     this.stopEffects = startWelcomeEffects(root, layer, btn);
+
+    // Keep landing navigation out of the game's global keyboard listener.
+    root.addEventListener('keydown', (event) => {
+      if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.code)) {
+        event.stopPropagation();
+      }
+    });
 
     btn.addEventListener('mouseenter', () => this.cursor.setHot(true));
     btn.addEventListener('mouseleave', () => this.cursor.setHot(false));
@@ -39,9 +46,11 @@ export class WelcomeScreen {
       }
       this.fadeOut(() => {
         this.hide();
+        document.body.classList.add('game-active');
         this.onBreach?.();
       });
     });
+    btn.focus({ preventScroll: true });
   }
 
   fadeOut(cb: () => void): void {
