@@ -16,6 +16,13 @@ export class WelcomeScreen {
   private stopEffects: (() => void) | null = null;
   private active = false;
 
+  // Capture even BODY-targeted navigation before the game's global listener.
+  private readonly handleNavigationKeyDown = (event: KeyboardEvent): void => {
+    if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.code)) {
+      event.stopPropagation();
+    }
+  };
+
   constructor(private readonly cursor: GlobalCursor) {}
 
   show(): void {
@@ -26,12 +33,7 @@ export class WelcomeScreen {
     this.active = true;
     this.stopEffects = startWelcomeEffects(root, layer, btn);
 
-    // Keep landing navigation out of the game's global keyboard listener.
-    root.addEventListener('keydown', (event) => {
-      if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.code)) {
-        event.stopPropagation();
-      }
-    });
+    window.addEventListener('keydown', this.handleNavigationKeyDown, true);
 
     btn.addEventListener('mouseenter', () => this.cursor.setHot(true));
     btn.addEventListener('mouseleave', () => this.cursor.setHot(false));
@@ -77,6 +79,7 @@ export class WelcomeScreen {
   }
 
   hide(): void {
+    window.removeEventListener('keydown', this.handleNavigationKeyDown, true);
     this.stopEffects?.();
     this.stopEffects = null;
     this.root?.remove();
