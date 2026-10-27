@@ -28,7 +28,6 @@ import { isApparentFullscreen, isFullscreen, leaveFullscreen, requestFullscreen 
 import { MainMenu } from "../ui/menu";
 import { MobileControls } from "../ui/mobileControls";
 import { RoomBrowser } from "../ui/roomBrowser";
-import { WelcomeScreen } from "../ui/welcome";
 import { SessionMenu, type SessionSettings } from "../ui/sessionMenu";
 import { SoundEngine } from "../audio/SoundEngine";
 import {
@@ -102,7 +101,6 @@ export class App {
   private menu: MainMenu;
   private readonly matchStats = new MatchStatsTracker();
   private roomBrowser = new RoomBrowser();
-  private welcome!: WelcomeScreen;
   private debrief = new DebriefScreen();
   private multiplayer = new MultiplayerLobby();
   private onlineMatch: OnlineMatch;
@@ -123,7 +121,7 @@ export class App {
   private victoryOrbitAngle = 0;
   private tutorial = new FirstTimeTutorial();
 
-  public constructor() {
+  public constructor(cursor = initGlobalCursor()) {
     this.portalParams = getPortalParams();
     this.embedMode = isEmbedMode();
     this.portalArrivalPending = isPortalArrival();
@@ -140,8 +138,7 @@ export class App {
     this.player.onFullyFrozen = () => this.sound.playHit();
     this.hud = new HUD();
     this.menu = new MainMenu();
-    this.cursor = initGlobalCursor();
-    this.welcome = new WelcomeScreen(this.cursor);
+    this.cursor = cursor;
     this.projectiles = new ProjectileSystem(this.sceneMgr.getScene());
     this.match = new LocalMatch(this.sceneMgr.getScene());
     this.onlineMatch = new OnlineMatch(this.sceneMgr.getScene());
@@ -435,7 +432,7 @@ export class App {
     this.tickCtx = this.createTickContext();
   }
 
-  public start(): void {
+  public start(audioPrimed = false): void {
     this.menu.onPlaySolo = (selection) => {
       this.startSoloMatch(selection);
     };
@@ -473,9 +470,7 @@ export class App {
       this.cleanEmbedUrl();
       this.menu.show();
     } else {
-      this.welcome.onBreach = () => { this.menu.show(); };
-      this.welcome.fullscreenOnClick = this.fullscreenPreference;
-      this.welcome.show();
+      this.menu.show();
     }
 
     const unlockAudio = (): void => {
@@ -491,6 +486,7 @@ export class App {
     document.addEventListener('pointerdown', unlockAudio);
     document.addEventListener('keydown', unlockAudio);
     document.addEventListener('touchstart', unlockAudio, { passive: true });
+    if (audioPrimed) unlockAudio();
 
     // Resume music when user returns to tab/app (AudioContext suspends on hide)
     document.addEventListener('visibilitychange', () => {

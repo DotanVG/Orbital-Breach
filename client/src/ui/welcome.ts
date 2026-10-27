@@ -8,6 +8,8 @@ import { enterFullscreen } from './fullscreen';
 
 export class WelcomeScreen {
   public onBreach: (() => void) | null = null;
+  public onPrepare: (() => Promise<void>) | null = null;
+  public onLoadError: (() => void) | null = null;
   public fullscreenOnClick = false;
 
   private root: HTMLElement | null = null;
@@ -35,23 +37,37 @@ export class WelcomeScreen {
 
     btn.addEventListener('mouseenter', () => this.cursor.setHot(true));
     btn.addEventListener('mouseleave', () => this.cursor.setHot(false));
-    btn.addEventListener('click', () => {
-      if (this.fullscreenOnClick) enterFullscreen();
-      if (
-        typeof DeviceOrientationEvent !== 'undefined' &&
-        'requestPermission' in DeviceOrientationEvent &&
-        typeof (DeviceOrientationEvent as { requestPermission?: () => Promise<string> }).requestPermission === 'function'
-      ) {
-        (DeviceOrientationEvent as { requestPermission: () => Promise<string> })
-          .requestPermission()
-          .catch(() => {});
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
+      btn.textContent = 'Loading…';
+      const status = root.querySelector<HTMLElement>('#landing-status')!;
+      status.hidden = false;
+      status.textContent = 'Loading the game, models and audio…';
+      try {
+        // Prime audio before fullscreen or orientation permission consumes activation.
+        const preparation = this.onPrepare?.();
+        if (this.fullscreenOnClick) enterFullscreen();
+        if (
+          typeof DeviceOrientationEvent !== 'undefined' &&
+          'requestPermission' in DeviceOrientationEvent &&
+          typeof (DeviceOrientationEvent as { requestPermission?: () => Promise<string> }).requestPermission === 'function'
+        ) {
+          (DeviceOrientationEvent as { requestPermission: () => Promise<string> })
+            .requestPermission()
+            .catch(() => {});
+        }
+        await preparation;
+      } catch {
+        this.onLoadError?.();
+        return;
       }
       this.fadeOut(() => {
         this.hide();
         document.body.classList.add('game-active');
         this.onBreach?.();
       });
-    });
+    }, { once: true });
     btn.focus({ preventScroll: true });
   }
 
