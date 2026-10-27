@@ -5,7 +5,8 @@ const CANVAS_H = 64;
 const FONT = "bold 26px 'Share Tech Mono', monospace";
 const TEAM_COLOR: [string, string] = ["#00ffff", "#ff44ff"];
 const TEAM_BORDER: [string, string] = ["rgba(0,255,255,0.75)", "rgba(255,68,255,0.75)"];
-const PILL_BG = "rgba(40,46,56,0.55)";
+// World-space alpha blends in linear light, so the plate needs higher opacity than DOM panels.
+const PILL_BG = "rgba(7,10,18,0.98)";
 
 export class PlayerNameTag {
   private readonly sprite: THREE.Sprite;
@@ -20,6 +21,7 @@ export class PlayerNameTag {
     this.drawLabel(ctx, name, team);
 
     this.texture = new THREE.CanvasTexture(canvas);
+    this.texture.colorSpace = THREE.SRGBColorSpace;
 
     // depthTest true + depthWrite false: the tag is occluded by arena
     // geometry (walls, obstacles) like the alien body it belongs to, so
@@ -56,7 +58,7 @@ export class PlayerNameTag {
   private drawLabel(ctx: CanvasRenderingContext2D, name: string, team: 0 | 1): void {
     ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
 
-    // Semi-transparent grey rectangle background with a rounded corner
+    // Dark rectangle background with a rounded corner
     // radius — keeps the pill soft while reading as "neutral backdrop"
     // so the team colour comes from the text and border, not the fill.
     const pad = 14;

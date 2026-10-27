@@ -71,7 +71,7 @@ const HUD_CSS = `
     --hud-team-glow: oklch(0.82 0.15 210 / 0.38);
     --hud-text: #e8ecf4;
     --hud-muted: #9aa5b8;
-    --hud-panel: rgba(7, 10, 18, 0.76);
+    --hud-panel: rgba(7, 10, 18, 0.9);
     --hud-panel-strong: rgba(7, 10, 18, 0.92);
     --hud-panel-border: rgba(210, 220, 240, 0.16);
     --hud-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
@@ -183,6 +183,9 @@ const HUD_CSS = `
     font-family: "Cormorant Garamond", serif;
     font-size: 92px;
     font-weight: 300;
+    padding: 0 18px;
+    border-radius: 18px;
+    background: var(--hud-panel);
     letter-spacing: 0.08em;
     text-shadow: 0 0 40px oklch(0.82 0.15 210 / 0.9);
   }
@@ -387,6 +390,9 @@ const HUD_CSS = `
     align-items: center;
     justify-content: center;
     gap: 0.32em;
+    padding: 0.12em 0.4em;
+    border-radius: 4px;
+    background: var(--hud-panel);
   }
   .ob-round-end__team--cyan {
     color: oklch(0.82 0.15 210);

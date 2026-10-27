@@ -21,13 +21,13 @@ export function getTeamHintPalette(team: 0 | 1): TeamHintPalette {
     ? {
         textColor: '#aaffff',
         glowColor: '#00ffff',
-        panelBg: 'rgba(0,8,8,0.72)',
+        panelBg: 'rgba(0,8,8,0.9)',
         powerGradient: 'linear-gradient(90deg, rgba(116, 245, 255, 0.98), rgba(255, 223, 127, 0.92))',
       }
     : {
         textColor: '#ffaaff',
         glowColor: '#ff00ff',
-        panelBg: 'rgba(8,0,8,0.72)',
+        panelBg: 'rgba(8,0,8,0.9)',
         powerGradient: 'linear-gradient(90deg, rgba(255, 130, 239, 0.98), rgba(255, 214, 122, 0.92))',
       };
 }

@@ -45,11 +45,11 @@ export class KillFeed {
 
     entry.innerHTML =
       killerLabel
-      + `<span style="color:#888;margin:0 6px">froze</span>`
+      + `<span style="color:#c8c8c8;margin:0 6px">froze</span>`
       + victimLabel;
 
     Object.assign(entry.style, {
-      background: "rgba(0,0,0,0.55)",
+      background: "rgba(7,10,18,0.9)",
       border: "1px solid #333",
       borderRadius: "4px",
       padding: "2px 8px",
@@ -70,7 +70,7 @@ export class KillFeed {
       `<span style="color:${color};text-shadow:0 0 8px ${color};font-weight:bold">${escapeHtml(displayName)} BREACHED!</span>`;
 
     Object.assign(entry.style, {
-      background: "rgba(0,0,0,0.65)",
+      background: "rgba(7,10,18,0.9)",
       border: `1px solid ${color}`,
       borderRadius: "4px",
       padding: "3px 10px",
@@ -92,7 +92,7 @@ export class KillFeed {
       + `<span style="color:#c8c8c8;margin-left:6px">Player left</span>`;
 
     Object.assign(entry.style, {
-      background: "rgba(88,92,99,0.78)",
+      background: "rgba(7,10,18,0.9)",
       border: "1px solid rgba(180,185,194,0.45)",
       borderRadius: "4px",
       padding: "3px 10px",
