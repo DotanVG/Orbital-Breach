@@ -15,8 +15,25 @@ describe('crawlable landing shell', () => {
     expect(landing).toContain('entering the enemy breach room or freezing every enemy pilot');
     expect(landing).toContain(`first team to ${MATCH_POINT_TARGET} points wins`);
     expect(landing).toContain(`${ROUND_DURATION_SECONDS}-second round timeout`);
-    expect(schema['@type']).toBe('VideoGame');
+    expect(schema['@type']).toEqual(['VideoGame', 'WebApplication']);
     expect(schema.numberOfPlayers).toMatchObject({ minValue: 2, maxValue: 40 });
+  });
+
+  it('describes the free browser application without invented ratings', () => {
+    expect(schema.applicationCategory).toBe('GameApplication');
+    expect(schema.operatingSystem).toBe('Any');
+    expect(schema.browserRequirements).toBe('Requires JavaScript, HTML5 canvas and WebGL.');
+    expect(schema.offers).toMatchObject({ '@type': 'Offer', price: '0', priceCurrency: 'USD' });
+    expect(schema).not.toHaveProperty('aggregateRating');
+    expect(schema).not.toHaveProperty('review');
+    for (const url of [schema.url, schema.image, schema.author.url, schema.author.sameAs, schema.musicBy.url, schema.playMode, schema.offers.url]) {
+      expect(new URL(url).protocol).toBe('https:');
+    }
+  });
+
+  it('offers a dimensioned gameplay image on demand without blocking Start', () => {
+    expect(landing).toMatch(/<details>\s*<summary>View a gameplay screenshot<\/summary>\s*<img[^>]*src="\/landing-gameplay.webp"[^>]*alt="[^"]+"[^>]*width="800" height="450" loading="lazy" decoding="async"[^>]*>\s*<\/details>/);
+    expect(landing.indexOf('id="wc-btn"')).toBeLessThan(landing.indexOf('<details>'));
   });
 
   it('provides the native entry button, desktop/touch guidance and fallbacks', () => {

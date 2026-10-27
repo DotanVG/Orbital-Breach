@@ -251,6 +251,7 @@ Shipped and implemented:
 - Quick match, room browser, private/public room creation, invite URLs, native share, and QR joins.
 - Mobile touch controls, embed support for itch.io, and Vibe Jam portal handoff/return flow.
 - Post-match debrief stats, awards, credits, analytics, and Speed Insights instrumentation.
+- Crawlable landing content with VideoGame/WebApplication schema and an on-demand gameplay screenshot.
 - AI bot fill, ready checks, stale-player seat cleanup, and authoritative round/match scoring.
 
 Pending or transitional:
