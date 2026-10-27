@@ -4,13 +4,13 @@
     <script defer src="/analytics.js"></script>
     <meta name="google-site-verification" content="fc4RYsO0VwwNCjlPSo_Lev-1lY9r2phQK_Fa64YpjrQ" />
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Orbital Breach is a zero-g multiplayer browser shooter with 1v1 to 20v20 team modes. Freeze rivals or breach portals in rounds; first to 5 points wins." />
     <meta name="author" content="Dotan Veretzky" />
     <meta name="date" content="2026-08-19T02:56:31+03:00" />
     <meta name="keywords" content="Orbital Breach, zero-gravity shooter, multiplayer FPS, browser game, Three.js, Vibe Jam 2026" />
     <meta name="theme-color" content="#080c14" />
-    <meta property="og:title" content="Orbital Breach" />
+    <meta property="og:title" content="Orbital Breach – Zero-G Multiplayer Shooter" />
     <meta property="og:description" content="Orbital Breach is a zero-g multiplayer browser shooter with 1v1 to 20v20 team modes. Freeze rivals or breach portals in rounds; first to 5 points wins." />
     <meta property="og:url" content="https://orbital-breach.vercel.app/" />
     <meta property="og:site_name" content="Orbital Breach" />
@@ -21,7 +21,7 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Orbital Breach" />
+    <meta name="twitter:title" content="Orbital Breach – Zero-G Multiplayer Shooter" />
     <meta name="twitter:description" content="Orbital Breach is a zero-g multiplayer browser shooter with 1v1 to 20v20 team modes. Freeze rivals or breach portals in rounds; first to 5 points wins." />
     <meta name="twitter:image" content="https://orbital-breach.vercel.app/assets/marketing/og-image.jpg" />
     <meta name="twitter:image:alt" content="Two astronauts fire cyan and magenta weapons across the Orbital Breach title." />
@@ -67,7 +67,7 @@
         }
       }
     </script>
-    <title>Orbital Breach</title>
+    <title>Orbital Breach – Zero-G Multiplayer Shooter</title>
     <style>
       html, body {
         width: 100%;
@@ -88,7 +88,6 @@
       body.game-active {
         position: fixed;
         inset: 0;
-        touch-action: none;
         -webkit-user-select: none;
         user-select: none;
       }
@@ -100,6 +99,7 @@
       }
 
       body:not(.game-active) > canvas { display: none !important; }
+      body.game-active > canvas { touch-action: none; }
       #landing { max-width: 64rem; margin: auto; padding-bottom: 3rem; color: #e4edf5; font: 1rem/1.65 system-ui, sans-serif; }
       #landing .wc-stage { position: relative; height: clamp(12rem, 38vw, 27rem); overflow: hidden; }
       #landing .wc-layer {
