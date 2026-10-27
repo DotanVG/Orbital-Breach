@@ -35,7 +35,10 @@
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "VideoGame",
+        "@type": ["VideoGame", "WebApplication"],
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript, HTML5 canvas and WebGL.",
         "name": "Orbital Breach",
         "description": "Orbital Breach is a zero-g multiplayer browser shooter with 1v1 to 20v20 team modes. Freeze rivals or breach portals in rounds; first to 5 points wins.",
         "author": {
@@ -124,6 +127,8 @@
       #landing :focus-visible { outline: 3px solid #ff8de1; outline-offset: 4px; }
       #landing ul { padding-left: 1.25rem; }
       #landing li { margin: 0.35rem 0; }
+      #landing summary { cursor: pointer; }
+      #landing img { display: block; max-width: 100%; height: auto; margin-top: 1rem; }
     </style>
   </head>
   <body>
@@ -142,6 +147,10 @@
         <h2>Freeze the squad. Breach the portal.</h2>
         <p>Team Cyan and Team Magenta launch from opposite breach rooms into a zero-gravity debris arena. Grab rails to redirect your drift and fire a freeze pistol at enemy pilots.</p>
         <p>Win a round by entering the enemy breach room or freezing every enemy pilot. The first team to 5 points wins the match. A 120-second round timeout is a tie with no point awarded.</p>
+        <details>
+          <summary>View a gameplay screenshot</summary>
+          <img src="/landing-gameplay.webp" alt="A freeze pistol fires past blue diamond obstacles and orange grab rails, with cyan teammates drifting through the arena." width="800" height="450" loading="lazy" decoding="async" />
+        </details>
         <h2>Desktop controls</h2>
         <ul>
           <li>Mouse to look; WASD to walk inside breach rooms.</li>
