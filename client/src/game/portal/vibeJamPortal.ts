@@ -370,7 +370,7 @@ function createLabelMesh(text: string, color: number, worldPos: THREE.Vector3): 
   const ctx = canvas.getContext("2d");
   if (ctx) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "rgba(0, 0, 0, 0.78)";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.9)";
     roundRect(ctx, 20, 34, canvas.width - 40, 104, 18);
     ctx.fill();
     const hex = `#${color.toString(16).padStart(6, "0")}`;

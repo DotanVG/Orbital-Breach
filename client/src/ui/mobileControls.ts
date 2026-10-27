@@ -82,6 +82,8 @@ const CSS = `
     touch-action: none;
     font-family: 'Share Tech Mono', monospace;
     font-size: 10px;
+    font-weight: 700;
+    text-shadow: 0 1px 2px #000;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     transition: background 0.08s ease, border-color 0.08s ease;
@@ -93,12 +95,12 @@ const CSS = `
     height: 80px;
     bottom: calc(48px + env(safe-area-inset-bottom, 0px));
     right: 28px;
-    background: rgba(255, 50, 100, 0.15);
+    background: rgba(46, 13, 30, 0.9);
     border: 2px solid rgba(255, 50, 100, 0.38);
-    color: rgba(255, 120, 150, 0.8);
+    color: #ff7896;
   }
   .mob-btn-fire.mob-pressed {
-    background: rgba(255, 50, 100, 0.45);
+    background: rgba(72, 17, 38, 0.94);
     border-color: rgba(255, 50, 100, 0.8);
   }
   .mob-btn-jump {
@@ -106,12 +108,12 @@ const CSS = `
     height: 64px;
     bottom: calc(148px + env(safe-area-inset-bottom, 0px));
     right: 40px;
-    background: rgba(0, 255, 255, 0.12);
+    background: rgba(7, 25, 34, 0.9);
     border: 2px solid rgba(0, 255, 255, 0.28);
-    color: rgba(0, 220, 255, 0.75);
+    color: #00dcff;
   }
   .mob-btn-jump.mob-pressed {
-    background: rgba(0, 255, 255, 0.35);
+    background: rgba(7, 50, 61, 0.94);
     border-color: rgba(0, 255, 255, 0.65);
   }
   .mob-btn-grab {
@@ -119,13 +121,13 @@ const CSS = `
     height: 60px;
     bottom: calc(52px + env(safe-area-inset-bottom, 0px));
     right: 128px;
-    background: rgba(255, 200, 0, 0.12);
+    background: rgba(34, 28, 10, 0.9);
     border: 2px solid rgba(255, 200, 0, 0.28);
-    color: rgba(255, 200, 0, 0.75);
+    color: #ffc800;
     display: none;
   }
   .mob-btn-grab.mob-pressed {
-    background: rgba(255, 200, 0, 0.38);
+    background: rgba(58, 43, 7, 0.94);
     border-color: rgba(255, 200, 0, 0.65);
   }
   .mob-btn-view {
@@ -134,14 +136,14 @@ const CSS = `
     border-radius: 5px;
     bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     left: 8px;
-    background: rgba(180, 180, 255, 0.10);
+    background: rgba(20, 20, 40, 0.9);
     border: 1px solid rgba(180, 180, 255, 0.28);
-    color: rgba(180, 180, 255, 0.70);
+    color: #b4b4ff;
     font-size: 9px;
     letter-spacing: 1px;
   }
   .mob-btn-view.mob-pressed {
-    background: rgba(180, 180, 255, 0.28);
+    background: rgba(38, 38, 65, 0.94);
     border-color: rgba(180, 180, 255, 0.55);
   }
 `;
