@@ -71,21 +71,21 @@
     <style>
       html, body {
         width: 100%;
-        height: 100%;
+        min-height: 100%;
         margin: 0;
+        background: #080c14;
       }
 
       #app {
         display: none;
       }
 
-      html, body {
+      html:has(body.game-active), body.game-active {
         overflow: hidden;
         overscroll-behavior: none;
-        background: #080c14;
       }
 
-      body {
+      body.game-active {
         position: fixed;
         inset: 0;
         touch-action: none;
@@ -98,9 +98,67 @@
         -webkit-user-select: none;
         user-select: none;
       }
+
+      body:not(.game-active) > canvas { display: none !important; }
+      #landing { max-width: 64rem; margin: auto; padding-bottom: 3rem; color: #e4edf5; font: 1rem/1.65 system-ui, sans-serif; }
+      #landing .wc-stage { position: relative; height: clamp(12rem, 38vw, 27rem); overflow: hidden; }
+      #landing .wc-layer {
+        position: absolute;
+        inset: -6%;
+        background: #04060e url('/orbital-breach-art.webp') center / contain no-repeat;
+      }
+      .landing-content { padding: 0 max(1.25rem, env(safe-area-inset-left)) 0 max(1.25rem, env(safe-area-inset-right)); }
+      #landing h1 { font-size: clamp(2rem, 6vw, 3.5rem); line-height: 1.15; margin: 1.5rem 0 0.5rem; }
+      #landing h2 { font-size: 1.25rem; color: #77e6f7; margin: 1.5rem 0 0.5rem; }
+      #landing p { margin: 0.75rem 0; }
+      #landing a { color: #77e6f7; text-underline-offset: 0.2em; }
+      #landing button {
+        padding: 1rem 1.5rem;
+        border: 1px solid #77e6f7;
+        background: #10202e;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+      #landing button:disabled { opacity: 0.65; cursor: wait; }
+      #landing :focus-visible { outline: 3px solid #ff8de1; outline-offset: 4px; }
+      #landing ul { padding-left: 1.25rem; }
+      #landing li { margin: 0.35rem 0; }
     </style>
   </head>
   <body>
+    <main id="landing">
+      <div class="wc-stage" aria-hidden="true">
+        <div class="wc-layer" id="wc-layer" data-depth="0.012"></div>
+      </div>
+      <div class="landing-content">
+        <h1>Orbital Breach</h1>
+        <p>A free zero-G multiplayer shooter in your browser, with team modes from 1v1 to 20v20 and solo matches against bots.</p>
+        <div class="wc-ui">
+          <button type="button" class="wc-btn" id="wc-btn" disabled>Start — Click to BREACH <span class="wc-arrow" aria-hidden="true">→</span></button>
+        </div>
+        <p id="landing-status" role="status">Loading the game. If it does not load, reload this page and check that JavaScript and WebGL are available.</p>
+        <noscript><p>JavaScript is required to play Orbital Breach. Enable JavaScript and reload to use Start. You can read the objective, controls and credits here without it.</p></noscript>
+        <h2>Freeze the squad. Breach the portal.</h2>
+        <p>Team Cyan and Team Magenta launch from opposite breach rooms into a zero-gravity debris arena. Grab rails to redirect your drift and fire a freeze pistol at enemy pilots.</p>
+        <p>Win a round by entering the enemy breach room or freezing every enemy pilot. The first team to 5 points wins the match. A 120-second round timeout is a tie with no point awarded.</p>
+        <h2>Desktop controls</h2>
+        <ul>
+          <li>Mouse to look; WASD to walk inside breach rooms.</li>
+          <li>E to grab or release a rail; Space to jump in breach rooms.</li>
+          <li>Hold Space while grabbing to charge a launch; move the mouse while charging to aim launch power, then release Space to launch.</li>
+          <li>Left mouse button to fire; V to switch first-person / third-person view; hold B for look-back view.</li>
+          <li>Hold Tab for the scoreboard; Esc for the session menu / release cursor; H for help.</li>
+        </ul>
+        <h2>Touch controls</h2>
+        <p>Use the movement joystick in breach rooms and drag the look area to look around. Tap GRAB near a rail. Use JUMP to jump, or hold LAUNCH while grabbing and drag down to charge power; release to launch. Hold FIRE to shoot. The 1ST/3RD button switches camera view.</p>
+        <h2>Before you play</h2>
+        <p>Use a browser with JavaScript and WebGL, with a keyboard and mouse or a touchscreen. No install or account is required. Touch controls support portrait and landscape; landscape gives the controls more room. Online rooms require a network connection; solo bot matches and a tutorial are also available from the menu.</p>
+        <h2>Created by Dotan Veretzky</h2>
+        <p><a href="https://dotanv.vercel.app">Creator website</a> · <a href="https://dotanv.itch.io/">More games on itch.io</a> · <a href="https://github.com/DotanVG/Orbital-Breach">Source on GitHub</a></p>
+        <p>Music and sound by <a href="https://soundcloud.com/ouzana">Noam Ouzana</a>. Character and pistol models by <a href="https://quaternius.com/">Quaternius</a>.</p>
+      </div>
+    </main>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
     <script async src="https://vibej.am/2026/widget.js"></script>

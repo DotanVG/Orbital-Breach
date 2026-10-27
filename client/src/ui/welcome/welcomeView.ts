@@ -5,11 +5,9 @@
 
 const CSS = `
   .wc-root {
-    position: fixed; inset: 0; z-index: 20;
+    position: relative; z-index: 20;
     background: #04060e;
-    overflow: hidden;
     cursor: none;
-    touch-action: none;
     animation: wc-fade-in .6s ease both;
   }
   @media (pointer: coarse) { .wc-root { cursor: auto; } }
@@ -17,8 +15,6 @@ const CSS = `
   @keyframes wc-fade-in  { from { opacity: 0; } to { opacity: 1; } }
   @keyframes wc-fade-out { from { opacity: 1; } to { opacity: 0; } }
   .wc-root.wc-fadeout { animation: wc-fade-out .3s ease forwards; }
-
-  .wc-stage { position: fixed; inset: 0; overflow: hidden; }
 
   .wc-layer {
     position: absolute;
@@ -32,10 +28,8 @@ const CSS = `
 
   /* ── Bottom UI bar ── */
   .wc-ui {
-    position: fixed; inset: 0; z-index: 10;
-    display: flex; align-items: flex-end; justify-content: center;
-    padding-bottom: clamp(48px, 22vh, 160px);
-    pointer-events: none;
+    position: relative;
+    margin: 1.5rem 0;
   }
 
   /* ── BREACH button ── */
@@ -88,23 +82,6 @@ const CSS = `
 
   .wc-btn:active { transform: scale(0.975); }
 
-  /* Corner tick marks */
-  .wc-c {
-    position: absolute; width: 8px; height: 8px;
-    border: 1px solid rgba(255,255,255,.45);
-    transition: width .3s, height .3s, border-color .3s;
-  }
-  .wc-btn:hover .wc-c { width: 13px; height: 13px; border-color: #fff; }
-  .wc-c.tl { top:    4px; left:  4px; border-right: none; border-bottom: none; }
-  .wc-c.tr { top:    4px; right: 4px; border-left:  none; border-bottom: none; }
-  .wc-c.bl { bottom: 4px; left:  4px; border-right: none; border-top:    none; }
-  .wc-c.br { bottom: 4px; right: 4px; border-left:  none; border-top:    none; }
-
-  .wc-btn-label {
-    position: relative; z-index: 1;
-    display: flex; align-items: center; gap: 12px;
-  }
-
   .wc-arrow {
     font-size: 1.3em; letter-spacing: 0;
     transition: transform .3s cubic-bezier(.2,.8,.2,1);
@@ -122,37 +99,24 @@ export function injectWelcomeStyle(): void {
 }
 
 export interface WelcomeElements {
-  root: HTMLDivElement;
+  root: HTMLElement;
   layer: HTMLDivElement;
   btn: HTMLButtonElement;
 }
 
 export function createWelcomeView(): WelcomeElements {
-  const root = document.createElement('div');
-  root.className = 'wc-root';
-  root.innerHTML = `
-    <div class="wc-stage">
-      <div class="wc-layer" id="wc-layer" data-depth="0.012"></div>
-    </div>
-    <div class="wc-ui">
-      <button class="wc-btn" id="wc-btn">
-        <span class="wc-c tl"></span>
-        <span class="wc-c tr"></span>
-        <span class="wc-c bl"></span>
-        <span class="wc-c br"></span>
-        <span class="wc-btn-label">Click to BREACH <span class="wc-arrow">→</span></span>
-      </button>
-    </div>
-  `;
-  document.body.appendChild(root);
+  const root = document.querySelector<HTMLElement>('#landing')!;
+  root.classList.add('wc-root');
 
   const layer = root.querySelector<HTMLDivElement>('#wc-layer')!;
   const btn   = root.querySelector<HTMLButtonElement>('#wc-btn')!;
+  btn.disabled = false;
+  root.querySelector<HTMLElement>('#landing-status')!.hidden = true;
   return { root, layer, btn };
 }
 
 export function startWelcomeEffects(
-  root: HTMLDivElement,
+  root: HTMLElement,
   layer: HTMLDivElement,
   btn: HTMLButtonElement,
 ): () => void {
