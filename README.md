@@ -250,6 +250,7 @@ Shipped and implemented:
 - Browser-playable zero-G FPS with solo bot matches and Colyseus-backed online multiplayer.
 - Quick match, room browser, private/public room creation, invite URLs, native share, and QR joins.
 - Mobile touch controls, embed support for itch.io, and Vibe Jam portal handoff/return flow.
+- Responsive main menu: tablet and phone mode grids, wrapping utilities, scrollable secondary actions, and an initially visible solo launcher on short landscape screens. Built-app headless QA covers ten phone/tablet/desktop viewports.
 - Visual first-flight onboarding: rail/launch/freeze/gate highlights, named gate and rail distance markers, a brief dismissible intro, and an Instructions button (`H`, close with `H`/`Esc`). Reduced motion keeps highlights static; completed actions are remembered across rounds and the completed guide across visits.
 - Replay the entire guide and intro from **Tutorial** on the main menu (during a match: `Esc` → **Main Menu** → **Tutorial**; if Instructions is open, close it first). This resets onboarding and starts the existing empty arena with bots off. Instructions stay closed by default; the ordinary intro appears only once per browser origin.
 - Closing Instructions blurs its controls; Space cannot activate the launcher (use `H`, pointer, or Enter). H is ignored in menus, lobbies, match-end celebrations, and debriefs without changing input state.
@@ -274,6 +275,29 @@ Audio by **Noam Ouzana**: main theme, hit SFX, laser shots, and countdown audio.
   [quaternius.com/packs/scifigun.html](https://quaternius.com/packs/scifigun.html)
 
 ## More Docs
+
+Headless menu QA (Node 22+, after installing client dependencies):
+
+```powershell
+# Keep Playwright and its browser downloads outside the repo if preferred.
+npm install --prefix B:\Code\OB-MenuResponsive-run playwright
+$env:NODE_PATH = 'B:\Code\OB-MenuResponsive-run\node_modules'
+$env:PLAYWRIGHT_BROWSERS_PATH = 'B:\Code\OB-MenuResponsive-run\browsers'
+& B:\Code\OB-MenuResponsive-run\node_modules\.bin\playwright.cmd install webkit chromium
+npm run build --prefix client
+node scripts/qa/menu-responsive.mjs --out B:\Code\OB-MenuResponsive-run\qa\after
+```
+
+The script resolves Playwright from the repo or `NODE_PATH`, serves only the built
+app on a free loopback port, and closes its headless browser and preview server.
+It prefers WebKit device descriptors with exact viewport overrides and reports
+Chromium fallback if WebKit cannot run the build. JSON/Markdown results include
+document, body and menu overflow, initial solo visibility, button bounds,
+scroll reachability, center hit tests, text bounds and 40px touch targets.
+Viewport PNGs capture the initial menu; secondary controls may require vertical
+scrolling. Any failed check exits nonzero. Use `--dist <directory>` to check an
+existing build (including a baseline). Google Fonts must be reachable; backend,
+analytics and external widgets are blocked. Emulation does not verify real Safari.
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Testing](docs/TESTING.md)
