@@ -474,8 +474,8 @@ const CSS = `
   .ob-match-select-hidden { display: none; }
 
   /* ── RESPONSIVE ── */
-  @media (max-width: 960px), (max-height: 900px) {
-    .menu-root { align-items: start; align-content: start; }
+  /* Compact layout (tablets/phones) and short landscape phones only: wide desktops keep the fixed footer. */
+  @media (max-width: 960px), (max-height: 500px) {    .menu-root { align-items: start; align-content: start; }
     /* Keep telemetry below scrollable controls instead of painting over them. */
     .ob-bottombar { position: static; width: 100%; }
   }

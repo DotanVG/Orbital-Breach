@@ -279,13 +279,14 @@ Audio by **Noam Ouzana**: main theme, hit SFX, laser shots, and countdown audio.
 Headless menu QA (Node 22+, after installing client dependencies):
 
 ```powershell
-# Keep Playwright and its browser downloads outside the repo if preferred.
-npm install --prefix B:\Code\OB-MenuResponsive-run playwright
-$env:NODE_PATH = 'B:\Code\OB-MenuResponsive-run\node_modules'
-$env:PLAYWRIGHT_BROWSERS_PATH = 'B:\Code\OB-MenuResponsive-run\browsers'
-& B:\Code\OB-MenuResponsive-run\node_modules\.bin\playwright.cmd install webkit chromium
+# <qa-dir>: any folder outside the repo for Playwright and its browser downloads.
+# <artifact-dir>: where screenshots and results are written.
+npm install --prefix <qa-dir> playwright
+$env:NODE_PATH = '<qa-dir>\node_modules'
+$env:PLAYWRIGHT_BROWSERS_PATH = '<qa-dir>\browsers'
+& <qa-dir>\node_modules\.bin\playwright.cmd install webkit chromium
 npm run build --prefix client
-node scripts/qa/menu-responsive.mjs --out B:\Code\OB-MenuResponsive-run\qa\after
+node scripts/qa/menu-responsive.mjs --out <artifact-dir>
 ```
 
 The script resolves Playwright from the repo or `NODE_PATH`, serves only the built
@@ -295,7 +296,8 @@ Chromium fallback if WebKit cannot run the build. JSON/Markdown results include
 document, body and menu overflow, initial solo visibility, button bounds,
 scroll reachability, center hit tests, text bounds and 40px touch targets.
 Viewport PNGs capture the initial menu; secondary controls may require vertical
-scrolling. Any failed check exits nonzero. Use `--dist <directory>` to check an
+scrolling. On viewports wider than 960px the footer (`.ob-bottombar`) must also stay
+`position: fixed` and fully inside the viewport. Any failed check exits nonzero. Use `--dist <directory>` to check an
 existing build (including a baseline). Google Fonts must be reachable; backend,
 analytics and external widgets are blocked. Emulation does not verify real Safari.
 

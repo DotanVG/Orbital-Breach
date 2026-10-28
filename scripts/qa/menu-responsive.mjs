@@ -25,6 +25,8 @@ const viewports = [
   [1024, 1366, 'iPad Pro 11'],
   [1366, 1024, 'iPad Pro 11 landscape'],
   [1280, 800, null],
+  [1366, 768, null],
+  [1440, 900, null],
   [1920, 1080, null],
 ];
 const rows = [];
@@ -108,6 +110,14 @@ try {
           menuClientWidth: menu.clientWidth,
           soloInitiallyVisible: solo.left >= 0 && solo.right <= innerWidth && solo.top >= 0 && solo.bottom <= innerHeight,
           soloInitiallyHitTestable: !!hit && (hit === soloButton || soloButton.contains(hit)),
+          footer: (() => {
+            const bar = document.querySelector('.ob-bottombar');
+            const rect = bar.getBoundingClientRect();
+            return {
+              position: getComputedStyle(bar).position, y: Math.round(rect.top), bottom: Math.round(rect.bottom),
+              inViewport: rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight,
+            };
+          })(),
           fontsLoaded: document.fonts.check('400 11px "JetBrains Mono"') && document.fonts.check('300 40px "Cormorant Garamond"'),
         };
       }));
@@ -143,7 +153,10 @@ try {
         }));
       }
       await page.locator('#menu-root').evaluate(el => { el.scrollTop = 0; });
-      row.pass = row.scrollWidth <= row.innerWidth && row.bodyScrollWidth <= row.innerWidth
+      // Desktops wider than the 960px compact breakpoint must keep the footer fixed and fully visible.
+      row.footerRequired = width > 960;
+      row.footerOk = !row.footerRequired || (row.footer.position === 'fixed' && row.footer.inViewport);
+      row.pass = row.footerOk && row.scrollWidth <= row.innerWidth && row.bodyScrollWidth <= row.innerWidth
         && row.menuScrollWidth <= row.menuClientWidth && row.soloInitiallyVisible && row.soloInitiallyHitTestable && row.fontsLoaded
         && row.buttons.every(button => button.inside && button.hitTestable && button.textFits && (!device || button.tapSize))
         && errors.length === 0;
@@ -162,9 +175,9 @@ try {
   await browser?.close();
   if (server) await new Promise((resolve, reject) => server.httpServer.close(error => error ? reject(error) : resolve()));
   const table = [
-    '| Viewport | Engine / device | Document / inner | Body / inner | Menu / client | Solo initially visible | Result |',
-    '| --- | --- | --- | --- | --- | --- | --- |',
-    ...rows.map(row => `| ${row.viewport} | ${row.engine} | ${row.scrollWidth ?? '?'} / ${row.innerWidth ?? '?'} | ${row.bodyScrollWidth ?? '?'} / ${row.innerWidth ?? '?'} | ${row.menuScrollWidth ?? '?'} / ${row.menuClientWidth ?? '?'} | ${row.soloInitiallyVisible ?? false} | ${row.pass ? 'PASS' : 'FAIL'} |`),
+    '| Viewport | Engine / device | Document / inner | Body / inner | Menu / client | Solo initially visible | Footer (position, y, bottom) | Result |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |',
+    ...rows.map(row => `| ${row.viewport} | ${row.engine} | ${row.scrollWidth ?? '?'} / ${row.innerWidth ?? '?'} | ${row.bodyScrollWidth ?? '?'} / ${row.innerWidth ?? '?'} | ${row.menuScrollWidth ?? '?'} / ${row.menuClientWidth ?? '?'} | ${row.soloInitiallyVisible ?? false} | ${row.footer ? `${row.footer.position}, y=${row.footer.y}, bottom=${row.footer.bottom}${row.footerRequired ? (row.footerOk ? ' OK' : ' FAIL') : ''}` : '?'} | ${row.pass ? 'PASS' : 'FAIL'} |`),
   ].join('\n');
   console.log(table);
   await writeFile(resolve(out, 'results.json'), JSON.stringify({ limitations, rows }, null, 2) + '\n');
