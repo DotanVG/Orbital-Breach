@@ -42,12 +42,12 @@ Config at the repo root:
   `client/node_modules/three/build/three.module.js`.
 - `tsconfig.test.json` — TypeScript scope for the test compile.
 
-### Root harness package.json (gitignored — recreate on fresh clones)
+### Root harness package.json
 
-The root `package.json` is deliberately **gitignored** (root-level dev tooling,
-not part of deployable code — Vercel builds from `client/` only, see
-`vercel.json`). A fresh clone therefore cannot run `npm test` until it exists.
-Recreate it with exactly this content, then `npm install`:
+The root `package.json` is the Vitest harness (`npm test`) and the `dev`
+script. It is tracked so a fresh clone and CI can install and run the suite.
+`vercel.json` pins `installCommand` and `buildCommand` to `client/`, so Vercel
+does not build this harness. Contents:
 
 ```json
 {
@@ -67,10 +67,9 @@ Recreate it with exactly this content, then `npm install`:
 }
 ```
 
-Claude Code on the web does this automatically via the SessionStart hook
-(`.claude/hooks/session-start.mjs`), which also installs `client/` and
-`server/` dependencies. If you change the harness deps, update both this
-section and the hook — they must stay in sync.
+Claude Code on the web installs root, client, and server dependencies via the
+SessionStart hook (`.claude/hooks/session-start.mjs`). If you change the
+harness deps, update both this section and the hook — they must stay in sync.
 
 Conventions:
 - Explicit imports — `import { describe, it, expect } from 'vitest';`
@@ -100,7 +99,7 @@ For these, rely on the manual smoke checklist below.
 
 ---
 
-## Current coverage (42 test files, 243 tests)
+## Current coverage (70 test files, 452 tests)
 
 The suite covers physics, arena generation, diamond obstacle invariants, both
 win paths, bot AI, online reconciliation, portal placement, debrief stats,

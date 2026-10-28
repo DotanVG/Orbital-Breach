@@ -7,12 +7,14 @@ import { MULTIPLAYER_BROWSER_ROOM_NAME, MULTIPLAYER_ROOM_NAME } from "../../shar
 import { OrbitalLobbyRoom } from "./colyseus/OrbitalLobbyRoom";
 import { buildPublicRoomDirectory } from "./colyseus/roomDirectory";
 import { buildCorsHeaders, createOriginMatcher, parseOriginList } from "./cors";
+import { installMatchmakeRateLimit, resolveTrustProxyHops } from "./matchmakeRateLimit";
 
 const PORT = Number(process.env.PORT || 2567);
 const NODE_ENV = process.env.NODE_ENV ?? "development";
 const IS_PROD = NODE_ENV === "production";
 
 const isAllowedOrigin = createOriginMatcher(parseOriginList(process.env.CLIENT_ORIGIN), IS_PROD);
+const trustProxyHops = resolveTrustProxyHops(process.env.TRUST_PROXY_HOPS, IS_PROD);
 
 // Colyseus applies these to every HTTP request (express routes included) and
 // answers every OPTIONS preflight itself, so this is the single CORS policy.
@@ -34,6 +36,9 @@ async function main(): Promise<void> {
     ...(publicAddress ? { publicAddress } : {}),
     express: (app) => {
       app.disable("x-powered-by");
+      // Same hop count as the /matchmake limiter, so /health, /wake, and /rooms
+      // key off the client address rather than Render's proxy.
+      app.set("trust proxy", trustProxyHops);
 
       app.use(
         helmet({
@@ -90,6 +95,16 @@ async function main(): Promise<void> {
   gameServer.define(MULTIPLAYER_ROOM_NAME, OrbitalLobbyRoom);
   gameServer.define(MULTIPLAYER_BROWSER_ROOM_NAME, OrbitalLobbyRoom);
   await gameServer.listen(PORT);
+
+  // Colyseus serves /matchmake on the HTTP server before the Express app, so the
+  // limiter has to wrap that listener. TRUST_PROXY_HOPS selects the client
+  // address (default: 1 hop in production, the socket peer in development).
+  if (transport.server) {
+    installMatchmakeRateLimit(transport.server, {
+      trustProxyHops,
+      isAllowedOrigin,
+    });
+  }
 
   console.log(`Colyseus listening on port ${PORT}`);
 }

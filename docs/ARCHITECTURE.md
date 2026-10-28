@@ -190,7 +190,7 @@ The production server is a Colyseus + Express app on Render.
 
 | File | Responsibility |
 |---|---|
-| `index.ts` | Express bootstrap: `helmet`, CORS allowlist via `matchMaker.controller.getCorsHeaders` (`cors.ts`), rate limit, mount Colyseus transport, expose `/health`, `/wake`, `/rooms` |
+| `index.ts` | Express bootstrap: `helmet`, CORS allowlist via `matchMaker.controller.getCorsHeaders` (`cors.ts`), probe rate limit, per-IP `/matchmake` limit (`matchmakeRateLimit.ts`), mount Colyseus transport, expose `/health`, `/wake`, `/rooms` |
 | `colyseus/OrbitalLobbyRoom.ts` | Room lifecycle: lobby → ready check → countdown → playing → round-end → match-end, authoritative actor state, hit validation, scoring, bot fill, both win paths, stale-player cleanup |
 | `colyseus/state.ts` | `@colyseus/schema` state classes synced to clients |
 | `colyseus/actorDamage.ts` | Authoritative damage application |
@@ -203,7 +203,8 @@ Environment variables consumed by the server:
 | `PORT` | Render-assigned port |
 | `CLIENT_ORIGIN` | Extra comma-separated CORS origins. Prod Vercel, this project's Vercel previews, itch.io/itch.zone/hwcdn.net and the itch desktop app are built in (`server/src/cors.ts`) |
 | `PUBLIC_ADDRESS` | Public host advertised in `/rooms` payloads for invite URLs |
-| `NODE_ENV` | `production` on Render |
+| `NODE_ENV` | `production` on Render. When it is `production`, `npm ci` omits devDependencies, so the server build's `typescript`, `@types/node`, and `@types/express` are dependencies. The client build's `typescript`, `vite`, and `@types/*` are dependencies for the same reason |
+| `TRUST_PROXY_HOPS` | How many reverse proxies to trust when reading the client IP for `/matchmake` and the `/health`, `/wake`, and `/rooms` limiters. Unset means `1` in production (Render's single proxy: the right-most `X-Forwarded-For` hop) and `0` in development (the socket address). `2` walks one hop further left. Same count Express uses for `trust proxy` |
 
 The client picks up `VITE_COLYSEUS_ENDPOINT` at build time. In local dev, the
 Vite server proxies `/matchmake` and `/ws` to `localhost:2567` so the same code

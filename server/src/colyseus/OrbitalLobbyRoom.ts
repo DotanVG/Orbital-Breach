@@ -53,6 +53,12 @@ import {
   isHitReportDistancePlausible,
   shouldServerSimulateHumanActor,
 } from "./onlineActorSimulation";
+import {
+  createMessageLimiter,
+  LOBBY_ACTION_LIMIT_PER_SECOND,
+  SHOT_EVENT_LIMIT_PER_SECOND,
+  type SlidingWindowLimiter,
+} from "./messageRateLimit";
 import type { OrbitalRoomMetadata } from "./roomDirectory";
 import { ActorState, LobbyMemberState, OrbitalLobbyState } from "./state";
 
@@ -83,6 +89,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   private countdownTimer: ReturnType<typeof setInterval> | null = null;
   private roundTimer: ReturnType<typeof setInterval> | null = null;
   private roundEndTimer: ReturnType<typeof setTimeout> | null = null;
+  private roundResolveTimer: ReturnType<typeof setTimeout> | null = null;
   private matchTick: ReturnType<typeof setInterval> | null = null;
   private botCounters: Record<LobbyTeam, number> = { 0: 0, 1: 0 };
   private botSpawnYaw: Record<LobbyTeam, number> = { 0: 0, 1: 0 };
@@ -100,6 +107,11 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   private lastPlayerUpdate = new Map<string, number>();
   private lastHitReport = new Map<string, number>();
   private lastBreachReport = new Map<string, number>();
+  private readonly shotEvents: SlidingWindowLimiter = createMessageLimiter(SHOT_EVENT_LIMIT_PER_SECOND);
+  private readonly readyActions: SlidingWindowLimiter = createMessageLimiter(LOBBY_ACTION_LIMIT_PER_SECOND);
+  private readonly switchTeamActions: SlidingWindowLimiter = createMessageLimiter(LOBBY_ACTION_LIMIT_PER_SECOND);
+  private readonly teamSizeActions: SlidingWindowLimiter = createMessageLimiter(LOBBY_ACTION_LIMIT_PER_SECOND);
+  private readonly fillBotsActions: SlidingWindowLimiter = createMessageLimiter(LOBBY_ACTION_LIMIT_PER_SECOND);
   private listing: MultiplayerRoomListing = "quick";
   private visibility: MultiplayerRoomVisibility = "public";
 
@@ -127,8 +139,8 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.onMessage("set_team_size", (client, message: SetTeamSizeMessage) => {
       this.handleSetTeamSizeMessage(client, message);
     });
-    this.onMessage("fill_bots", (_client, message: FillBotsMessage) => {
-      this.handleFillBotsMessage(message);
+    this.onMessage("fill_bots", (client, message: FillBotsMessage) => {
+      this.handleFillBotsMessage(client, message);
     });
     this.onMessage("player_update", (client, message: PlayerUpdateMessage) => {
       this.handlePlayerUpdateMessage(client, message);
@@ -222,6 +234,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   // ── Lobby message handlers ──────────────────────────────────────────────────
 
   private handleReadyMessage(client: RoomClient, message: SetReadyMessage): void {
+    if (!this.readyActions.allow(client.sessionId, Date.now())) return;
     if (this.state.phase !== "LOBBY" && this.state.phase !== "COUNTDOWN") {
       this.sendInfo(client, "Ready state can only change from the lobby.");
       return;
@@ -237,6 +250,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   }
 
   private handleSwitchTeamMessage(client: RoomClient, message: SwitchTeamMessage): void {
+    if (!this.switchTeamActions.allow(client.sessionId, Date.now())) return;
     if (this.state.phase !== "LOBBY") {
       this.sendInfo(client, "Switch teams before the countdown starts.");
       return;
@@ -266,6 +280,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   }
 
   private handleSetTeamSizeMessage(client: RoomClient, message: SetTeamSizeMessage): void {
+    if (!this.teamSizeActions.allow(client.sessionId, Date.now())) return;
     if (this.state.phase !== "LOBBY") {
       this.sendInfo(client, "Change the lobby size before the round starts.");
       return;
@@ -292,7 +307,8 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.syncLobbyFlow();
   }
 
-  private handleFillBotsMessage(message: FillBotsMessage): void {
+  private handleFillBotsMessage(client: RoomClient, message: FillBotsMessage): void {
+    if (!this.fillBotsActions.allow(client.sessionId, Date.now())) return;
     if (this.state.phase !== "LOBBY") {
       return;
     }
@@ -373,6 +389,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       dirY: direction.y,
       dirZ: direction.z,
     };
+    if (!this.shotEvents.allow(client.sessionId, Date.now())) return;
     this.broadcast("shot_event", shotEvent);
   }
 
@@ -664,7 +681,9 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }
     this.broadcast("round_result_event", resultEvent);
 
-    setTimeout(() => {
+    this.clearRoundResolveTimer();
+    this.roundResolveTimer = setTimeout(() => {
+      this.roundResolveTimer = null;
       this.finishRound(matchWinner);
     }, 3000);
   }
@@ -753,6 +772,15 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.lastPlayerUpdate.delete(id);
     this.lastHitReport.delete(id);
     this.lastBreachReport.delete(id);
+    this.forgetMessageRates(id);
+  }
+
+  private forgetMessageRates(id: string): void {
+    this.shotEvents.forget(id);
+    this.readyActions.forget(id);
+    this.switchTeamActions.forget(id);
+    this.teamSizeActions.forget(id);
+    this.fillBotsActions.forget(id);
   }
 
 
@@ -946,9 +974,17 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.clearCountdownTimer();
     this.clearRoundTimer();
     this.clearMatchTick();
+    this.clearRoundResolveTimer();
     if (this.roundEndTimer) {
       clearTimeout(this.roundEndTimer);
       this.roundEndTimer = null;
+    }
+  }
+
+  private clearRoundResolveTimer(): void {
+    if (this.roundResolveTimer) {
+      clearTimeout(this.roundResolveTimer);
+      this.roundResolveTimer = null;
     }
   }
 

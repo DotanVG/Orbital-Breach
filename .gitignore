@@ -9,9 +9,6 @@ CLAUDE.local.md
 .claude/settings.local.json
 .claude/worktrees/
 .claude/scheduled_tasks.lock
-# Root-level dev tooling (concurrently) — not part of deployable code
-/package.json
-/package-lock.json
 /.codex/*
 !/.codex/agents/
 !/.codex/agents/*.toml
