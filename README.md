@@ -147,7 +147,7 @@ npm run build --prefix client
 npm run build --prefix server
 ```
 
-Production online multiplayer requires `VITE_COLYSEUS_ENDPOINT` on the client. The server accepts `PORT`, `CLIENT_ORIGIN`, `PUBLIC_ADDRESS`, and `NODE_ENV`.
+Production online multiplayer requires `VITE_COLYSEUS_ENDPOINT` on the client. The server accepts `PORT`, `CLIENT_ORIGIN`, `PUBLIC_ADDRESS`, `NODE_ENV`, and `TRUST_PROXY_HOPS` (reverse proxies to trust for client IP; unset means 1 in production and 0 in development).
 
 ## Development Tooling
 

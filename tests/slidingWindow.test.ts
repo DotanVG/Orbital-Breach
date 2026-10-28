@@ -29,4 +29,14 @@ describe("createSlidingWindowLimiter", () => {
     limiter.forget("a");
     expect(limiter.allow("a", 1)).toBe(true);
   });
+
+  it("prunes keys whose hits are all outside the window", () => {
+    const limiter = createSlidingWindowLimiter(2, 1000);
+    limiter.allow("a", 0);
+    limiter.allow("b", 500);
+    limiter.prune(1000);
+    expect(limiter.size).toBe(1);
+    limiter.prune(1500);
+    expect(limiter.size).toBe(0);
+  });
 });

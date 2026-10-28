@@ -2,9 +2,11 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
 import {
+  createMatchmakeLimiter,
   installMatchmakeRateLimit,
   isMatchmakePath,
   requestClientIp,
+  resolveTrustProxyHops,
 } from "../server/src/matchmakeRateLimit";
 
 describe("isMatchmakePath", () => {
@@ -16,14 +18,44 @@ describe("isMatchmakePath", () => {
   });
 });
 
+describe("resolveTrustProxyHops", () => {
+  it("defaults to one hop in production and the socket in development", () => {
+    expect(resolveTrustProxyHops(undefined, true)).toBe(1);
+    expect(resolveTrustProxyHops("  ", false)).toBe(0);
+    expect(resolveTrustProxyHops("2", false)).toBe(2);
+  });
+
+  it("rejects a hop count that is not a non-negative integer", () => {
+    expect(() => resolveTrustProxyHops("-1", true)).toThrow(/TRUST_PROXY_HOPS/);
+    expect(() => resolveTrustProxyHops("1.5", true)).toThrow(/TRUST_PROXY_HOPS/);
+  });
+});
+
 describe("requestClientIp", () => {
-  it("uses the socket peer unless a proxy is trusted", () => {
+  it("walks X-Forwarded-For by the configured hop count", () => {
     const req = {
       headers: { "x-forwarded-for": "1.2.3.4, 10.0.0.8" },
       socket: { remoteAddress: "127.0.0.1" },
     } as http.IncomingMessage;
-    expect(requestClientIp(req, false)).toBe("127.0.0.1");
-    expect(requestClientIp(req, true)).toBe("10.0.0.8");
+    expect(requestClientIp(req, 0)).toBe("127.0.0.1");
+    expect(requestClientIp(req, 1)).toBe("10.0.0.8");
+    expect(requestClientIp(req, 2)).toBe("1.2.3.4");
+    expect(requestClientIp(req, 4)).toBe("1.2.3.4");
+  });
+});
+
+describe("createMatchmakeLimiter", () => {
+  it("drops IP buckets once every hit is outside the window", () => {
+    const limiter = createMatchmakeLimiter(5, 1000);
+    expect(limiter.allow("1.1.1.1", 0)).toBe(true);
+    expect(limiter.allow("2.2.2.2", 500)).toBe(true);
+    expect(limiter.size).toBe(2);
+
+    expect(limiter.allow("3.3.3.3", 1000)).toBe(true);
+    expect(limiter.size).toBe(2);
+
+    expect(limiter.allow("4.4.4.4", 1500)).toBe(true);
+    expect(limiter.size).toBe(2);
   });
 });
 
@@ -34,7 +66,7 @@ describe("installMatchmakeRateLimit", () => {
       res.end("ok");
     });
     installMatchmakeRateLimit(server, {
-      trustProxy: false,
+      trustProxyHops: 0,
       isAllowedOrigin: () => true,
       max: 2,
       windowMs: 60_000,

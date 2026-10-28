@@ -15,33 +15,68 @@ export function isMatchmakePath(pathname: string): boolean {
 }
 
 /**
- * Direct sockets use the TCP peer. Behind one reverse proxy (Render), the
- * right-most X-Forwarded-For hop is the address that proxy observed.
+ * Unset matches the previous behavior: one Render proxy in production, and the
+ * socket address in development. `0` ignores X-Forwarded-For. `1` is the
+ * right-most forwarded hop. Larger values walk further toward the original client,
+ * same as Express `trust proxy` set to that hop count.
  */
-export function requestClientIp(req: IncomingMessage, trustProxy: boolean): string {
-  if (trustProxy) {
-    const forwarded = req.headers["x-forwarded-for"];
-    const raw = Array.isArray(forwarded) ? forwarded.join(",") : forwarded;
-    if (raw) {
-      const hops = raw.split(",").map((part) => part.trim()).filter(Boolean);
-      const client = hops[hops.length - 1];
-      if (client) return client;
-    }
+export function resolveTrustProxyHops(value: string | undefined, isProd: boolean): number {
+  const trimmed = value?.trim() ?? "";
+  if (trimmed === "") return isProd ? 1 : 0;
+  if (!/^\d+$/.test(trimmed)) {
+    throw new Error(`TRUST_PROXY_HOPS must be a non-negative integer, received ${JSON.stringify(value)}`);
   }
-  return req.socket.remoteAddress ?? "unknown";
+  return Number(trimmed);
+}
+
+/**
+ * Closest address first: the TCP peer, then X-Forwarded-For from the right.
+ * `trustProxyHops` is how many of those proxies to skip.
+ */
+export function requestClientIp(req: IncomingMessage, trustProxyHops: number): string {
+  const socketAddr = req.socket?.remoteAddress ?? "unknown";
+  if (trustProxyHops <= 0) return socketAddr;
+
+  const forwarded = req.headers["x-forwarded-for"];
+  const raw = Array.isArray(forwarded) ? forwarded.join(",") : forwarded;
+  const headerHops = raw ? raw.split(",").map((part) => part.trim()).filter(Boolean) : [];
+  if (headerHops.length === 0) return socketAddr;
+
+  const chain = [socketAddr, ...headerHops.reverse()];
+  const index = Math.min(trustProxyHops, chain.length - 1);
+  return chain[index] ?? socketAddr;
+}
+
+export interface MatchmakeLimiter {
+  allow(ip: string, now: number): boolean;
+  readonly size: number;
+}
+
+/** Per-IP window. Each check drops buckets whose hits have all expired. */
+export function createMatchmakeLimiter(limit: number, windowMs: number): MatchmakeLimiter {
+  const buckets = createSlidingWindowLimiter(limit, windowMs);
+  return {
+    allow(ip, now) {
+      buckets.prune(now);
+      return buckets.allow(ip, now);
+    },
+    get size() {
+      return buckets.size;
+    },
+  };
 }
 
 export function installMatchmakeRateLimit(
   server: RequestServer,
   options: {
-    trustProxy: boolean;
+    trustProxyHops: number;
     isAllowedOrigin: (origin: string | null | undefined) => boolean;
     max?: number;
     windowMs?: number;
     now?: () => number;
   },
 ): void {
-  const limiter = createSlidingWindowLimiter(
+  const limiter = createMatchmakeLimiter(
     options.max ?? MATCHMAKE_RATE_LIMIT_MAX,
     options.windowMs ?? MATCHMAKE_RATE_LIMIT_WINDOW_MS,
   );
@@ -50,7 +85,7 @@ export function installMatchmakeRateLimit(
   server.removeAllListeners("request");
   server.on("request", (req, res) => {
     const pathname = (req.url ?? "/").split("?")[0];
-    if (isMatchmakePath(pathname) && !limiter.allow(requestClientIp(req, options.trustProxy), now())) {
+    if (isMatchmakePath(pathname) && !limiter.allow(requestClientIp(req, options.trustProxyHops), now())) {
       const originHeader = req.headers.origin;
       const origin = Array.isArray(originHeader) ? originHeader[0] : originHeader;
       res.writeHead(429, {
