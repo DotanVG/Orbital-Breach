@@ -43,7 +43,7 @@ const CSS = `
     mix-blend-mode: screen; filter: blur(1px);
   }
 
-  .ob-stars { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
+  .ob-stars { position: fixed; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
   .ob-stars i {
     position: absolute; width: 1px; height: 1px; background: #fff; border-radius: 50%;
     opacity: var(--o, .6);
@@ -60,6 +60,7 @@ const CSS = `
 
   .ob-orbit-stage {
     position: fixed; inset: 0; z-index: 2; pointer-events: none;
+    overflow: hidden;
     display: grid; place-items: center;
     transform-style: preserve-3d;
   }
@@ -142,16 +143,20 @@ const CSS = `
   .menu-root {
     position: fixed; inset: 0; z-index: 10;
     display: grid; place-items: center;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: safe center;
+    overflow-x: hidden; overflow-y: auto;
     background: radial-gradient(ellipse at 50% 120%, #0d1426 0%, var(--ob-ink-0) 55%, #03060d 100%);
     animation: ob-menuFadeIn .35s ease-out both;
     cursor: none;
   }
   .menu-root * { box-sizing: border-box; }
+  .ob-main-wrap > *, .ob-callsign > *, .ob-callsign-box input { min-width: 0; }
 
   /* ── MAIN CONTENT ── */
   .ob-main-wrap {
     position: relative; z-index: 8;
-    display: grid; grid-template-columns: 1fr;
+    display: grid; grid-template-columns: minmax(0, 1fr);
     justify-items: center; gap: 28px;
     width: min(900px, 90vw);
     text-align: center;
@@ -244,7 +249,7 @@ const CSS = `
 
   /* ── MATCH GRID ── */
   .ob-match-grid {
-    display: grid; grid-template-columns: repeat(5, 1fr);
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 14px; width: 100%; max-width: 880px;
   }
   .ob-match-card {
@@ -288,7 +293,8 @@ const CSS = `
     justify-content: center;
     width: 100%;
   }
-  .ob-settings-row { margin-top: -4px; }
+  .ob-settings-row { margin-top: -4px; flex-wrap: wrap; }
+  .ob-settings-row .ob-btn { padding: 16px 12px; letter-spacing: 3px; }
   .ob-btn {
     position: relative;
     display: inline-flex;
@@ -407,7 +413,8 @@ const CSS = `
     justify-content: space-between;
     gap: 16px;
     width: 100%;
-    max-width: 880px;
+    max-width: min(880px, 100%);
+    min-height: 44px;
     padding: 16px 38px;
     background: rgba(255, 125, 248, 0.06);
     border: 1px solid rgba(255, 125, 248, 0.28);
@@ -467,16 +474,19 @@ const CSS = `
   .ob-match-select-hidden { display: none; }
 
   /* ── RESPONSIVE ── */
-  @media (max-width: 920px) {
-    .ob-topbar-right .ob-clock { display: none; }
+  /* Compact layout (tablets/phones) and short landscape phones only: wide desktops keep the fixed footer. */
+  @media (max-width: 960px), (max-height: 500px) {
+    .menu-root { align-items: start; align-content: start; }
+    /* Keep telemetry below scrollable controls instead of painting over them. */
+    .ob-bottombar { position: static; width: 100%; }
   }
-  @media (max-width: 640px) {
-    .ob-match-grid   { grid-template-columns: repeat(3, 1fr); }
-    .ob-launch-row   { flex-direction: column; align-items: center; }
+  @media (max-width: 960px) {
+    .ob-topbar-right .ob-clock { display: none; }
+    .ob-match-grid   { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .ob-settings-row { margin-top: 0; flex-wrap: wrap; }
     .ob-link-row     { gap: 8px; }
-    .ob-callsign-box { min-width: 0; width: 90vw; }
-    .menu-root       { cursor: auto; overflow-y: auto; overflow-x: hidden; align-items: start; }
+    .ob-callsign-box { min-width: 0; width: min(420px, 100%); }
+    .menu-root      { cursor: auto; }
 
     .ob-topbar  { padding-left: 16px; padding-right: 16px; padding-top: calc(14px + env(safe-area-inset-top, 0px)); }
     .ob-bottombar { padding-left: 16px; padding-right: 16px;
@@ -486,22 +496,31 @@ const CSS = `
       gap: 18px;
       padding: 0 0 max(70px, calc(50px + env(safe-area-inset-bottom, 0px)));
       padding-top: calc(64px + env(safe-area-inset-top, 0px));
-      width: min(640px, 96vw);
+      width: min(880px, 94vw);
     }
-    .ob-title { font-size: clamp(36px, 10vw, 64px); }
+    .ob-title { font-size: clamp(36px, 8vw, 64px); }
     .ob-match-card { padding: 14px 8px 12px; }
     .ob-card-size  { font-size: 22px; }
     .ob-tutorial-btn { padding: 12px 18px; }
     .ob-tutorial-btn-sub { display: none; }
     .ob-btn { width: min(320px, 100%); padding: 16px 24px; }
   }
+  @media (max-width: 640px) {
+    /* Keep launch actions visible before the taller mode grid on phones. */
+    .ob-launch-row { grid-row: 5; flex-direction: column; align-items: center; }
+  }
+  @media (max-width: 560px) {
+    .ob-match-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  }
   @media (max-width: 420px) {
-    .ob-match-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
     .ob-title      { font-size: clamp(30px, 9vw, 48px); white-space: normal; text-align: center; }
     .ob-subtitle   { font-size: 9px; letter-spacing: 4px; }
-    .ob-tag        { font-size: 8px; letter-spacing: 5px; }
+    .ob-tag        { font-size: 8px; letter-spacing: 4px; }
     .ob-topbar-brand { font-size: 11px; letter-spacing: 4px; }
     .ob-topbar-brand em { display: none; }
+  }
+  @media (max-width: 360px) {
+    .ob-match-grid { grid-template-columns: minmax(0, 1fr); }
   }
 
   /* ── Mobile landscape (short viewport) ── */
@@ -511,10 +530,11 @@ const CSS = `
       padding: 52px 0 max(60px, calc(44px + env(safe-area-inset-bottom, 0px)));
       padding-top: calc(52px + env(safe-area-inset-top, 0px));
     }
-    .menu-root { overflow-y: auto; }
     .ob-title  { font-size: clamp(28px, 6vw, 56px); }
     .ob-subtitle, .ob-tag { display: none; }
     .ob-callsign-label { display: none; }
+    .ob-name-error:empty { display: none; }
+    .ob-launch-row { grid-row: 3; flex-direction: row; flex-wrap: wrap; }
     .ob-match-grid { gap: 8px; }
     .ob-match-card { padding: 10px 8px; }
     .ob-card-size  { font-size: 18px; }
