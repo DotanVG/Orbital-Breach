@@ -15,7 +15,6 @@ const HUD_MARKUP = `
   </div>
 
   <div id="hud-countdown" class="ob-countdown">10</div>
-  <div id="hud-objective" class="ob-objective"></div>
   <div id="hud-crosshair" class="ob-crosshair"></div>
 
   <div id="hud-grab" class="ob-prompt ob-prompt--grab">[E] GRAB BAR</div>
@@ -29,30 +28,57 @@ const HUD_MARKUP = `
 
   <div id="hud-damage" class="ob-damage-panel"></div>
 
-  <div id="hud-tutorial" class="ob-tutorial">
+  <div id="hud-destination" class="ob-marker ob-marker--gate">
+    <div class="ob-marker__reticle" aria-hidden="true">◇</div>
+    <div class="ob-marker__label"><span></span><b></b></div>
+  </div>
+  <div id="hud-cue" class="ob-marker ob-marker--grab">
+    <div class="ob-marker__reticle" aria-hidden="true">⊙</div>
+    <div class="ob-marker__label"><span></span><b></b></div>
+  </div>
+
+  <div id="hud-intro" class="ob-intro" role="status">
+    <strong>FIRST FLIGHT</strong><span>Grab → Launch → Freeze / Breach</span>
+    <button id="hud-intro-close" type="button" aria-label="Dismiss flight intro">×</button>
+  </div>
+  <button id="hud-help-toggle" class="ob-help-toggle" type="button" aria-controls="hud-help" aria-expanded="false">? Instructions <kbd>H</kbd></button>
+
+  <div id="hud-tutorial" class="ob-tutorial" role="status">
     <div id="hud-tutorial-step" class="ob-tutorial__eyebrow">FIRST FLIGHT 1/4</div>
     <div id="hud-tutorial-title" class="ob-tutorial__title"></div>
-    <div id="hud-tutorial-body" class="ob-tutorial__body"></div>
+    <div id="hud-tutorial-progress" class="ob-flight-progress" aria-label="Flight objectives">
+      <span aria-label="Grab">⊙</span><span aria-label="Launch">↗</span><span aria-label="Fire">❄</span><span aria-label="Breach">◇</span>
+    </div>
   </div>
 
   <div id="hud-round-end" class="ob-round-end"></div>
   <div id="hud-tab" class="ob-scoreboard-overlay"></div>
 
-  <div id="hud-help" class="ob-help-overlay">
+  <div id="hud-help" class="ob-help-overlay" role="dialog" aria-modal="true" aria-labelledby="hud-help-title" aria-hidden="true">
     <div class="ob-help-panel">
       <div class="ob-help-header">
-        <div class="ob-help-title">Controls</div>
-        <div class="ob-help-close">[H] Close</div>
+        <div id="hud-help-title" class="ob-help-title">Instructions</div>
+        <button id="hud-help-close" class="ob-help-close" type="button">Close [H]</button>
       </div>
+      <div id="hud-tutorial-body" class="ob-tutorial__body"></div>
       <div class="ob-help-grid">
-        <div class="ob-help-row"><span class="ob-help-key">LMB</span><span class="ob-help-desc">Freeze shot</span></div>
-        <div class="ob-help-row"><span class="ob-help-key">E</span><span class="ob-help-desc">Grab bar</span></div>
+        <div class="ob-help-mobile">
+          <div class="ob-help-row"><span class="ob-help-key">Touch / Joystick</span><span class="ob-help-desc">Look / walk in the breach room</span></div>
+          <div class="ob-help-row"><span class="ob-help-key">GRAB</span><span class="ob-help-desc">Hold a nearby rail</span></div>
+          <div class="ob-help-row"><span class="ob-help-key">LAUNCH</span><span class="ob-help-desc">Hold, drag down, release</span></div>
+          <div class="ob-help-row"><span class="ob-help-key">FIRE</span><span class="ob-help-desc">Freeze shot</span></div>
+        </div>
+        <div class="ob-help-desktop">
+        <div class="ob-help-row"><span class="ob-help-key">WASD / Joystick</span><span class="ob-help-desc">Walk in the breach room</span></div>
+        <div class="ob-help-row"><span class="ob-help-key">LMB / FIRE</span><span class="ob-help-desc">Freeze shot</span></div>
+        <div class="ob-help-row"><span class="ob-help-key">E / GRAB</span><span class="ob-help-desc">Grab bar</span></div>
         <div class="ob-help-row"><span class="ob-help-key">Space + Mouse ↕</span><span class="ob-help-desc">Aim launch power</span></div>
         <div class="ob-help-row"><span class="ob-help-key">Space release</span><span class="ob-help-desc">Slingshot into zero-G</span></div>
         <div class="ob-help-row"><span class="ob-help-key">Tab</span><span class="ob-help-desc">Scoreboard</span></div>
         <div class="ob-help-row"><span class="ob-help-key">Esc</span><span class="ob-help-desc">Session menu</span></div>
         <div class="ob-help-row"><span class="ob-help-key">V</span><span class="ob-help-desc">Third-person toggle</span></div>
-        <div class="ob-help-row ob-help-row--goal">Float through the enemy portal to breach and score</div>
+        </div>
+        <div class="ob-help-row ob-help-row--goal">Breach the enemy gate OR freeze every enemy to score. First to 5 wins.</div>
       </div>
     </div>
   </div>
@@ -76,6 +102,7 @@ const HUD_CSS = `
     --hud-panel-border: rgba(210, 220, 240, 0.16);
     --hud-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
     position: fixed;
+    z-index: 210;
     inset: 0;
     display: none;
     pointer-events: none;
@@ -113,7 +140,6 @@ const HUD_CSS = `
 
   .ob-score-pill,
   .ob-round-timer,
-  .ob-objective,
   .ob-prompt,
   .ob-power-wrap,
   .ob-damage-panel,
@@ -188,25 +214,6 @@ const HUD_CSS = `
     background: var(--hud-panel);
     letter-spacing: 0.08em;
     text-shadow: 0 0 40px oklch(0.82 0.15 210 / 0.9);
-  }
-
-  .ob-objective {
-    display: none;
-    position: absolute;
-    left: 50%;
-    top: 58%;
-    transform: translate(-50%, -50%);
-    max-width: min(620px, 82vw);
-    padding: 10px 16px;
-    border-radius: 4px;
-    font-family: "JetBrains Mono", monospace;
-    font-size: 12px;
-    font-weight: 400;
-    letter-spacing: 0.22em;
-    line-height: 1.45;
-    text-align: center;
-    text-transform: uppercase;
-    white-space: normal;
   }
 
   .ob-crosshair {
@@ -321,10 +328,10 @@ const HUD_CSS = `
     display: none;
     position: absolute;
     left: 18px;
-    top: 104px;
-    width: min(320px, calc(100vw - 36px));
-    padding: 14px 15px 15px;
-    border-radius: 22px;
+    top: 120px;
+    width: min(225px, calc(100vw - 36px));
+    padding: 12px 15px;
+    border-radius: 12px;
   }
 
   .ob-tutorial--cyan {
@@ -360,9 +367,10 @@ const HUD_CSS = `
   }
 
   .ob-tutorial__body {
-    margin-top: 6px;
-    color: var(--hud-team);
-    font-size: 13px;
+    margin-bottom: 16px;
+    color: var(--hud-text);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 14px;
     line-height: 1.55;
     text-shadow: 0 0 10px var(--hud-team-glow);
   }
@@ -643,15 +651,6 @@ const HUD_CSS = `
       font-size: 68px;
     }
 
-    .ob-objective {
-      top: 60%;
-      max-width: 92vw;
-      padding: 9px 12px;
-      font-size: 11px;
-      letter-spacing: 0.16em;
-      line-height: 1.4;
-    }
-
     .ob-tutorial {
       top: 110px;
       padding: 12px 13px 13px;
@@ -710,10 +709,6 @@ const HUD_CSS = `
   }
 
   @media (max-height: 620px) {
-    .ob-objective {
-      top: 62%;
-    }
-
     .ob-tutorial {
       top: 90px;
     }
@@ -745,7 +740,11 @@ const HUD_CSS = `
     background: rgba(7, 10, 18, 0.97);
     border: 1px solid rgba(210, 220, 240, 0.16);
     padding: 24px 28px;
-    min-width: 320px;
+    width: min(480px, 92vw);
+    max-height: 88dvh;
+    overflow: auto;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
     max-width: min(480px, 92vw);
   }
   .ob-help-header {
@@ -766,7 +765,7 @@ const HUD_CSS = `
   }
   .ob-help-close {
     font-family: "JetBrains Mono", monospace;
-    font-size: 9px;
+    font-size: 12px;
     letter-spacing: 0.12em;
     color: var(--hud-muted);
     text-transform: uppercase;
@@ -776,24 +775,29 @@ const HUD_CSS = `
     flex-direction: column;
     gap: 10px;
   }
+  .ob-help-desktop, .ob-help-mobile { flex-direction: column; gap: 10px; }
+  .ob-help-desktop { display: flex; }
+  .ob-help-mobile { display: none; }
+  .ob-hud-root--touch .ob-help-desktop { display: none; }
+  .ob-hud-root--touch .ob-help-mobile { display: flex; }
   .ob-help-row {
     display: flex;
     align-items: center;
     gap: 14px;
     font-family: "JetBrains Mono", monospace;
-    font-size: 10px;
+    font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.1em;
   }
   .ob-help-key {
-    min-width: 120px;
+    width: 42%;
     padding: 4px 8px;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(210, 220, 240, 0.1);
     color: var(--hud-cyan);
     text-align: center;
     flex-shrink: 0;
-    font-size: 9px;
+    font-size: 11px;
   }
   .ob-help-desc {
     color: var(--hud-muted);
@@ -803,14 +807,102 @@ const HUD_CSS = `
     padding-top: 12px;
     border-top: 1px solid rgba(210, 220, 240, 0.06);
     color: var(--hud-magenta);
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 0.1em;
   }
 
+  .ob-help-toggle, .ob-help-close, .ob-intro button {
+    pointer-events: auto;
+    color: var(--hud-text);
+    background: var(--hud-panel-strong);
+    border: 1px solid var(--hud-panel-border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    min-height: 44px;
+    cursor: pointer;
+  }
+  .ob-help-toggle:focus-visible, .ob-help-close:focus-visible, .ob-intro button:focus-visible {
+    outline: 2px solid #ffdf7f;
+    outline-offset: 3px;
+  }
+  .ob-help-toggle {
+    position: absolute;
+    left: max(18px, env(safe-area-inset-left));
+    top: max(18px, env(safe-area-inset-top));
+    font: 12px "JetBrains Mono", monospace;
+  }
+  .ob-help-toggle kbd { margin-left: 8px; color: #ffdf7f; }
+  .ob-intro {
+    display: none;
+    position: absolute;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 92vw;
+    padding: 12px 54px 12px 18px;
+    border: 1px solid #ffdf7f;
+    border-radius: 10px;
+    background: var(--hud-panel-strong);
+    font: 14px/1.6 "JetBrains Mono", monospace;
+  }
+  .ob-intro strong { display: block; color: #ffdf7f; font-size: 11px; letter-spacing: .16em; }
+  .ob-intro button { position: absolute; right: 4px; top: 4px; font-size: 20px; }
+  .ob-flight-progress { display: flex; gap: 12px; margin-top: 10px; }
+  .ob-flight-progress span { color: #9aa5b8; font: 20px monospace; }
+  .ob-flight-progress .is-done { color: #aaffd6; }
+  .ob-flight-progress .is-next { color: #ffdf7f; }
+  .ob-marker {
+    display: none;
+    position: absolute;
+    transform: translate(-50%, -23px);
+    width: 200px;
+    text-align: center;
+    color: #ffdf7f;
+    font: 12px/1.5 "JetBrains Mono", monospace;
+    filter: drop-shadow(0 2px 3px #000);
+  }
+  .ob-marker--gate { color: var(--gate-color, #ff9df1); }
+  .ob-marker__reticle { width: 46px; height: 46px; margin: auto; font: 38px/46px monospace; }
+  .ob-marker__label { display: inline-flex; gap: 10px; padding: 4px 8px; border: 1px solid currentColor; border-radius: 5px; background: rgba(7,10,18,.94); transform: translateY(var(--marker-label-shift, 0px)); }
+  .ob-marker__label b { color: #fff; white-space: nowrap; }
+  .ob-marker--grab .ob-marker__label { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translate(-50%, var(--marker-label-shift, 0px)); white-space: nowrap; }
+  .ob-marker.is-edge .ob-marker__reticle { font-size: 25px; }
+  .ob-cue-pulse .ob-marker__reticle,
+  .ob-hud-root--touch[data-cue="grab"] ~ .mob-overlay .mob-btn-grab,
+  .ob-hud-root--touch[data-cue="launch"] ~ .mob-overlay .mob-btn-jump,
+  .ob-hud-root--touch[data-cue="fire"] ~ .mob-overlay .mob-btn-fire,
+  .ob-hud-root[data-cue="launch"] .ob-power-wrap,
+  .ob-hud-root[data-cue="launch"] .ob-prompt,
+  .ob-hud-root[data-cue="fire"] .ob-crosshair {
+    animation: ob-cue-breathe 1.8s ease-in-out infinite;
+    outline: 2px solid #ffdf7f;
+    outline-offset: 5px;
+    border-radius: 8px;
+  }
+  .ob-hud-root[data-cue="fire"] .ob-crosshair { width: 16px !important; height: 16px !important; background: transparent !important; border: 1px solid #ffdf7f; border-radius: 50%; }
+  @keyframes ob-cue-breathe { 0%, 100% { outline-color: rgba(255,223,127,.35); } 50% { outline-color: #ffdf7f; } }
+  @media (max-width: 640px) {
+    .ob-help-toggle { font-size: 11px; left: 10px; top: 10px; max-width: 110px; }
+    .ob-help-toggle kbd { display: none; }
+    .ob-intro { top: 210px; bottom: auto; font-size: 12px; }
+    .ob-help-panel { padding: 16px; }
+    .ob-tutorial { width: 180px; top: 90px; }
+  }
+  @media (max-height: 500px) {
+    .ob-tutorial { top: 70px; padding: 8px 12px; }
+    .ob-intro { top: auto; bottom: 12px; }
+  }
   @media (prefers-reduced-motion: reduce) {
+    .ob-cue-pulse .ob-marker__reticle,
+    .ob-hud-root--touch[data-cue="grab"] ~ .mob-overlay .mob-btn-grab,
+    .ob-hud-root--touch[data-cue="launch"] ~ .mob-overlay .mob-btn-jump,
+    .ob-hud-root--touch[data-cue="fire"] ~ .mob-overlay .mob-btn-fire,
+    .ob-hud-root[data-cue="launch"] .ob-power-wrap,
+    .ob-hud-root[data-cue="launch"] .ob-prompt,
+    .ob-hud-root[data-cue="fire"] .ob-crosshair { animation: none; outline-color: #ffdf7f; }
     .ob-score-pill,
     .ob-round-timer,
-    .ob-objective,
     .ob-prompt,
     .ob-power-wrap,
     .ob-damage-panel,
@@ -835,7 +927,6 @@ export interface HudElements {
   root: HTMLDivElement;
   scoreWrap: HTMLDivElement;
   countdown: HTMLDivElement;
-  objective: HTMLDivElement;
   crosshair: HTMLDivElement;
   score: HTMLDivElement;
   scoreTeam0: HTMLDivElement;
@@ -850,6 +941,13 @@ export interface HudElements {
   tutorialStep: HTMLDivElement;
   tutorialTitle: HTMLDivElement;
   tutorialBody: HTMLDivElement;
+  tutorialProgress: HTMLDivElement;
+  destination: HTMLDivElement;
+  cue: HTMLDivElement;
+  intro: HTMLDivElement;
+  introClose: HTMLButtonElement;
+  helpToggle: HTMLButtonElement;
+  helpClose: HTMLButtonElement;
   roundEnd: HTMLDivElement;
   tab: HTMLDivElement;
   help: HTMLDivElement;
@@ -870,7 +968,6 @@ export function createHudView(): HudElements {
     root,
     scoreWrap: q("hud-score-wrap"),
     countdown: q("hud-countdown"),
-    objective: q("hud-objective"),
     crosshair: q("hud-crosshair"),
     score: q("hud-score"),
     scoreTeam0: q("hud-score-team0"),
@@ -885,6 +982,13 @@ export function createHudView(): HudElements {
     tutorialStep: q("hud-tutorial-step"),
     tutorialTitle: q("hud-tutorial-title"),
     tutorialBody: q("hud-tutorial-body"),
+    tutorialProgress: q("hud-tutorial-progress"),
+    destination: q("hud-destination"),
+    cue: q("hud-cue"),
+    intro: q("hud-intro"),
+    introClose: q("hud-intro-close"),
+    helpToggle: q("hud-help-toggle"),
+    helpClose: q("hud-help-close"),
     roundEnd: q("hud-round-end"),
     tab: q("hud-tab"),
     help: q("hud-help"),

@@ -35,6 +35,12 @@ export class InputManager {
 
   public constructor() {
     const handleKeyDown = (e: KeyboardEvent): void => {
+      // Let the instructions dialog keep native focus navigation; only H/Esc close it.
+      if (this.uiBlocked) {
+        if (e.code === 'Escape' && !e.repeat) this.menuTogglePressed = true;
+        if (e.code === 'KeyH' && !e.repeat) this.helpPressed = true;
+        return;
+      }
       const tabWasHeld = this.keys.has('Tab');
       this.keys.add(e.code);
       if (e.code === 'Tab' && !tabWasHeld) this.onTabHoldChange?.(true);
@@ -309,7 +315,7 @@ export class InputManager {
   public consumeHelpPressed(): boolean {
     const v = this.helpPressed;
     this.helpPressed = false;
-    return v && !this.uiBlocked;
+    return v;
   }
 
   /** Toggle collision visualizer — BracketLeft ([). */
