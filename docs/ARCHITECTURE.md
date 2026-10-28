@@ -190,7 +190,7 @@ The production server is a Colyseus + Express app on Render.
 
 | File | Responsibility |
 |---|---|
-| `index.ts` | Express bootstrap: `helmet`, CORS allowlist via `matchMaker.controller.getCorsHeaders` (`cors.ts`), rate limit, mount Colyseus transport, expose `/health`, `/wake`, `/rooms` |
+| `index.ts` | Express bootstrap: `helmet`, CORS allowlist via `matchMaker.controller.getCorsHeaders` (`cors.ts`), probe rate limit, per-IP `/matchmake` limit (`matchmakeRateLimit.ts`), mount Colyseus transport, expose `/health`, `/wake`, `/rooms` |
 | `colyseus/OrbitalLobbyRoom.ts` | Room lifecycle: lobby → ready check → countdown → playing → round-end → match-end, authoritative actor state, hit validation, scoring, bot fill, both win paths, stale-player cleanup |
 | `colyseus/state.ts` | `@colyseus/schema` state classes synced to clients |
 | `colyseus/actorDamage.ts` | Authoritative damage application |

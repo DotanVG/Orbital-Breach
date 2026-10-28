@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+            server/package-lock.json
+
+      - name: Install
+        run: |
+          npm ci
+          npm ci --prefix client
+          npm ci --prefix server
+
+      - name: Typecheck client
+        working-directory: client
+        run: node_modules/.bin/tsc --noEmit
+
+      - name: Typecheck server
+        working-directory: server
+        run: node_modules/.bin/tsc --noEmit
+
+      - name: Test
+        run: npm test

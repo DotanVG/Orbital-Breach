@@ -7,6 +7,7 @@ import { MULTIPLAYER_BROWSER_ROOM_NAME, MULTIPLAYER_ROOM_NAME } from "../../shar
 import { OrbitalLobbyRoom } from "./colyseus/OrbitalLobbyRoom";
 import { buildPublicRoomDirectory } from "./colyseus/roomDirectory";
 import { buildCorsHeaders, createOriginMatcher, parseOriginList } from "./cors";
+import { installMatchmakeRateLimit } from "./matchmakeRateLimit";
 
 const PORT = Number(process.env.PORT || 2567);
 const NODE_ENV = process.env.NODE_ENV ?? "development";
@@ -90,6 +91,16 @@ async function main(): Promise<void> {
   gameServer.define(MULTIPLAYER_ROOM_NAME, OrbitalLobbyRoom);
   gameServer.define(MULTIPLAYER_BROWSER_ROOM_NAME, OrbitalLobbyRoom);
   await gameServer.listen(PORT);
+
+  // Colyseus serves /matchmake on the HTTP server before the Express app, so the
+  // limiter has to wrap that listener. trustProxy reads the proxy-appended
+  // client address on Render; dev uses the socket peer (the Vite proxy).
+  if (transport.server) {
+    installMatchmakeRateLimit(transport.server, {
+      trustProxy: IS_PROD,
+      isAllowedOrigin,
+    });
+  }
 
   console.log(`Colyseus listening on port ${PORT}`);
 }

@@ -117,6 +117,7 @@ Prerequisites: Node 22.x (see .nvmrc) and npm.
 Install dependencies:
 
 ```bash
+npm install
 npm install --prefix client
 npm install --prefix server
 ```
@@ -136,10 +137,8 @@ Open [http://localhost:5173](http://localhost:5173). In development, the Vite se
 Useful commands:
 
 ```bash
-# test suite — run from the repo root
-# (the one-time install lands in a gitignored root package.json)
-npm install vitest
-npx vitest run
+# test suite — run from the repo root after `npm install`
+npm test
 
 # client build + typecheck
 npm run build --prefix client
@@ -257,6 +256,7 @@ Shipped and implemented:
 - Post-match debrief stats, awards, credits, analytics, and Speed Insights instrumentation.
 - Crawlable landing content with VideoGame/WebApplication schema and an on-demand gameplay screenshot.
 - AI bot fill, ready checks, stale-player seat cleanup, and authoritative round/match scoring.
+- GitHub Actions typechecks the client and server and runs the Vitest suite on push and pull request. Lobby messages and `/matchmake` are rate-limited; the enforced content security policy frames the game for this origin and itch embedders.
 
 Pending or transitional:
 

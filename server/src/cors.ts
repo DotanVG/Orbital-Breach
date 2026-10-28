@@ -40,15 +40,20 @@ export function createOriginMatcher(extraOrigins: string[], isProd: boolean): (o
 export function buildCorsHeaders(origin: string | null | undefined, isAllowed: (origin: string | null | undefined) => boolean): Record<string, string> {
   const headers: Record<string, string> = { Vary: "Origin" };
   if (!origin || !isAllowed(origin)) return headers;
-  return {
+  const result: Record<string, string> = {
     ...headers,
     "Access-Control-Allow-Origin": origin,
-    // ponytail: @colyseus/sdk 0.17 fetches /matchmake with credentials:"include", so browsers
-    // reject the response without this. Only ever sent with an exact allowlisted origin, never "*".
-    // Drop it once the client passes credentials:"omit".
-    "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Accept",
     "Access-Control-Max-Age": "86400",
   };
+  // ponytail: @colyseus/sdk 0.17 fetches /matchmake with credentials:"include", so browsers
+  // reject the response without this. Only ever sent with an exact allowlisted origin, never "*".
+  // The literal "null" origin (sandboxed iframes / itch desktop) must not get credentials:
+  // reflecting it with Allow-Credentials lets any sandbox read credentialed responses.
+  // Drop the credential header once the client passes credentials:"omit".
+  if (origin !== "null") {
+    result["Access-Control-Allow-Credentials"] = "true";
+  }
+  return result;
 }

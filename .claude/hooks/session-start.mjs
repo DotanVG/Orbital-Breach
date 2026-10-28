@@ -2,16 +2,12 @@
 /**
  * SessionStart hook — Claude Code on the web only.
  *
- * The root package.json (vitest harness + concurrently) is deliberately
- * gitignored (see .gitignore: "Root-level dev tooling — not part of
- * deployable code"), so a fresh clone cannot run `npm test`. This hook
- * recreates it and installs root + client + server dependencies so tests
- * and typechecks work immediately in remote sessions.
+ * Installs root, client, and server dependencies so tests and typechecks
+ * work immediately in remote sessions. The root package.json (vitest
+ * harness + concurrently) is tracked. vercel.json pins installCommand and
+ * buildCommand to client/, so Vercel does not build this harness.
  *
- * Local sessions exit immediately — developer machines manage their own
- * root package.json. Vercel never sees this file: vercel.json pins
- * installCommand/buildCommand to client/ only, and the file stays
- * untracked either way.
+ * Local sessions exit immediately — developer machines install themselves.
  */
 import { execSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
@@ -43,8 +39,9 @@ const harnessPackageJson = `{
 
 const rootPackageJson = join(root, "package.json");
 if (!existsSync(rootPackageJson)) {
+  // Fallback only. The tracked package.json is the source of truth.
   writeFileSync(rootPackageJson, harnessPackageJson);
-  console.log("session-start: created gitignored root package.json (vitest harness)");
+  console.log("session-start: restored missing root package.json (vitest harness)");
 }
 
 function install(label, cwd) {
