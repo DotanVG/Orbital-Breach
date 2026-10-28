@@ -20,11 +20,11 @@ describe('canOpenInstructions', () => {
 });
 
 describe('isInstructionsActivationKey', () => {
-  it.each(['Space', 'Enter', 'NumpadEnter'])('reserves %s for gameplay on the launcher', code => {
-    expect(isInstructionsActivationKey(code)).toBe(true);
+  it('reserves Space for gameplay on the launcher', () => {
+    expect(isInstructionsActivationKey('Space')).toBe(true);
   });
 
-  it.each(['KeyH', 'Escape', 'Tab', 'KeyE'])('preserves %s handling', code => {
+  it.each(['Enter', 'NumpadEnter', 'KeyH', 'Escape', 'Tab', 'KeyE'])('preserves %s handling', code => {
     expect(isInstructionsActivationKey(code)).toBe(false);
   });
 });

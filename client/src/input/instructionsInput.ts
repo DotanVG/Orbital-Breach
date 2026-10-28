@@ -7,5 +7,5 @@ export function canOpenInstructions(
 }
 
 export function isInstructionsActivationKey(code: string): boolean {
-  return code === 'Space' || code === 'Enter' || code === 'NumpadEnter';
+  return code === 'Space';
 }
