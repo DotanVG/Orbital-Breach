@@ -252,6 +252,7 @@ Shipped and implemented:
 - Mobile touch controls, embed support for itch.io, and Vibe Jam portal handoff/return flow.
 - Visual first-flight onboarding: rail/launch/freeze/gate highlights, named gate and rail distance markers, a brief dismissible intro, and an Instructions button (`H`, close with `H`/`Esc`). Reduced motion keeps highlights static; completed actions are remembered across rounds and the completed guide across visits.
 - Replay the entire guide and intro from **Tutorial** on the main menu (during a match: `Esc` → **Main Menu** → **Tutorial**; if Instructions is open, close it first). This resets onboarding and starts the existing empty arena with bots off. Instructions stay closed by default; the ordinary intro appears only once per browser origin.
+- Closing Instructions blurs its controls; Space cannot activate the launcher (use `H`, pointer, or Enter). H is ignored in menus, lobbies, match-end celebrations, and debriefs without changing input state.
 - Post-match debrief stats, awards, credits, analytics, and Speed Insights instrumentation.
 - Crawlable landing content with VideoGame/WebApplication schema and an on-demand gameplay screenshot.
 - AI bot fill, ready checks, stale-player seat cleanup, and authoritative round/match scoring.

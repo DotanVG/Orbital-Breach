@@ -41,7 +41,7 @@ const HUD_MARKUP = `
     <strong>FIRST FLIGHT</strong><span>Grab → Launch → Freeze / Breach</span>
     <button id="hud-intro-close" type="button" aria-label="Dismiss flight intro">×</button>
   </div>
-  <button id="hud-help-toggle" class="ob-help-toggle" type="button" aria-controls="hud-help" aria-expanded="false">? Instructions <kbd>H</kbd></button>
+  <button id="hud-help-toggle" class="ob-help-toggle" type="button" aria-controls="hud-help" aria-expanded="false" aria-keyshortcuts="H">? Instructions <kbd>H</kbd></button>
 
   <div id="hud-tutorial" class="ob-tutorial" role="status">
     <div id="hud-tutorial-step" class="ob-tutorial__eyebrow">FIRST FLIGHT 1/4</div>

@@ -1,6 +1,7 @@
 import { MAX_LAUNCH_SPEED } from '../../../shared/constants';
 import type { DamageState, EnemyPlayerInfo, FullPlayerInfo } from '../../../shared/schema';
 import { isTouchDevice } from '../platform';
+import { isInstructionsActivationKey } from '../input/instructionsInput';
 import { createHudView, type HudElements } from './hud/hudView';
 import { buildScoreboardHtml } from './hud/scoreboard';
 import type { TutorialPrompt } from './hud/tutorial';
@@ -104,6 +105,12 @@ export class HUD {
     this.view = createHudView();
     this.view.root.classList.toggle('ob-hud-root--touch', IS_MOBILE);
     this.view.helpToggle.onclick = () => this.onHelpToggle?.();
+    // H remains the keyboard shortcut; Space belongs to launch even on a focused launcher.
+    const preventKeyboardToggle = (event: KeyboardEvent): void => {
+      if (isInstructionsActivationKey(event.code)) event.preventDefault();
+    };
+    this.view.helpToggle.addEventListener('keydown', preventKeyboardToggle);
+    this.view.helpToggle.addEventListener('keyup', preventKeyboardToggle);
     this.view.helpClose.onclick = () => this.onHelpToggle?.();
     this.view.introClose.onclick = () => this.onIntroDismiss?.();
     this.view.help.addEventListener('keydown', (event) => {
@@ -119,7 +126,10 @@ export class HUD {
     this.view.help.setAttribute('aria-hidden', String(!visible));
     this.view.helpToggle.setAttribute('aria-expanded', String(visible));
     if (visible) this.view.helpClose.focus();
-    else this.view.helpToggle.focus({ preventScroll: true });
+    else {
+      this.view.helpClose.blur();
+      this.view.helpToggle.blur();
+    }
   }
 
   public updateNavigation(

@@ -13,6 +13,7 @@ import { Arena } from "../arena/arena";
 import { CameraController } from "../camera";
 import { FEATURE_FLAGS } from "../featureFlags";
 import { InputManager } from "../input";
+import { canOpenInstructions } from "../input/instructionsInput";
 import { LocalMatch } from "../match/localMatch";
 import { OnlineMatch } from "../match/onlineMatch";
 import { isTouchDevice } from "../platform";
@@ -312,6 +313,7 @@ export class App {
       }
 
       if (event.matchWinner !== null && event.finalScore) {
+        if (this.helpVisible) this.setHelpVisible(false);
         this.setCelebratingTeam(event.matchWinner);
         this.onlineMatchConcluding = true;
         this.pendingOnlineDebrief = this.buildOnlineDebrief(event.matchWinner, event.finalScore);
@@ -736,6 +738,7 @@ export class App {
     winningTeam: 0 | 1,
     finalScore: { team0: number; team1: number },
   ): void {
+    if (this.helpVisible) this.setHelpVisible(false);
     this.matchOver = true;
     this.setCelebratingTeam(winningTeam);
     this.round.cancelPendingRestart();
@@ -842,7 +845,12 @@ export class App {
   }
 
   private setHelpVisible(visible: boolean): void {
-    if (visible && (!this.isGameplaySceneActive() || this.sessionMenu.isOpen())) return;
+    if (this.helpVisible === visible) return;
+    if (visible && !canOpenInstructions(
+      this.isGameplaySceneActive(),
+      this.sessionMenu.isOpen(),
+      this.matchOver || this.onlineMatchConcluding,
+    )) return;
     this.helpVisible = visible;
     this.input.setUiBlocked(visible);
     if (visible) this.input.exitPointerLock();
