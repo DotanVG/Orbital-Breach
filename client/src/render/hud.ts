@@ -4,6 +4,8 @@ import { isTouchDevice } from '../platform';
 import { createHudView, type HudElements } from './hud/hudView';
 import { buildScoreboardHtml } from './hud/scoreboard';
 import type { TutorialPrompt } from './hud/tutorial';
+import * as THREE from 'three';
+import { formatDistance, placeDestination } from './hud/destination';
 
 const IS_MOBILE = isTouchDevice();
 
@@ -85,6 +87,7 @@ export interface HudState {
   enemyTeam: EnemyPlayerInfo[];
   tutorialPrompt: TutorialPrompt | null;
   helpVisible: boolean;
+  introVisible: boolean;
   dt: number;
   team: 0 | 1;
 }
@@ -93,15 +96,77 @@ export class HUD {
   private view: HudElements;
   private hitConfirmTeam: 0 | 1 = 0;
   private hitConfirmTimer = 0;
-  private isFirstRound = true;
-  private prevPhase: GamePhase = 'LOBBY';
-  private typewriterTimer = 0;
-  private typewriterIdx = 0;
-  private static readonly OBJECTIVE_TEXT =
-    'Objective - Breach Enemy Portal or Freeze them ALL';
+  private readonly markerPoint = new THREE.Vector3();
+  public onHelpToggle: (() => void) | null = null;
+  public onIntroDismiss: (() => void) | null = null;
 
   public constructor() {
     this.view = createHudView();
+    this.view.root.classList.toggle('ob-hud-root--touch', IS_MOBILE);
+    this.view.helpToggle.onclick = () => this.onHelpToggle?.();
+    this.view.helpClose.onclick = () => this.onHelpToggle?.();
+    this.view.introClose.onclick = () => this.onIntroDismiss?.();
+    this.view.help.addEventListener('keydown', (event) => {
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        this.view.helpClose.focus();
+      }
+    });
+  }
+
+  public setHelpVisible(visible: boolean): void {
+    this.view.help.classList.toggle('ob-help-visible', visible);
+    this.view.help.setAttribute('aria-hidden', String(!visible));
+    this.view.helpToggle.setAttribute('aria-expanded', String(visible));
+    if (visible) this.view.helpClose.focus();
+    else this.view.helpToggle.focus({ preventScroll: true });
+  }
+
+  public updateNavigation(
+    camera: THREE.PerspectiveCamera,
+    position: THREE.Vector3,
+    goal: THREE.Vector3 | null,
+    goalName: string,
+    grab: THREE.Vector3 | null,
+    grabName: string,
+    pulseGate: boolean,
+  ): void {
+    camera.updateMatrixWorld();
+    this.view.destination.style.setProperty('--gate-color', goalName.startsWith('CYAN') ? '#aaffff' : '#ff9df1');
+    this.renderMarker(this.view.destination, camera, position, goal, goalName, pulseGate);
+    this.renderMarker(this.view.cue, camera, position, grab, grabName, true);
+  }
+
+  private renderMarker(
+    el: HTMLDivElement,
+    camera: THREE.PerspectiveCamera,
+    position: THREE.Vector3,
+    target: THREE.Vector3 | null,
+    name: string,
+    pulse: boolean,
+  ): void {
+    el.style.display = target ? 'block' : 'none';
+    if (!target) return;
+    this.markerPoint.copy(target).applyMatrix4(camera.matrixWorldInverse);
+    const placement = placeDestination(this.markerPoint, innerWidth, innerHeight, camera.fov);
+    el.style.left = `${placement.x}px`;
+    el.style.top = `${placement.y}px`;
+    el.classList.toggle('is-edge', placement.edge);
+    el.classList.toggle('ob-cue-pulse', pulse);
+    const reticle = el.querySelector<HTMLElement>('.ob-marker__reticle')!;
+    reticle.textContent = placement.edge ? '↑' : el === this.view.cue ? '⊙' : '◇';
+    reticle.style.transform = placement.edge ? `rotate(${placement.angle}deg)` : '';
+    el.querySelector('span')!.textContent = name;
+    el.querySelector('b')!.textContent = formatDistance(position.distanceTo(target));
+    el.style.setProperty('--marker-label-shift', '0px');
+    if (this.view.tutorial.style.display !== 'block') return;
+    const label = el.querySelector<HTMLElement>('.ob-marker__label')!.getBoundingClientRect();
+    const card = this.view.tutorial.getBoundingClientRect();
+    if (label.left < card.right && label.right > card.left
+      && label.top < card.bottom && label.bottom > card.top) {
+      // Keep the name readable while the reticle stays on its world target.
+      el.style.setProperty('--marker-label-shift', `${card.bottom - label.top + 8}px`);
+    }
   }
 
   public setVisible(visible: boolean): void {
@@ -126,17 +191,9 @@ export class HUD {
     this.view.root.classList.toggle("ob-hud-root--cyan", state.team === 0);
     this.view.root.classList.toggle("ob-hud-root--magenta", state.team === 1);
 
-    if (state.phase !== this.prevPhase) {
-      if (this.prevPhase === 'ROUND_END' && state.phase === 'COUNTDOWN') {
-        this.isFirstRound = false;
-      }
-      this.prevPhase = state.phase;
-    }
-
     this.renderScore(state.phase, state.score);
     this.renderRoundTimer(state.phase, state.roundTimeRemaining);
     this.renderCountdown(state.phase, state.countdown);
-    this.renderObjectiveTypewriter(state.phase, state.dt, state.team);
     this.renderCrosshair(state.dt);
     this.renderGrabPrompt(state.playerPhase, state.nearBar, state.damage, state.team);
     this.renderPowerBar(state.playerPhase, state.launchPower, state.maxLaunchPower, state.team);
@@ -144,6 +201,8 @@ export class HUD {
     this.renderTutorial(state.phase, state.tutorialPrompt, state.team);
     this.renderScoreboard(state.tabHeld, state.ownTeam, state.enemyTeam, state.showPing, state.team);
     this.view.help.classList.toggle("ob-help-visible", state.helpVisible);
+    this.view.intro.style.display = state.introVisible && !state.helpVisible
+      && (state.phase === 'COUNTDOWN' || state.phase === 'PLAYING') ? 'block' : 'none';
   }
 
   private renderScore(
@@ -194,34 +253,6 @@ export class HUD {
     this.view.crosshair.style.boxShadow = pulse > 0
       ? `0 0 ${12 + pulse * 10}px ${glowColor}`
       : '0 0 8px rgba(255,255,255,0.3)';
-  }
-
-  private renderObjectiveTypewriter(phase: GamePhase, dt: number, team: 0 | 1): void {
-    const el = this.view.objective;
-    if (this.isFirstRound && phase === 'COUNTDOWN') {
-      const palette = getTeamHintPalette(team);
-
-      el.style.color = palette.textColor;
-      el.style.textShadow = `0 0 12px ${palette.glowColor}`;
-      el.style.background = palette.panelBg;
-      el.style.padding = '4px 14px';
-      el.style.borderRadius = '4px';
-      el.style.display = 'block';
-
-      this.typewriterTimer += dt;
-      const charsPerSecond = 20;
-      this.typewriterIdx = Math.min(
-        HUD.OBJECTIVE_TEXT.length,
-        Math.floor(this.typewriterTimer * charsPerSecond),
-      );
-      el.textContent = HUD.OBJECTIVE_TEXT.slice(0, this.typewriterIdx);
-    } else if (phase === 'PLAYING') {
-      el.style.display = 'none';
-      this.typewriterTimer = 0;
-      this.typewriterIdx = 0;
-    } else {
-      el.style.display = 'none';
-    }
   }
 
   private renderGrabPrompt(
@@ -341,6 +372,8 @@ export class HUD {
     team: 0 | 1,
   ): void {
     const show = prompt !== null && (phase === "COUNTDOWN" || phase === "PLAYING");
+    this.view.root.dataset.cue = show ? prompt?.cue ?? '' : '';
+    this.view.tutorialBody.textContent = prompt?.body ?? 'Float through the enemy gate or freeze every enemy to score.';
     this.view.tutorial.style.display = show ? "block" : "none";
     if (!show || !prompt) return;
 
@@ -348,6 +381,12 @@ export class HUD {
     this.view.tutorial.classList.toggle("ob-tutorial--magenta", team === 1);
     this.view.tutorialStep.textContent = prompt.progress;
     this.view.tutorialTitle.textContent = prompt.title;
-    this.view.tutorialBody.textContent = prompt.body;
+    for (let i = 0; i < this.view.tutorialProgress.children.length; i++) {
+      const el = this.view.tutorialProgress.children[i];
+      el.classList.toggle('is-done', prompt.completed[i]);
+      el.classList.toggle('is-next', i === prompt.completed.indexOf(false));
+      el.textContent = prompt.completed[i] ? '✓' : ['⊙', '↗', '❄', '◇'][i];
+      el.setAttribute('aria-label', `${['Grab', 'Launch', 'Fire', 'Breach'][i]}: ${prompt.completed[i] ? 'done' : 'pending'}`);
+    }
   }
 }

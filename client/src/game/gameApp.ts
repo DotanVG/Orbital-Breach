@@ -137,6 +137,8 @@ export class App {
     this.player = new LocalPlayer(this.sceneMgr.getScene());
     this.player.onFullyFrozen = () => this.sound.playHit();
     this.hud = new HUD();
+    this.hud.onHelpToggle = () => this.setHelpVisible(!this.helpVisible);
+    this.hud.onIntroDismiss = () => this.tutorial.dismissIntro();
     this.menu = new MainMenu();
     this.cursor = cursor;
     this.projectiles = new ProjectileSystem(this.sceneMgr.getScene());
@@ -422,7 +424,7 @@ export class App {
       };
     } else {
       this.sceneMgr.getRenderer().domElement.addEventListener("mousedown", () => {
-        if (this.menu.isVisible() || this.input.isLocked() || this.sessionMenu.isOpen()) return;
+        if (this.menu.isVisible() || this.input.isLocked() || this.sessionMenu.isOpen() || this.helpVisible) return;
         if (this.appMode === "solo" && this.round.getPhase() === "LOBBY") return;
         if (this.appMode === "online" && !this.onlineGameActive) return;
         this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
@@ -511,7 +513,9 @@ export class App {
     const gameplayActive = this.isGameplaySceneActive();
 
     if (this.input.consumeMenuToggle()) {
-      if (this.sessionMenu.isOpen()) {
+      if (this.helpVisible) {
+        this.setHelpVisible(false);
+      } else if (this.sessionMenu.isOpen()) {
         this.closeSessionMenu();
       } else if (this.appMode !== "menu") {
         this.openSessionMenu();
@@ -519,7 +523,7 @@ export class App {
     }
 
     if (this.input.consumeHelpPressed() && this.appMode !== "menu") {
-      this.helpVisible = !this.helpVisible;
+      this.setHelpVisible(!this.helpVisible);
     }
 
     if (gameplayActive && this.appMode === "solo") {
@@ -551,6 +555,7 @@ export class App {
     if (this.onlineMatchConcluding || this.debrief.isVisible()) {
       return;
     }
+    if (this.helpVisible) this.setHelpVisible(false);
 
     this.clearCelebrationState();
     if (
@@ -625,6 +630,7 @@ export class App {
   }
 
   private endOnlineGame(): void {
+    if (this.helpVisible) this.setHelpVisible(false);
     this.sound.stopCountdown();
     this.closeSessionMenu();
     this.clearCelebrationState();
@@ -655,6 +661,8 @@ export class App {
   // ── Solo round lifecycle ────────────────────────────────────────────────────
 
   private beginNewRound(): void {
+    if (this.helpVisible) this.setHelpVisible(false);
+    this.tutorial.beginRun();
     this.clearCelebrationState();
     this.hud.hideRoundEnd();
     this.projectiles.clear();
@@ -790,6 +798,7 @@ export class App {
 
   private openSessionMenu(view: "settings" | "instructions" | "credits" = "settings"): void {
     if (this.sessionMenu.isOpen() || this.debrief.isVisible() || this.onlineMatchConcluding) return;
+    if (this.helpVisible) this.setHelpVisible(false);
 
     const inMenu = this.appMode === "menu";
     const inLiveMatch = this.appMode === "solo" || this.onlineGameActive;
@@ -830,6 +839,19 @@ export class App {
       resumeLabel,
       mainMenuLabel,
     }, view);
+  }
+
+  private setHelpVisible(visible: boolean): void {
+    if (visible && (!this.isGameplaySceneActive() || this.sessionMenu.isOpen())) return;
+    this.helpVisible = visible;
+    this.input.setUiBlocked(visible);
+    if (visible) this.input.exitPointerLock();
+    this.hud.setHelpVisible(visible);
+    if (this.mobile) {
+      this.input.setMobileControlsActive(!visible);
+      if (visible) this.mobileControls?.hide();
+      else this.mobileControls?.show();
+    }
   }
 
   private closeSessionMenu(): void {
@@ -1010,7 +1032,7 @@ export class App {
     this.cursor.hide();
     this.matchOver = false;
     this.onlineBreachReported = false;
-    this.helpVisible = false;
+    this.setHelpVisible(false);
     this.matchStats.reset();
     this.tutorial.beginRun();
     this.killFeed.setLocalPlayerName(selection.name);
@@ -1143,7 +1165,7 @@ export class App {
     this.pendingOnlineDebrief = null;
     this.latestOnlineSnapshot = null;
     this.previousOnlinePhase = null;
-    this.helpVisible = false;
+    this.setHelpVisible(false);
     if (this.matchEndHandle) { clearTimeout(this.matchEndHandle); this.matchEndHandle = null; }
     this.onlineMatch.dispose();
     this.multiplayer.hide();
@@ -1198,6 +1220,7 @@ export class App {
   // ── Match debrief ───────────────────────────────────────────────────────────
 
   private showMatchDebrief(data: DebriefData): void {
+    if (this.helpVisible) this.setHelpVisible(false);
     if (this.matchEndHandle) {
       clearTimeout(this.matchEndHandle);
       this.matchEndHandle = null;
@@ -1405,7 +1428,7 @@ export class App {
       gameplayActive: this.isGameplaySceneActive(),
       pointerLocked: this.input.isLocked(),
       restorePointerLockAfterScoreboard: this.restorePointerLockAfterScoreboard,
-      sessionMenuOpen: this.sessionMenu.isOpen(),
+      sessionMenuOpen: this.sessionMenu.isOpen() || this.helpVisible,
     });
     this.restorePointerLockAfterScoreboard = transition.nextRestorePointerLockAfterScoreboard;
 
@@ -1445,7 +1468,7 @@ export class App {
     if (shouldShowDesktopOverlayCursor({
       gameplayActive,
       mobile: this.mobile,
-      sessionMenuOpen: this.sessionMenu.isOpen(),
+      sessionMenuOpen: this.sessionMenu.isOpen() || this.helpVisible,
       tabHeld: this.input.isTabHeld(),
     })) {
       this.cursor.show();

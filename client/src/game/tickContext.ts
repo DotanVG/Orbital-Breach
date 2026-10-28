@@ -1,4 +1,4 @@
-import { GRAB_RADIUS } from "../../../shared/constants";
+import { ARENA_SIZE, GRAB_RADIUS } from "../../../shared/constants";
 import type { MultiplayerRoomSnapshot } from "../../../shared/multiplayer";
 import type { Arena } from "../arena/arena";
 import type { SoundEngine } from "../audio/SoundEngine";
@@ -99,6 +99,38 @@ export function computeNearBar(ctx: GameTickContext): boolean {
     nearBar = false;
   }
   return nearBar;
+}
+
+/** One onboarding path for solo and online; reads existing state without changing play. */
+export function updateOnboarding(ctx: GameTickContext, inRound: boolean, dt: number) {
+  const prompt = ctx.tutorial.update({
+    currentBreachTeam: ctx.player.currentBreachTeam,
+    frozen: ctx.player.damage.frozen,
+    inRound,
+    mobile: ctx.mobile,
+    phase: ctx.player.phase,
+    team: ctx.player.team,
+    dt,
+  });
+  const enemyTeam = ctx.player.team === 0 ? 1 : 0;
+  const goal = ctx.arena.getBreachRoomCenter(enemyTeam);
+  goal[ctx.arena.getBreachOpenAxis(enemyTeam)] = -ctx.arena.getBreachOpenSign(enemyTeam) * ARENA_SIZE / 2;
+  const show = inRound && !ctx.player.damage.frozen;
+  const needsRail = prompt?.cue === 'grab' || (prompt?.cue === 'launch'
+    && ctx.player.phase !== 'GRABBING' && ctx.player.phase !== 'AIMING');
+  const grab = show && needsRail && ctx.player.canGrabBar()
+    ? ctx.arena.getNearestBar(ctx.player.getPosition(), Infinity)
+    : null;
+  ctx.hud.updateNavigation(
+    ctx.sceneMgr.getCamera(),
+    ctx.player.getPosition(),
+    show ? goal : null,
+    `${enemyTeam === 0 ? 'CYAN' : 'MAGENTA'} GATE${ctx.arena.isGoalDoorOpen(enemyTeam) ? '' : ' · LOCKED'}`,
+    grab,
+    ctx.mobile ? 'RAIL · GRAB' : 'RAIL · E',
+    prompt?.cue === 'breach',
+  );
+  return prompt;
 }
 
 export function updateMobileHudControls(ctx: GameTickContext, nearBar: boolean): void {
