@@ -65,6 +65,7 @@ export class Arena {
   private breachRooms: BreachRoom[] = [];
   private energyWalls: PortalEnergyWall[] = [];
   private currentLayout: GeneratedLayout | null = null;
+  private readonly grabPointScratch = new THREE.Vector3();
 
   public constructor(private scene: THREE.Scene) {
     const cubeGeo = new THREE.BoxGeometry(ARENA_SIZE, ARENA_SIZE, ARENA_SIZE);
@@ -195,8 +196,9 @@ export class Arena {
     return isDeepInBreachRoom(pos, { center: room.center, openAxis: room.openAxis }, minDepth);
   }
 
-  public getBreachRoomCenter(team: 0 | 1): THREE.Vector3 {
-    return this.breachRooms[team]?.center.clone() ?? new THREE.Vector3(0, 0, team === 0 ? -23 : 23);
+  public getBreachRoomCenter(team: 0 | 1, target = new THREE.Vector3()): THREE.Vector3 {
+    const center = this.breachRooms[team]?.center;
+    return center ? target.copy(center) : target.set(0, 0, team === 0 ? -23 : 23);
   }
 
   public getBreachOpenAxis(team: 0 | 1): 'x' | 'y' | 'z' {
@@ -207,15 +209,15 @@ export class Arena {
     return this.breachRooms[team]?.openSign ?? (team === 0 ? 1 : -1);
   }
 
-  public getNearestBar(pos: THREE.Vector3, radius: number): THREE.Vector3 | null {
+  public getNearestBar(pos: THREE.Vector3, radius: number, target?: THREE.Vector3): THREE.Vector3 | null {
     let nearest: THREE.Vector3 | null = null;
     let best = radius * radius;
     for (const bar of this.barObjects) {
-      const grabPoint = bar.getGrabPoint();
+      const grabPoint = bar.getGrabPoint(this.grabPointScratch);
       const d2 = pos.distanceToSquared(grabPoint);
       if (d2 < best) {
         best = d2;
-        nearest = grabPoint;
+        nearest = (nearest ?? target ?? new THREE.Vector3()).copy(grabPoint);
       }
     }
     return nearest;

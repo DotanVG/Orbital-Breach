@@ -37,11 +37,11 @@ export class BarObject {
     return this.worldPos.clone();
   }
 
-  public getGrabPoint(): THREE.Vector3 {
+  public getGrabPoint(target = new THREE.Vector3()): THREE.Vector3 {
     // Grab the exposed tip rather than the bar center so the hand reads as
     // holding the bar instead of intersecting it.
     const tipOffset = BAR_LENGTH * 0.5 - BAR_RADIUS * 0.25;
-    return this.worldPos.clone().addScaledVector(this.direction, tipOffset);
+    return target.copy(this.worldPos).addScaledVector(this.direction, tipOffset);
   }
 
   /** Call once per frame to animate the pulsing emissive glow. */

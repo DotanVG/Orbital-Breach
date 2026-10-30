@@ -20,6 +20,10 @@ const leftArmHangingRotation = new THREE.Euler(0, 0, 0);
 export const DEFAULT_FLOAT_ARM_ROTATION = floatArmRotation.clone();
 export const DEFAULT_FLOAT_PALM_ROTATION = floatPalmRotation.clone();
 export const DEFAULT_LEFT_ARM_HANGING_ROTATION = leftArmHangingRotation.clone();
+const armOffsetScratch = new THREE.Quaternion();
+const palmOffsetScratch = new THREE.Quaternion();
+const recoilOffsetScratch = new THREE.Quaternion();
+const recoilEulerScratch = new THREE.Euler();
 
 /** Dev tuning — set the float limb rotation at runtime (radians). */
 export function setFloatLimbRotation(target: FloatLimbTuningTarget, rotation: THREE.Euler): void {
@@ -39,8 +43,8 @@ export function getFloatLimbTuningState(target: FloatLimbTuningTarget): FloatArm
 }
 
 export function applyFloatArmTilt(rigs: AnimatedRig[]): void {
-  const armOffset = new THREE.Quaternion().setFromEuler(floatArmRotation);
-  const palmOffset = new THREE.Quaternion().setFromEuler(floatPalmRotation);
+  const armOffset = armOffsetScratch.setFromEuler(floatArmRotation);
+  const palmOffset = palmOffsetScratch.setFromEuler(floatPalmRotation);
   for (const rig of rigs) {
     rig.bones.UpperArmR?.quaternion.multiply(armOffset);
     rig.bones.PalmR?.quaternion.multiply(palmOffset);
@@ -58,8 +62,8 @@ const RECOIL_PEAK_ANGLE      = 0.30;        // radians (~17°) at peak
  */
 export function applyArmRecoil(rigs: AnimatedRig[], t: number): void {
   const angle = RECOIL_PEAK_ANGLE * t;
-  const offset = new THREE.Quaternion().setFromEuler(
-    new THREE.Euler(-angle, 0, 0), // same axis as float tilt → kicks upward
+  const offset = recoilOffsetScratch.setFromEuler(
+    recoilEulerScratch.set(-angle, 0, 0), // same axis as float tilt → kicks upward
   );
   for (const rig of rigs) {
     rig.bones.UpperArmR?.quaternion.multiply(offset);

@@ -146,8 +146,8 @@ export class CameraController {
   }
 
   /** Full 3D forward — used for launch direction and projectile firing. */
-  public getForward(): THREE.Vector3 {
-    return new THREE.Vector3(0, 0, -1).applyQuaternion(this.getQuaternion());
+  public getForward(target = new THREE.Vector3()): THREE.Vector3 {
+    return target.set(0, 0, -1).applyQuaternion(this.getQuaternion());
   }
 
   public getRight(): THREE.Vector3 {
@@ -162,13 +162,13 @@ export class CameraController {
    * Yaw-only forward projected onto the XZ plane.
    * Always uses the gravity-mode yaw — needed for breach room WASD walking.
    */
-  public getYawForward(): THREE.Vector3 {
-    return new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+  public getYawForward(target = new THREE.Vector3()): THREE.Vector3 {
+    return target.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
   }
 
   /** Yaw-only right projected onto the XZ plane (breach room walking). */
-  public getYawRight(): THREE.Vector3 {
-    return new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+  public getYawRight(target = new THREE.Vector3()): THREE.Vector3 {
+    return target.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
   }
 
   // ── Application ───────────────────────────────────────────────────

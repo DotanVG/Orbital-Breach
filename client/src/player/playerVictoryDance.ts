@@ -5,6 +5,8 @@ const DANCE_SWAY_SPEED = 4.2;
 const DANCE_BOUNCE_SPEED = 8.4;
 const DANCE_TWIST_SPEED = 5.6;
 const ARM_WAVE_SPEED = 4.8;
+const danceOffset = new THREE.Quaternion();
+const danceEuler = new THREE.Euler();
 
 const victoryBasePoses = new WeakMap<AnimatedRig, Partial<Record<PoseBoneName, THREE.Quaternion>>>();
 
@@ -78,5 +80,5 @@ function rotateBone(
 }
 
 function quatFromEuler(x: number, y: number, z: number): THREE.Quaternion {
-  return new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z, 'XYZ'));
+  return danceOffset.setFromEuler(danceEuler.set(x, y, z, 'XYZ'));
 }
