@@ -1,6 +1,7 @@
 import { Client as ColyseusClient, type Room } from "@colyseus/sdk";
 import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { getColyseusEndpoint } from "./endpoint";
+import { MAX_RECONNECT_ATTEMPTS, reconnectDelay, isAbnormalClose, isTransportError } from "./reconnect";
 import { isMatchTeamSize, type MatchTeamSize } from "../../../shared/match";
 import {
   getMaxPlayersForTeamSize,
@@ -48,62 +49,186 @@ type ColyseusRoomState = {
   actors: unknown;
 };
 
+export type ConnectionStatus = "disconnected" | "connected" | "reconnecting" | "lost";
+
 export class NetClient {
-  private client: ColyseusClient | null = SERVER_URL ? new ColyseusClient(SERVER_URL) : null;
   private room: Room | null = null;
+  private options: MultiplayerJoinOptions | null = null;
+  private generation = 0;
+  private attempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private status: ConnectionStatus = "disconnected";
+  private inMatch = false;
+  private attemptTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  public constructor(
+    private readonly client: ColyseusClient | null = SERVER_URL ? new ColyseusClient(SERVER_URL) : null,
+  ) {}
 
   public onStateChange: ((snapshot: MultiplayerRoomSnapshot) => void) | null = null;
   public onLobbyEvent: ((event: LobbyEventMessage) => void) | null = null;
   public onLeave: (() => void) | null = null;
+  public onServerDisconnect: (() => void) | null = null;
+  public onJoinError: ((error: unknown) => void) | null = null;
+  public onConnectionStatus: ((status: ConnectionStatus) => void) | null = null;
   public onFreezeEvent: ((event: FreezeEventMessage) => void) | null = null;
   public onPlayerLeaveEvent: ((event: PlayerLeaveEventMessage) => void) | null = null;
   public onRoundResultEvent: ((event: RoundResultEventMessage) => void) | null = null;
   public onShotEvent: ((event: ShotEventMessage) => void) | null = null;
 
-  public async connect(options: MultiplayerJoinOptions): Promise<MultiplayerRoomSnapshot> {
-    await this.disconnect(false);
+  public async connect(options: MultiplayerJoinOptions): Promise<MultiplayerRoomSnapshot | null> {
+    const cleanup = this.disconnect(false);
+    const generation = this.generation;
+    await cleanup;
+    if (generation !== this.generation) return null;
+    this.options = options;
+    return this.attemptConnect(generation);
+  }
 
-    if (!this.client) {
-      throw new Error(
-        "Online multiplayer endpoint not configured (VITE_COLYSEUS_ENDPOINT missing).",
-      );
+  private async attemptConnect(generation: number): Promise<MultiplayerRoomSnapshot | null> {
+    try {
+      if (!this.options) return null;
+      if (!this.client) throw new Error("Online multiplayer endpoint not configured.");
+      const room = await this.connectToTarget(this.options);
+      // A late handshake must never resurrect a session the user has left.
+      if (generation !== this.generation) {
+        await this.leaveRoom(room, false);
+        return null;
+      }
+      this.attachRoom(room);
+      this.options = { name: this.options.name, target: { kind: "roomId", roomId: room.roomId } };
+      const snapshot = buildSnapshot(room, room.state as ColyseusRoomState);
+      this.inMatch = snapshot.phase !== "LOBBY";
+      this.attempts = 0;
+      this.setStatus("connected");
+      return snapshot;
+    } catch (error) {
+      if (generation !== this.generation) return null;
+      if (!isTransportError(error)) throw error;
+      this.scheduleReconnect();
+      return null;
     }
+  }
 
-    const room = await this.connectToTarget(options);
-
+  private attachRoom(room: Room): void {
+    // The server does not reserve disconnected seats. Rejoin the same room
+    // through matchmaking instead of running a second SDK retry loop.
+    room.reconnection.enabled = false;
     this.room = room;
     room.onStateChange((state) => {
-      this.onStateChange?.(buildSnapshot(room, state as ColyseusRoomState));
+      if (this.room !== room) return;
+      const snapshot = buildSnapshot(room, state as ColyseusRoomState);
+      this.inMatch = snapshot.phase !== "LOBBY";
+      this.onStateChange?.(snapshot);
     });
     room.onMessage("lobby_event", (event: LobbyEventMessage) => {
+      if (this.room !== room) return;
       this.onLobbyEvent?.(event);
     });
     room.onMessage("freeze_event", (event: FreezeEventMessage) => {
+      if (this.room !== room) return;
       this.onFreezeEvent?.(event);
     });
     room.onMessage("player_leave_event", (event: PlayerLeaveEventMessage) => {
+      if (this.room !== room) return;
       this.onPlayerLeaveEvent?.(event);
     });
     room.onMessage("round_result_event", (event: RoundResultEventMessage) => {
+      if (this.room !== room) return;
       this.onRoundResultEvent?.(event);
     });
     room.onMessage("shot_event", (event: ShotEventMessage) => {
+      if (this.room !== room) return;
       this.onShotEvent?.(event);
     });
-    room.onLeave(() => {
-      this.room = null;
-      this.onLeave?.();
+    room.onLeave((code) => {
+      if (this.room !== room) return;
+      if (isAbnormalClose(code)) this.scheduleReconnect();
+      else this.serverDisconnect();
     });
-
-    return buildSnapshot(room, room.state as ColyseusRoomState);
+    room.onError((code) => {
+      if (this.room !== room) return;
+      // Browser socket errors have no code; matchmaking/application errors do.
+      if (code === undefined || isAbnormalClose(code)) this.scheduleReconnect();
+      else this.serverDisconnect();
+    });
   }
 
   public async disconnect(consented = true): Promise<void> {
+    this.generation += 1;
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    if (this.attemptTimeout !== null) clearTimeout(this.attemptTimeout);
+    this.attemptTimeout = null;
+    this.options = null;
+    this.attempts = 0;
+    this.inMatch = false;
     const room = this.room;
     this.room = null;
-    if (room) {
+    this.setStatus("disconnected");
+    if (room) await this.leaveRoom(room, consented);
+  }
+
+  private async leaveRoom(room: Room, consented: boolean): Promise<void> {
+    try {
+      room.reconnection.enabled = false;
       await room.leave(consented);
+    } catch {
+      // A closed socket must not interrupt local cleanup or navigation.
     }
+  }
+
+  public retry(): void {
+    if (this.status !== "lost" || !this.options) return;
+    this.attempts = 0;
+    this.scheduleReconnect();
+  }
+
+  private serverDisconnect(): void {
+    void this.disconnect(false);
+    this.onServerDisconnect?.();
+  }
+
+  private scheduleReconnect(): void {
+    const room = this.room;
+    this.room = null;
+    if (room) void this.leaveRoom(room, false);
+    if (!this.options || this.reconnectTimer !== null) return;
+    if (this.attempts >= (this.inMatch ? 1 : MAX_RECONNECT_ATTEMPTS)) {
+      this.setStatus("lost");
+      this.onLeave?.();
+      return;
+    }
+    const generation = this.generation;
+    const delay = this.inMatch ? 1_000 : reconnectDelay(this.attempts);
+    this.attempts += 1;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      // Mid-match recovery gets one attempt and a five-second total deadline.
+      if (this.inMatch) this.attemptTimeout = setTimeout(() => {
+        this.attemptTimeout = null;
+        this.generation += 1; // Discard and close any handshake completing later.
+        this.setStatus("lost");
+        this.onLeave?.();
+      }, 4_000);
+      void this.attemptConnect(generation).then((snapshot) => {
+        if (snapshot && generation === this.generation) this.onStateChange?.(snapshot);
+      }).catch((error: unknown) => {
+        if (generation !== this.generation) return;
+        void this.disconnect(false);
+        this.onJoinError?.(error);
+      }).finally(() => {
+        if (generation !== this.generation) return;
+        if (this.attemptTimeout !== null) clearTimeout(this.attemptTimeout);
+        this.attemptTimeout = null;
+      });
+    }, delay);
+    this.setStatus("reconnecting");
+  }
+
+  private setStatus(status: ConnectionStatus): void {
+    this.status = status;
+    this.onConnectionStatus?.(status);
   }
 
   private async connectToTarget(options: MultiplayerJoinOptions): Promise<Room> {
@@ -171,7 +296,12 @@ export class NetClient {
   }
 
   private send<T>(type: string, message: T): void {
-    this.room?.send(type, message);
+    try {
+      this.room?.send(type, message);
+    } catch (error) {
+      if (isTransportError(error)) this.scheduleReconnect();
+      else this.serverDisconnect();
+    }
   }
 }
 
