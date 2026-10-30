@@ -2,17 +2,21 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: "/"
+    target-branch: staging
     schedule:
       interval: weekly
   - package-ecosystem: npm
     directory: "/client"
+    target-branch: staging
     schedule:
       interval: weekly
   - package-ecosystem: npm
     directory: "/server"
+    target-branch: staging
     schedule:
       interval: weekly
   - package-ecosystem: github-actions
     directory: "/"
+    target-branch: staging
     schedule:
       interval: weekly
