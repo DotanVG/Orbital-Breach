@@ -3,20 +3,36 @@ updates:
   - package-ecosystem: npm
     directory: "/"
     target-branch: staging
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
     schedule:
       interval: weekly
   - package-ecosystem: npm
     directory: "/client"
     target-branch: staging
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
     schedule:
       interval: weekly
   - package-ecosystem: npm
     directory: "/server"
     target-branch: staging
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
     schedule:
       interval: weekly
   - package-ecosystem: github-actions
     directory: "/"
     target-branch: staging
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
     schedule:
       interval: weekly
