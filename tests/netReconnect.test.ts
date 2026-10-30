@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MatchMakeError, ServerError } from "../client/node_modules/@colyseus/sdk";
+import { ErrorCode, MatchMakeError, ServerError } from "@colyseus/sdk";
 import { MAX_RECONNECT_ATTEMPTS, reconnectDelay } from "../client/src/net/reconnect";
 
 vi.mock("../client/src/net/endpoint", () => ({ getColyseusEndpoint: () => null }));
@@ -10,7 +10,7 @@ type Room = Awaited<ReturnType<Client["joinById"]>>;
 function makeRoom(id = "room-1", sessionId = "pilot-1") {
   const callbacks = {
     leave: (_code = 1006) => {},
-    error: () => {},
+    error: (_code?: number, _message?: string) => {},
     state: (_state: unknown) => {},
     messages: new Map<string, (event: unknown) => void>(),
   };
@@ -19,7 +19,7 @@ function makeRoom(id = "room-1", sessionId = "pilot-1") {
     state: { phase: "LOBBY", members: {}, actors: {}, scoreTeam0: 2 },
     reconnection: { enabled: true },
     onLeave: vi.fn((cb: (code?: number) => void) => { callbacks.leave = cb; }),
-    onError: vi.fn((cb: () => void) => { callbacks.error = cb; }),
+    onError: vi.fn((cb: (code?: number, message?: string) => void) => { callbacks.error = cb; }),
     onStateChange: vi.fn((cb: (state: unknown) => void) => { callbacks.state = cb; }),
     onMessage: vi.fn((type: string, cb: (event: unknown) => void) => { callbacks.messages.set(type, cb); }),
     leave: vi.fn(async () => { callbacks.leave(1006); }),
@@ -58,6 +58,71 @@ describe("NetClient reconnect lifecycle (fake transport)", () => {
     vi.spyOn(Math, "random").mockReturnValue(0.5);
   });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it.each([502, 503, 504])('retries matchmaking HTTP %s and recovers the same invite room', async code => {
+    const first = makeRoom();
+    const { client, handle } = makeClient(first.handle);
+    client.joinById.mockRejectedValueOnce(new MatchMakeError('Gateway unavailable', code));
+    const net = new NetClient(handle);
+    const status = vi.fn(); net.onConnectionStatus = status;
+    await expect(net.connect({ name: 'Pilot', target: { kind: 'roomId', roomId: 'room-1' } })).resolves.toBeNull();
+    expect(status).toHaveBeenLastCalledWith('reconnecting');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(client.joinById).toHaveBeenNthCalledWith(2, 'room-1', { name: 'Pilot' });
+    expect(net.getSessionId()).toBe('pilot-1');
+    expect(status).toHaveBeenLastCalledWith('connected');
+    await net.disconnect();
+  });
+
+  it.each([502, 503, 504])('bounds repeated SDK HTTP %s failures to the existing retry budget', async code => {
+    const first = makeRoom();
+    const { client, handle } = makeClient(first.handle);
+    client.joinOrCreate.mockRejectedValue(new ServerError(code, 'Gateway unavailable'));
+    const net = new NetClient(handle);
+    const status = vi.fn(); net.onConnectionStatus = status;
+    await expect(net.connect({ name: 'Pilot' })).resolves.toBeNull();
+    await vi.runAllTimersAsync();
+    expect(client.joinOrCreate).toHaveBeenCalledTimes(1 + MAX_RECONNECT_ATTEMPTS);
+    expect(status).toHaveBeenLastCalledWith('lost');
+    expect(vi.getTimerCount()).toBe(0);
+    await net.disconnect();
+  });
+
+  it.each([ErrorCode.INVALID_PAYLOAD, 9999])('keeps a joined room usable after nonfatal onError %s', async code => {
+    const first = makeRoom();
+    const { client, handle } = makeClient(first.handle);
+    const net = new NetClient(handle);
+    const ended = vi.fn(); net.onServerDisconnect = ended;
+    const state = vi.fn(); net.onStateChange = state;
+    await net.connect({ name: 'Pilot' });
+    first.callbacks.error(code, 'Message rejected');
+    await vi.runAllTimersAsync();
+    expect(net.getSessionId()).toBe('pilot-1');
+    expect(first.room.leave).not.toHaveBeenCalled();
+    expect(client.joinById).not.toHaveBeenCalled();
+    expect(ended).not.toHaveBeenCalled();
+    net.setReady(true);
+    expect(first.room.send).toHaveBeenCalledWith('ready', { ready: true });
+    first.callbacks.state(first.room.state);
+    expect(state).toHaveBeenCalledTimes(1);
+    first.callbacks.leave(4000);
+    expect(ended).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([ErrorCode.AUTH_FAILED, ErrorCode.MATCHMAKE_INVALID_ROOM_ID, ErrorCode.APPLICATION_ERROR])(
+    'disconnects on known fatal room error %s', async code => {
+      const first = makeRoom();
+      const { client, handle } = makeClient(first.handle);
+      const net = new NetClient(handle);
+      const ended = vi.fn(); net.onServerDisconnect = ended;
+      await net.connect({ name: 'Pilot' });
+      first.callbacks.error(code, 'Session rejected');
+      await vi.runAllTimersAsync();
+      expect(net.getSessionId()).toBeNull();
+      expect(ended).toHaveBeenCalledTimes(1);
+      expect(client.joinById).not.toHaveBeenCalled();
+    },
+  );
 
   it("catches rejected joins, stops after eight retries, and permits manual retry", async () => {
     const { handle: room } = makeRoom();

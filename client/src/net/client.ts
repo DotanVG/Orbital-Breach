@@ -1,7 +1,7 @@
 import { Client as ColyseusClient, type Room } from "@colyseus/sdk";
 import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { getColyseusEndpoint } from "./endpoint";
-import { MAX_RECONNECT_ATTEMPTS, reconnectDelay, isAbnormalClose, isTransportError } from "./reconnect";
+import { MAX_RECONNECT_ATTEMPTS, reconnectDelay, isAbnormalClose, isFatalRoomError, isTransportError } from "./reconnect";
 import { isMatchTeamSize, type MatchTeamSize } from "../../../shared/match";
 import {
   getMaxPlayersForTeamSize,
@@ -148,9 +148,10 @@ export class NetClient {
     });
     room.onError((code) => {
       if (this.room !== room) return;
-      // Browser socket errors have no code; matchmaking/application errors do.
+      // onError also carries recoverable message errors (e.g. INVALID_PAYLOAD).
+      // An actual socket close still follows the onLeave policy above.
       if (code === undefined || isAbnormalClose(code)) this.scheduleReconnect();
-      else this.serverDisconnect();
+      else if (isFatalRoomError(code)) this.serverDisconnect();
     });
   }
 
