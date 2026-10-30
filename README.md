@@ -248,6 +248,7 @@ Shipped and implemented:
 
 - Browser-playable zero-G FPS with solo bot matches and Colyseus-backed online multiplayer.
 - Quick match, room browser, private/public room creation, invite URLs, native share, and QR joins.
+- Client network failures trigger up to eight reconnect attempts with jittered exponential backoff (30 second cap), a small status message, and manual retry. Rejoins target the same room; active matches must return to a joinable phase because the server does not reserve disconnected seats.
 - Mobile touch controls, embed support for itch.io, and Vibe Jam portal handoff/return flow.
 - Responsive main menu: tablet and phone mode grids, wrapping utilities, scrollable secondary actions, and an initially visible solo launcher on short landscape screens. Built-app headless QA covers ten phone/tablet/desktop viewports.
 - Visual first-flight onboarding: rail/launch/freeze/gate highlights, named gate and rail distance markers, a brief dismissible intro, and an Instructions button (`H`, close with `H`/`Esc`). Reduced motion keeps highlights static; completed actions are remembered across rounds and the completed guide across visits.

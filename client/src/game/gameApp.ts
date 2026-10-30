@@ -46,6 +46,7 @@ import { tickSoloGame } from "./soloTick";
 import { shouldShowDesktopOverlayCursor } from "./overlayCursor";
 import type { GameTickContext } from "./tickContext";
 import { NetClient } from "../net/client";
+import { ConnectionNotice } from "../ui/connectionStatus";
 import { MultiplayerLobby } from "../ui/multiplayerLobby";
 import type { PlaySelection } from "../ui/menu";
 import { DebriefScreen, type DebriefData, type DebriefPlayer } from "../ui/debrief";
@@ -108,6 +109,7 @@ export class App {
   private readonly mobile = isTouchDevice();
   private mobileControls: MobileControls | null = null;
   private net = new NetClient();
+  private connectionNotice = new ConnectionNotice(() => this.net.retry());
   private portalParams: PortalParams;
   private player: LocalPlayer;
   private projectiles: ProjectileSystem;
@@ -375,10 +377,14 @@ export class App {
       this.sound.playRemoteShot(new THREE.Vector3(event.originX, event.originY, event.originZ));
     };
 
-    this.net.onLeave = () => {
+    this.net.onConnectionStatus = (status) => {
+      this.connectionNotice.render(status);
       if (this.isUserExitingOnline) return;
       if (this.appMode !== "online") return;
-      void this.requestLeaveOnline("server_disconnect");
+      if (status === "lost") {
+        this.input.exitPointerLock();
+        this.cursor.show();
+      }
     };
 
     this.multiplayer.onLeaveLobby = () => {
@@ -1126,6 +1132,7 @@ export class App {
         name: selection.name,
         target: resolvedTarget,
       });
+      if (!snapshot) return; // NetClient owns the bounded reconnect/retry flow.
       if (myToken !== this.onlineSessionToken || this.isUserExitingOnline || this.appMode !== "online") {
         try { await this.net.disconnect(); } catch { /* ignore */ }
         return;
