@@ -109,7 +109,10 @@ export class App {
   private readonly mobile = isTouchDevice();
   private mobileControls: MobileControls | null = null;
   private net = new NetClient();
-  private connectionNotice = new ConnectionNotice(() => this.net.retry());
+  private connectionNotice = new ConnectionNotice(
+    () => this.net.retry(),
+    () => { void this.requestLeaveOnline("server_disconnect"); },
+  );
   private portalParams: PortalParams;
   private player: LocalPlayer;
   private projectiles: ProjectileSystem;
@@ -381,10 +384,18 @@ export class App {
       this.connectionNotice.render(status);
       if (this.isUserExitingOnline) return;
       if (this.appMode !== "online") return;
+      if (status === "connected") this.clearInviteRoomIdFromUrl();
       if (status === "lost") {
         this.input.exitPointerLock();
         this.cursor.show();
       }
+    };
+    this.net.onJoinError = (error) => { void this.handleOnlineJoinError(error); };
+    this.net.onServerDisconnect = () => {
+      if (this.isUserExitingOnline || this.appMode !== "online") return;
+      void this.requestLeaveOnline("server_disconnect").then(() => {
+        this.connectionNotice.showMessage("The server closed the connection.");
+      });
     };
 
     this.multiplayer.onLeaveLobby = () => {
@@ -1093,12 +1104,7 @@ export class App {
   ): Promise<void> {
     this.pendingOnlineRoomSelection = null;
     this.roomBrowser.hide();
-    const inviteRoomId = this.getInviteRoomId();
     const resolvedTarget = target ?? this.getInviteJoinTarget() ?? { kind: "quick" };
-    const shouldClearInviteParam =
-      resolvedTarget.kind === "roomId"
-      && inviteRoomId !== null
-      && resolvedTarget.roomId === inviteRoomId;
     this.appMode = "online";
     this.syncBackgroundInputPolicy();
     this.onlinePlayerName = selection.name;
@@ -1137,9 +1143,6 @@ export class App {
         try { await this.net.disconnect(); } catch { /* ignore */ }
         return;
       }
-      if (shouldClearInviteParam) {
-        this.clearInviteRoomIdFromUrl();
-      }
       this.latestOnlineSnapshot = snapshot;
       this.previousOnlinePhase = snapshot.phase;
       if (snapshot.phase === "COUNTDOWN") {
@@ -1152,15 +1155,18 @@ export class App {
       if (myToken !== this.onlineSessionToken || this.isUserExitingOnline || this.appMode !== "online") {
         return;
       }
-      const message = error instanceof Error && error.message.trim().length > 0
-        ? error.message
-        : "Could not reach the Colyseus server. Check that the server is running.";
-      this.multiplayer.setStatus(
-        message,
-        "error",
-      );
-      await this.requestLeaveOnline("join_failed");
+      await this.handleOnlineJoinError(error);
     }
+  }
+
+  private async handleOnlineJoinError(error: unknown): Promise<void> {
+    if (this.isUserExitingOnline || this.appMode !== "online") return;
+    const message = error instanceof Error && error.message.trim().length > 0
+      ? error.message
+      : "Could not join the multiplayer room.";
+    this.multiplayer.setStatus(message, "error");
+    await this.requestLeaveOnline("join_failed");
+    this.connectionNotice.showMessage(message);
   }
 
   private async returnToMenuFromOnline(): Promise<void> {

@@ -15,7 +15,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 const { Client } = await import(pathToFileURL(require.resolve('@colyseus/sdk', { paths: [resolve(root, 'client')] })));
 const { createServer } = await import(pathToFileURL(require.resolve('vite', { paths: [resolve(root, 'client')] })));
-const { values } = parseArgs({ options: { out: { type: 'string' } } });
+const { values } = parseArgs({ options: { out: { type: 'string' }, 'round1-only': { type: 'boolean', default: false } } });
 assert(values.out, 'Usage: node scripts/qa/reconnect.mjs --out <artifact directory>');
 const out = resolve(values.out);
 await mkdir(out, { recursive: true });
@@ -51,6 +51,7 @@ const proxy = net.createServer(socket => {
 });
 const serverPort = await freePort();
 const pageErrors = [];
+const consoleErrors = [];
 const result = { platform: process.platform, node: process.version };
 try {
   proxy.listen(0, '127.0.0.1'); await once(proxy, 'listening');
@@ -81,11 +82,22 @@ try {
   });
   await vite.listen();
   const base = `http://127.0.0.1:${vite.httpServer.address().port}`;
-  browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--use-angle=swiftshader'] });
+  // WSL's inherited display variables select Wayland Vulkan extensions that
+  // SwiftShader lacks. Keep this headless QA process independent of WSLg.
+  const browserEnv = { ...process.env };
+  if (process.platform === 'linux') {
+    delete browserEnv.DISPLAY;
+    delete browserEnv.WAYLAND_DISPLAY;
+  }
+  browser = await chromium.launch({ headless: true, env: browserEnv, args: ['--no-sandbox', '--use-angle=swiftshader'] });
   page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   page.on('pageerror', error => pageErrors.push(error.stack ?? error.message));
+  page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 500)); });
   await page.route('**/*', route => {
     const url = new URL(route.request().url());
+    // Abort browser matchmaking as a real network error. Vite's proxy would
+    // synthesize HTTP 500, which correctly belongs to the fail-fast server path.
+    if (offline && url.pathname.startsWith('/matchmake/')) { refusedAt.push(Date.now()); return route.abort('internetdisconnected'); }
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
     return route.fulfill({ status: 200, body: '' });
   });
@@ -94,6 +106,9 @@ try {
   await page.evaluate(async roomId => {
     // Embed startup cleans the URL; apply the invite after the menu is ready.
     history.replaceState(null, '', `/?roomId=${roomId}`);
+    const { App } = await import('/src/game/gameApp.ts');
+    const startOnline = App.prototype.startOnlineLobby;
+    App.prototype.startOnlineLobby = function(...args) { window.qaApp = this; return startOnline.apply(this, args); };
     const { NetClient } = await import('/src/net/client.ts');
     const original = NetClient.prototype.connect;
     window.qaSnapshots = [];
@@ -101,12 +116,15 @@ try {
       window.qaNet = this;
       const previous = this.onStateChange;
       this.onStateChange = snapshot => { window.qaSnapshots.push(snapshot); previous?.(snapshot); };
-      const snapshot = await original.call(this, options);
+      let snapshot;
+      try { snapshot = await original.call(this, options); }
+      catch (error) { window.qaJoinError = { name:error.name, message:error.message, code:error.code }; throw error; }
       if (snapshot) window.qaSnapshots.push(snapshot);
       return snapshot;
     };
     Math.random = () => 0.5; // Measure the nominal 1s, 2s, 4s schedule deterministically.
   }, observer.roomId);
+  if (!values['round1-only']) {
   await page.locator('#menu-name').fill('Reconnect Pilot');
   await page.locator('#btn-play-online').click();
   await page.waitForFunction(() => window.qaSnapshots.some(s => s.members.some(m => m.name === 'Reconnect Pilot')));
@@ -165,8 +183,122 @@ try {
     exhaustedAttemptsMs: exhaustedAttempts, exhaustedAfterMs, manualRetry: 'reconnected and notice cleared',
     stateResync: 'same room, new session; team size changed offline and subsequent patches received',
     cancellation: 'no reconnect after intentional exit', pageErrors });
+  }
+
+  const regressions = {};
+  async function check(name, test) {
+    try { await test(); regressions[name] = { pass: true }; }
+    catch (error) { regressions[name] = { pass: false, error: error.message }; }
+  }
+  // Real App/NetClient integration; the unchanged server is behind the fault proxy.
+  if (!values['round1-only']) await page.evaluate(() => window.qaApp.requestLeaveOnline('server_disconnect'));
+  offline = true;
+  await page.evaluate(roomId => history.replaceState(null, '', `/?roomId=${roomId}`), observer.roomId);
+  await page.locator('#menu-name').fill('Retry Invite Pilot');
+  await page.locator('#btn-play-online').click();
+  await page.getByText(/^Reconnecting/).waitFor();
+  await pause(1500); // First join and first retry fail; the next attempt succeeds.
+  offline = false;
+  await page.waitForFunction(() => window.qaNet?.getSessionId() !== null);
+  await check('roomId cleared after retry success', async () => {
+    assert.equal(await page.evaluate(() => new URLSearchParams(location.search).has('roomId')), false);
+  });
+  // Exhaust the already-unit-tested budget without another two-minute browser wait.
+  await page.evaluate(() => { window.qaNet.attempts = 8; window.qaNet.scheduleReconnect(); });
+  await page.getByText('Connection lost', { exact: true }).waitFor();
+  await check('Back to menu exits and cancels retries', async () => {
+    await page.getByRole('button', { name: 'Back to menu', exact: true }).click({ timeout: 2000 });
+    await page.waitForFunction(() => window.qaApp.appMode === 'menu');
+    assert.equal(await page.evaluate(() => window.qaNet.getSessionId()), null);
+    assert.equal(await page.locator('#connection-status').isVisible(), false);
+    const before = refusedAt.length;
+    await pause(1200);
+    assert.equal(refusedAt.length, before);
+  });
+  // Ensure independent evidence on old code even if Back to menu is absent there.
+  await page.evaluate(() => window.qaApp.requestLeaveOnline('server_disconnect'));
+  const invalidBefore = refusedAt.length;
+  await page.evaluate(() => {
+    history.replaceState(null, '', '/?roomId=invalid-invite');
+    window.qaStatuses = [];
+    const previous = window.qaNet.onConnectionStatus;
+    window.qaNet.onConnectionStatus = status => { window.qaStatuses.push(status); previous?.(status); };
+  });
+  await page.locator('#btn-play-online').click();
+  await pause(500);
+  await check('invalid invite fails fast to menu with error and no reconnect', async () => {
+    assert.equal(await page.evaluate(() => window.qaApp.appMode), 'menu');
+    assert.equal(await page.evaluate(() => window.qaStatuses.includes('reconnecting')), false);
+    assert.match(await page.locator('#connection-status').innerText(), /room|not found|invalid/i);
+    assert.equal(refusedAt.length, invalidBefore);
+  });
+  await page.evaluate(() => window.qaApp.requestLeaveOnline('server_disconnect'));
+  await page.evaluate(roomId => history.replaceState(null, '', `/?roomId=${roomId}`), observer.roomId);
+  await page.locator('#btn-play-online').click();
+  await page.waitForFunction(() => window.qaNet?.getSessionId() !== null);
+  await page.evaluate(() => {
+    window.qaStatuses = [];
+    window.qaNet.room.connection.close(4000);
+  });
+  await pause(500);
+  await check('consented socket close returns to menu with message and no retry', async () => {
+    assert.equal(await page.evaluate(() => window.qaApp.appMode), 'menu');
+    assert.equal(await page.evaluate(() => window.qaStatuses.includes('reconnecting')), false);
+    assert.match(await page.locator('#connection-status').innerText(), /server closed/i);
+  });
+  await page.evaluate(() => window.qaApp.requestLeaveOnline('server_disconnect'));
+  // Check actual HUD/lobby/menu/scoreboard placement at phone sizes in both orientations.
+  const layouts = [];
+  for (const [width, height] of [[360,800],[390,844],[430,932],[800,360],[844,390],[932,430]]) {
+    await page.setViewportSize({ width, height });
+    await page.evaluate(() => {
+      const app = window.qaApp;
+      app.menu.hide();
+      app.sessionMenu.setLauncherVisible(true);
+      app.connectionNotice.render('lost');
+      app.multiplayer.showConnecting('Layout QA');
+    });
+    await check(`phone lobby placement ${width}x${height}`, async () => {
+      const rects = await page.evaluate(() => {
+        const r = el => { const b = el.getBoundingClientRect(); return { left:b.left, right:b.right, top:b.top, bottom:b.bottom }; };
+        return { chip:r(document.querySelector('#connection-status')), panel:r(document.querySelector('.ob-mp-shell')) };
+      });
+      assert(rects.chip.left >= 0 && rects.chip.right <= width);
+      assert(rects.chip.bottom <= rects.panel.top, JSON.stringify(rects));
+      const launcherGap = await page.evaluate(() => document.querySelector('#connection-status').getBoundingClientRect().top - document.querySelector('.ob-session-launcher').getBoundingClientRect().bottom);
+      assert(launcherGap >= 0, `Chip overlaps menu launcher by ${-launcherGap}px`);
+      layouts.push({ width, height, ...rects });
+    });
+    await page.screenshot({ path: resolve(out, `phone-lobby-${width}x${height}.png`) });
+    await page.evaluate(() => { window.qaApp.multiplayer.hide(); window.qaApp.hud.setVisible(true); document.querySelector('#hud-tutorial').style.display = 'block'; });
+    await check(`phone HUD placement ${width}x${height}`, async () => {
+      const gap = await page.evaluate(() => document.querySelector('#connection-status').getBoundingClientRect().top - document.querySelector('#hud-score-wrap').getBoundingClientRect().bottom);
+      assert(gap >= 0, `Chip overlaps score/timer by ${-gap}px`);
+      if (width <= 640) assert.equal(await page.locator('#hud-tutorial').isVisible(), false);
+    });
+    await page.screenshot({ path: resolve(out, `phone-hud-${width}x${height}.png`) });
+    await page.evaluate(() => { document.querySelector('#hud-tab').style.display = 'block'; });
+    await check(`phone scoreboard placement ${width}x${height}`, async () => {
+      assert.equal(await page.locator('#connection-status').isVisible(), false);
+    });
+    await page.evaluate(() => { document.querySelector('#hud-tab').style.display = 'none'; window.qaApp.openSessionMenu(); });
+    await check(`phone menu placement ${width}x${height}`, async () => {
+      assert.equal(await page.locator('#connection-status').isVisible(), false);
+    });
+    await page.screenshot({ path: resolve(out, `phone-menu-${width}x${height}.png`) });
+    await page.evaluate(() => { window.qaApp.closeSessionMenu(); window.qaApp.hud.setVisible(false); });
+    await page.screenshot({ path: resolve(out, `phone-chip-${width}x${height}.png`) });
+  }
+  await page.evaluate(() => { window.qaApp.connectionNotice.render('disconnected'); });
+  Object.assign(result, { regressions, layouts, pageErrors });
+  assert.deepEqual(pageErrors, []);
+  assert(Object.values(regressions).every(check => check.pass), 'Fix round 1 browser regressions failed');
+  result.pass = true;
 } catch (error) {
   await page?.screenshot({ path: resolve(out, 'failure.png') }).catch(() => {});
+  result.consoleErrors = consoleErrors;
+  result.joinError = await page?.evaluate(() => window.qaJoinError).catch(() => null);
+  result.notice = await page?.locator("#connection-status").innerText().catch(() => null);
   result.snapshots = await page?.evaluate(() => window.qaSnapshots?.map(s => ({
     phase: s.phase, teamSize: s.teamSize, members: s.members.map(m => m.name),
   }))).catch(() => []);
