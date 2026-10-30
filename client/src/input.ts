@@ -1,5 +1,10 @@
 import { FIRE_RATE } from '../../shared/constants';
 import { applyMobileLookDelta, mergeWalkAxes, type MobileLookState } from './input/mobileInputLogic';
+import {
+  exitPointerLock as releasePointerLock,
+  isPointerLocked,
+  requestPointerLock as acquirePointerLock,
+} from './input/pointerLock';
 
 const MAX_MOUSE_EVENT_DELTA = 120;
 
@@ -417,17 +422,15 @@ export class InputManager {
   // ── Pointer lock ──────────────────────────────────────────────────
   public lockPointer(canvas: HTMLCanvasElement): void {
     if (this.uiBlocked) return;
-    void canvas.requestPointerLock();
+    acquirePointerLock(canvas);
   }
 
   public exitPointerLock(): void {
-    if (document.pointerLockElement) {
-      void document.exitPointerLock();
-    }
+    releasePointerLock(document);
   }
 
   public isLocked(): boolean {
-    return document.pointerLockElement != null;
+    return isPointerLocked(document);
   }
 
   public dispose(): void {
