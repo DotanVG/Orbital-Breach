@@ -24,7 +24,13 @@ const trustProxyHops = resolveTrustProxyHops(process.env.TRUST_PROXY_HOPS, IS_PR
 matchMaker.controller.getCorsHeaders = (headers) => buildCorsHeaders(headers.get("origin"), isAllowedOrigin);
 
 async function main(): Promise<void> {
-  const transport = new WebSocketTransport();
+  const transport = new WebSocketTransport({
+    // CORS alone does not protect the WebSocket upgrade. Retain support for
+    // non-browser clients without Origin; browser origins share the HTTP policy.
+    verifyClient: ({ origin }: { origin: string }, done: (allowed: boolean, code?: number) => void) => {
+      done(!origin || isAllowedOrigin(origin), 403);
+    },
+  });
 
   // Render terminates TLS in front of Node; let Colyseus advertise the request
   // host in production seat reservations. Dev keeps localhost so direct WS works.
