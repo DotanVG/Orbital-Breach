@@ -56,6 +56,10 @@ export interface OnlineActorSnapshot {
   velY: number;
   velZ: number;
   yaw: number;
+  orientX: number;
+  orientY: number;
+  orientZ: number;
+  orientW: number;
   phase: string;
   frozen: boolean;
   leftArm: boolean;
@@ -109,6 +113,10 @@ export interface PlayerUpdateMessage {
   velY: number;
   velZ: number;
   yaw: number;
+  orientX: number;
+  orientY: number;
+  orientZ: number;
+  orientW: number;
   phase: string;
   frozen: boolean;
   leftArm: boolean;
