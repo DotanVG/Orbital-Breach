@@ -18,6 +18,9 @@ export interface PhysicsState {
   vel: THREE.Vector3;
 }
 
+const walkHorizontal = new THREE.Vector3();
+const walkForward = new THREE.Vector3();
+
 /**
  * Zero-G drift integration - near-frictionless momentum.
  * Used by FLOATING, GRABBING (vel clamped to 0 by player), and FROZEN players.
@@ -86,10 +89,10 @@ export function integrateBreachRoom(
   dt: number,
 ): void {
   // Horizontal: WASD always responsive
-  const h = yawRight
-    .clone()
+  const h = walkHorizontal
+    .copy(yawRight)
     .multiplyScalar(walkAxes.x)
-    .add(yawFwd.clone().multiplyScalar(walkAxes.z));
+    .add(walkForward.copy(yawFwd).multiplyScalar(walkAxes.z));
   if (h.length() > 0) h.normalize();
   state.vel.x = h.x * BREACH_WALK_SPEED + carryVelocity.x;
   state.vel.z = h.z * BREACH_WALK_SPEED + carryVelocity.z;

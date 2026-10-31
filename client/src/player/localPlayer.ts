@@ -66,6 +66,7 @@ const FLOAT_ARM_FINE_TUNING_STEP = Math.PI / 900;
 const BREACH_ENTRY_CARRY_TIME = 0.55;
 const BREACH_ENTRY_CARRY_DAMPING_PER_60HZ = 0.9;
 const ZERO_CARRY = new THREE.Vector3();
+const MODEL_FORWARD = new THREE.Vector3(0, 0, -1);
 
 export class LocalPlayer {
   public phys: PhysicsState = {
@@ -110,6 +111,15 @@ export class LocalPlayer {
   private damageGlow = new PlayerDamageGlow(this.team);
   private gun = new ThirdPersonGun();
   private visualQuaternion = new THREE.Quaternion();
+  // Per-player scratch: never retained by callers or shared with camera scratch.
+  private readonly facingForward = new THREE.Vector3();
+  private readonly flatFacingForward = new THREE.Vector3();
+  private readonly facingTarget = new THREE.Quaternion();
+  private readonly handOffset = new THREE.Vector3();
+  private readonly movementForward = new THREE.Vector3();
+  private readonly movementRight = new THREE.Vector3();
+  private readonly breachCenter = new THREE.Vector3();
+  private readonly nearestBar = new THREE.Vector3();
   // Tracks the previous frame's animation name so we can detect transitions.
   private lastKnownAnimation = ANIM_IDLE_HOLD;
   // Counts down after leaving ANIM_JUMP to cover the crossfade window.
@@ -226,7 +236,7 @@ export class LocalPlayer {
     arena: Arena,
     dt: number,
   ): void {
-    const center = arena.getBreachRoomCenter(this.currentBreachTeam);
+    const center = arena.getBreachRoomCenter(this.currentBreachTeam, this.breachCenter);
     const openAxis = arena.getBreachOpenAxis(this.currentBreachTeam);
     const openSign = arena.getBreachOpenSign(this.currentBreachTeam);
 
@@ -238,8 +248,8 @@ export class LocalPlayer {
     integrateBreachRoom(
       this.phys,
       input.getWalkAxes(),
-      cam.getYawForward(),
-      cam.getYawRight(),
+      cam.getYawForward(this.movementForward),
+      cam.getYawRight(this.movementRight),
       input.isJumping(),
       this.onGround,
       this.breachEntryCarryTimer > 0 ? this.breachEntryCarry : ZERO_CARRY,
@@ -266,7 +276,7 @@ export class LocalPlayer {
     }
 
     const grabInput = input.consumeGrab();
-    const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS);
+    const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS, this.nearestBar);
     if (nearBar && grabInput && this.canGrabBar()) {
       if (arena.isGoalDoorOpen(this.currentBreachTeam)) {
         this.grabBar(nearBar, cam);
@@ -279,7 +289,7 @@ export class LocalPlayer {
       const MIN_EXIT_SPEED = 2;
       const xzSpeed = Math.sqrt(this.phys.vel.x ** 2 + this.phys.vel.z ** 2);
       if (xzSpeed < MIN_EXIT_SPEED) {
-        const fwd = cam.getYawForward();
+        const fwd = cam.getYawForward(this.movementForward);
         this.phys.vel.x = fwd.x * MIN_EXIT_SPEED;
         this.phys.vel.z = fwd.z * MIN_EXIT_SPEED;
       }
@@ -313,7 +323,7 @@ export class LocalPlayer {
     }
 
     const grabInput = input.consumeGrab();
-    const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS);
+    const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS, this.nearestBar);
     if (nearBar && grabInput && this.canGrabBar()) {
       this.grabBar(nearBar, cam);
     }
@@ -382,7 +392,7 @@ export class LocalPlayer {
   }
 
   private launch(cam: CameraController): void {
-    const fwd = cam.getForward();
+    const fwd = cam.getForward(this.movementForward);
     this.phys.pos.addScaledVector(fwd, PLAYER_RADIUS + 0.8);
     this.phys.vel.copy(fwd).multiplyScalar(this.launchPower);
     this.launchPower = 0;
@@ -538,14 +548,14 @@ export class LocalPlayer {
     this.victoryDanceFacingLocked = false;
 
     if (this.phase === 'BREACH' || this.phase === 'RESPAWNING') {
-      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraQuat);
-      const flatForward = new THREE.Vector3(forward.x, 0, forward.z);
+      const forward = this.facingForward.copy(MODEL_FORWARD).applyQuaternion(cameraQuat);
+      const flatForward = this.flatFacingForward.set(forward.x, 0, forward.z);
       if (flatForward.lengthSq() < 1e-5) {
         flatForward.set(0, 0, -1);
       } else {
         flatForward.normalize();
       }
-      this.visualQuaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), flatForward);
+      this.visualQuaternion.setFromUnitVectors(MODEL_FORWARD, flatForward);
       return this.visualQuaternion;
     }
 
@@ -554,16 +564,16 @@ export class LocalPlayer {
       return this.visualQuaternion;
     }
 
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraQuat);
-    const flatForward = new THREE.Vector3(forward.x, 0, forward.z);
+    const forward = this.facingForward.copy(MODEL_FORWARD).applyQuaternion(cameraQuat);
+    const flatForward = this.flatFacingForward.set(forward.x, 0, forward.z);
     if (flatForward.lengthSq() < 1e-5) {
       flatForward.set(0, 0, -1);
     } else {
       flatForward.normalize();
     }
 
-    const target = new THREE.Quaternion().setFromUnitVectors(
-      new THREE.Vector3(0, 0, -1),
+    const target = this.facingTarget.setFromUnitVectors(
+      MODEL_FORWARD,
       flatForward,
     );
     const alpha = 1 - Math.pow(GRAB_ROTATION_SMOOTHING, dt);
@@ -574,7 +584,7 @@ export class LocalPlayer {
   private lockGripToBar(visualQuat: THREE.Quaternion): void {
     if (!this.grabbedBarPos) return;
     const gripLocal = this.grabHandGripLocal ?? this.leftHandGripLocal;
-    const handOffset = gripLocal.clone().applyQuaternion(visualQuat);
+    const handOffset = this.handOffset.copy(gripLocal).applyQuaternion(visualQuat);
     this.phys.pos.copy(this.grabbedBarPos).sub(handOffset);
   }
 

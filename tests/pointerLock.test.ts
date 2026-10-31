@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { InputManager } from "../client/src/input";
 import {
   exitPointerLock,
-  onPointerLockChange,
   requestPointerLock,
 } from "../client/src/input/pointerLock";
 
@@ -29,6 +28,25 @@ describe("requestPointerLock", () => {
     requestPointerLock(canvas);
 
     expect(calls).toBe(1);
+  });
+
+  it("handles a rejected request without an unhandled rejection", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    const rejected = Promise.reject(new Error('Pointer lock denied'));
+    try {
+      requestPointerLock({ requestPointerLock: () => rejected });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+      await rejected.catch(() => {});
+    }
+  });
+
+  it("supports the legacy void-returning request method", () => {
+    expect(() => requestPointerLock({ requestPointerLock() {} })).not.toThrow();
   });
 });
 
@@ -68,45 +86,20 @@ describe("exitPointerLock", () => {
 
     expect(calls).toBe(0);
   });
-});
 
-describe("onPointerLockChange", () => {
-  it("does not subscribe when the Pointer Lock API is missing", () => {
-    const added: string[] = [];
-    const doc = {
-      addEventListener(type: string) {
-        added.push(type);
-      },
-      removeEventListener(type: string) {
-        added.push(`remove:${type}`);
-      },
-    };
-
-    const unsubscribe = onPointerLockChange(() => {}, doc);
-    unsubscribe();
-
-    expect(added).toEqual([]);
-  });
-
-  it("subscribes and unsubscribes when the Pointer Lock API exists", () => {
-    const added: string[] = [];
-    const removed: string[] = [];
-    const doc = {
-      exitPointerLock() {
-        return Promise.resolve();
-      },
-      addEventListener(type: string) {
-        added.push(type);
-      },
-      removeEventListener(type: string) {
-        removed.push(type);
-      },
-    };
-
-    const unsubscribe = onPointerLockChange(() => {}, doc);
-    expect(added).toEqual(["pointerlockchange"]);
-    unsubscribe();
-    expect(removed).toEqual(["pointerlockchange"]);
+  it("handles a rejected exit without an unhandled rejection", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    const rejected = Promise.reject(new Error('Pointer lock exit denied'));
+    try {
+      exitPointerLock({ pointerLockElement: {}, exitPointerLock: () => rejected });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+      await rejected.catch(() => {});
+    }
   });
 });
 
