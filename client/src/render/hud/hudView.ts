@@ -4,7 +4,7 @@
  * the menu, tutorial, scoreboard, and combat HUD share the same token set.
  */
 const HUD_MARKUP = `
-  <div id="hud-score-wrap" class="ob-score-cluster">
+  <div id="hud-score-wrap" class="ob-score-cluster" data-testid="hud-score">
     <div class="ob-score-pill">
       <div id="hud-score-team0" class="ob-team-orb ob-team-orb--cyan"></div>
       <div id="hud-score" class="ob-score-value">0 - 0</div>
@@ -43,7 +43,7 @@ const HUD_MARKUP = `
   </div>
   <button id="hud-help-toggle" class="ob-help-toggle" type="button" aria-controls="hud-help" aria-expanded="false" aria-keyshortcuts="H">? Instructions <kbd>H</kbd></button>
 
-  <div id="hud-tutorial" class="ob-tutorial" role="status">
+  <div id="hud-tutorial" class="ob-tutorial" role="status" data-testid="hud-tutorial">
     <div id="hud-tutorial-step" class="ob-tutorial__eyebrow">FIRST FLIGHT 1/4</div>
     <div id="hud-tutorial-title" class="ob-tutorial__title"></div>
     <div id="hud-tutorial-progress" class="ob-flight-progress" aria-label="Flight objectives">
@@ -52,7 +52,7 @@ const HUD_MARKUP = `
   </div>
 
   <div id="hud-round-end" class="ob-round-end"></div>
-  <div id="hud-tab" class="ob-scoreboard-overlay"></div>
+  <div id="hud-tab" class="ob-scoreboard-overlay" data-testid="scoreboard"></div>
 
   <div id="hud-help" class="ob-help-overlay" role="dialog" aria-modal="true" aria-labelledby="hud-help-title" aria-hidden="true">
     <div class="ob-help-panel">

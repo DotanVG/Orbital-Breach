@@ -718,6 +718,7 @@ export function createMenuView(savedName: string, matchSize: MatchTeamSize): Men
             <input
               type="text"
               id="menu-name"
+              data-testid="callsign-input"
               maxlength="16"
               placeholder="ENTER CALL SIGN"
               value="${escapeHtml(savedName)}"

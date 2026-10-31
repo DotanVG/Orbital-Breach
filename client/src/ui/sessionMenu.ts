@@ -659,6 +659,7 @@ export class SessionMenu {
     this.launcher = document.createElement("button");
     this.launcher.type = "button";
     this.launcher.className = "ob-session-launcher";
+    this.launcher.dataset.testid = "session-launcher";
     this.launcher.setAttribute("aria-label", "Settings");
     this.launcher.innerHTML = SESSION_MENU_GEAR_ICON;
     const handleLauncherClick = (): void => this.onLauncherRequest?.();

@@ -35,6 +35,8 @@ async function freePort() {
 
 let serverProcess, vite, browser, observer, page;
 let offline = false;
+const gatewayFailures = [];
+const gatewayResponses = [];
 let protectNewConnections = true;
 const connections = new Set();
 const refusedAt = [];
@@ -98,11 +100,16 @@ try {
     // Abort browser matchmaking as a real network error. Vite's proxy would
     // synthesize HTTP 500, which correctly belongs to the fail-fast server path.
     if (offline && url.pathname.startsWith('/matchmake/')) { refusedAt.push(Date.now()); return route.abort('internetdisconnected'); }
+    if (url.pathname.startsWith('/matchmake/') && gatewayFailures.length) {
+      const status = gatewayFailures.shift();
+      gatewayResponses.push(status);
+      return route.fulfill({ status, contentType: 'text/plain', body: 'Gateway unavailable' });
+    }
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
     return route.fulfill({ status: 200, body: '' });
   });
   await page.goto(`${base}/?embed=1&roomId=${observer.roomId}`);
-  await page.locator('#menu-name').waitFor();
+  await page.getByTestId('callsign-input').waitFor();
   await page.evaluate(async roomId => {
     // Embed startup cleans the URL; apply the invite after the menu is ready.
     history.replaceState(null, '', `/?roomId=${roomId}`);
@@ -125,11 +132,11 @@ try {
     Math.random = () => 0.5; // Measure the nominal 1s, 2s, 4s schedule deterministically.
   }, observer.roomId);
   if (!values['round1-only']) {
-  await page.locator('#menu-name').fill('Reconnect Pilot');
-  await page.locator('#btn-play-online').click();
+  await page.getByTestId('callsign-input').fill('Reconnect Pilot');
+  await page.getByRole('button', { name: /^Join Online/ }).click();
   await page.waitForFunction(() => window.qaSnapshots.some(s => s.members.some(m => m.name === 'Reconnect Pilot')));
   const oldSession = await page.evaluate(() => window.qaNet.getSessionId());
-  assert.equal(await page.locator('#connection-status').isVisible(), false);
+  assert.equal(await page.getByTestId('connection-status').isVisible(), false);
 
   // Keep one real peer online so the unchanged server retains this room.
   offline = true;
@@ -147,7 +154,7 @@ try {
       && s.members.some(m => m.name === 'Reconnect Pilot')
       && !s.members.some(m => m.id === oldSession)), { roomId: observer.roomId, oldSession }, { timeout: 15000 });
   const restoredAt = Date.now();
-  assert.equal(await page.locator('#connection-status').isVisible(), false);
+  assert.equal(await page.getByTestId('connection-status').isVisible(), false);
   // Further patches must reach both NetClient and the real application lobby.
   observer.send('set_team_size', { teamSize: 2 });
   await page.waitForFunction(() => window.qaSnapshots.at(-1)?.teamSize === 2);
@@ -172,7 +179,7 @@ try {
   offline = false;
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await page.waitForFunction(() => window.qaNet.getSessionId() !== null, null, { timeout: 5000 });
-  assert.equal(await page.locator('#connection-status').isVisible(), false);
+  assert.equal(await page.getByTestId('connection-status').isVisible(), false);
   await page.evaluate(() => window.qaNet.disconnect());
   const snapshotsAfterExit = await page.evaluate(() => window.qaSnapshots.length);
   await pause(1200);
@@ -192,10 +199,42 @@ try {
   }
   // Real App/NetClient integration; the unchanged server is behind the fault proxy.
   if (!values['round1-only']) await page.evaluate(() => window.qaApp.requestLeaveOnline('server_disconnect'));
+  for (const status of [502, 503, 504]) {
+    offline = false;
+    gatewayFailures.push(status);
+    await page.evaluate(roomId => history.replaceState(null, '', `/?roomId=${roomId}`), observer.roomId);
+    await page.getByTestId('callsign-input').fill(`Gateway ${status}`);
+    await page.getByRole('button', { name: /^Join Online/ }).click();
+    await page.getByText(/^Reconnecting/).waitFor();
+    await page.waitForFunction(() => window.qaNet?.getSessionId() !== null, null, { timeout: 5000 });
+    await check(`HTTP ${status} retries through the SDK and joins the same room`, async () => {
+      assert.equal(gatewayResponses.at(-1), status);
+      assert.equal(await page.evaluate(() => window.qaNet.room.roomId), observer.roomId);
+      assert.equal(await page.getByTestId('connection-status').isVisible(), false);
+    });
+    // Inject a real SDK onError signal, then prove sends and authoritative patches
+    // still work with the unchanged server. No server/protocol fixture changes.
+    for (const [code, ready] of [[4217, true], [9999, false]]) {
+      const session = await page.evaluate(() => window.qaNet.getSessionId());
+      await page.evaluate(({ code, ready }) => {
+        window.qaNet.room.onError.invoke(code, 'QA recoverable message warning');
+        window.qaNet.setReady(ready);
+      }, { code, ready });
+      await check(`room error ${code} preserves session and server updates after HTTP ${status}`, async () => {
+        await page.waitForFunction(ready => {
+          const net = window.qaNet;
+          return net.room?.state.members.get(net.getSessionId())?.ready === ready;
+        }, ready, { timeout: 5000 });
+        assert.equal(await page.evaluate(() => window.qaNet.getSessionId()), session);
+      });
+    }
+    await page.evaluate(() => window.qaApp.requestLeaveOnline('server_disconnect'));
+  }
+  result.gatewayResponses = gatewayResponses;
   offline = true;
   await page.evaluate(roomId => history.replaceState(null, '', `/?roomId=${roomId}`), observer.roomId);
-  await page.locator('#menu-name').fill('Retry Invite Pilot');
-  await page.locator('#btn-play-online').click();
+  await page.getByTestId('callsign-input').fill('Retry Invite Pilot');
+  await page.getByRole('button', { name: /^Join Online/ }).click();
   await page.getByText(/^Reconnecting/).waitFor();
   await pause(1500); // First join and first retry fail; the next attempt succeeds.
   offline = false;
@@ -210,7 +249,7 @@ try {
     await page.getByRole('button', { name: 'Back to menu', exact: true }).click({ timeout: 2000 });
     await page.waitForFunction(() => window.qaApp.appMode === 'menu');
     assert.equal(await page.evaluate(() => window.qaNet.getSessionId()), null);
-    assert.equal(await page.locator('#connection-status').isVisible(), false);
+    assert.equal(await page.getByTestId('connection-status').isVisible(), false);
     const before = refusedAt.length;
     await pause(1200);
     assert.equal(refusedAt.length, before);
@@ -224,17 +263,17 @@ try {
     const previous = window.qaNet.onConnectionStatus;
     window.qaNet.onConnectionStatus = status => { window.qaStatuses.push(status); previous?.(status); };
   });
-  await page.locator('#btn-play-online').click();
+  await page.getByRole('button', { name: /^Join Online/ }).click();
   await pause(500);
   await check('invalid invite fails fast to menu with error and no reconnect', async () => {
     assert.equal(await page.evaluate(() => window.qaApp.appMode), 'menu');
     assert.equal(await page.evaluate(() => window.qaStatuses.includes('reconnecting')), false);
-    assert.match(await page.locator('#connection-status').innerText(), /room|not found|invalid/i);
+    assert.match(await page.getByTestId('connection-status').innerText(), /room|not found|invalid/i);
     assert.equal(refusedAt.length, invalidBefore);
   });
   await page.evaluate(() => window.qaApp.requestLeaveOnline('server_disconnect'));
   await page.evaluate(roomId => history.replaceState(null, '', `/?roomId=${roomId}`), observer.roomId);
-  await page.locator('#btn-play-online').click();
+  await page.getByRole('button', { name: /^Join Online/ }).click();
   await page.waitForFunction(() => window.qaNet?.getSessionId() !== null);
   await page.evaluate(() => {
     window.qaStatuses = [];
@@ -244,7 +283,7 @@ try {
   await check('consented socket close returns to menu with message and no retry', async () => {
     assert.equal(await page.evaluate(() => window.qaApp.appMode), 'menu');
     assert.equal(await page.evaluate(() => window.qaStatuses.includes('reconnecting')), false);
-    assert.match(await page.locator('#connection-status').innerText(), /server closed/i);
+    assert.match(await page.getByTestId('connection-status').innerText(), /server closed/i);
   });
   await page.evaluate(() => window.qaApp.requestLeaveOnline('server_disconnect'));
   // Check actual HUD/lobby/menu/scoreboard placement at phone sizes in both orientations.
@@ -259,31 +298,35 @@ try {
       app.multiplayer.showConnecting('Layout QA');
     });
     await check(`phone lobby placement ${width}x${height}`, async () => {
-      const rects = await page.evaluate(() => {
-        const r = el => { const b = el.getBoundingClientRect(); return { left:b.left, right:b.right, top:b.top, bottom:b.bottom }; };
-        return { chip:r(document.querySelector('#connection-status')), panel:r(document.querySelector('.ob-mp-shell')) };
-      });
+      const rect = el => { const b = el.getBoundingClientRect(); return { left:b.left, right:b.right, top:b.top, bottom:b.bottom }; };
+      const rects = {
+        chip: await page.getByTestId('connection-status').evaluate(rect),
+        panel: await page.getByTestId('multiplayer-panel').evaluate(rect),
+      };
       assert(rects.chip.left >= 0 && rects.chip.right <= width);
       assert(rects.chip.bottom <= rects.panel.top, JSON.stringify(rects));
-      const launcherGap = await page.evaluate(() => document.querySelector('#connection-status').getBoundingClientRect().top - document.querySelector('.ob-session-launcher').getBoundingClientRect().bottom);
+      const launcherGap = rects.chip.top - await page.getByTestId('session-launcher').evaluate(el => el.getBoundingClientRect().bottom);
       assert(launcherGap >= 0, `Chip overlaps menu launcher by ${-launcherGap}px`);
       layouts.push({ width, height, ...rects });
     });
     await page.screenshot({ path: resolve(out, `phone-lobby-${width}x${height}.png`) });
-    await page.evaluate(() => { window.qaApp.multiplayer.hide(); window.qaApp.hud.setVisible(true); document.querySelector('#hud-tutorial').style.display = 'block'; });
+    await page.evaluate(() => { window.qaApp.multiplayer.hide(); window.qaApp.hud.setVisible(true); });
+    await page.getByTestId('hud-tutorial').evaluate(el => { el.style.display = 'block'; });
     await check(`phone HUD placement ${width}x${height}`, async () => {
-      const gap = await page.evaluate(() => document.querySelector('#connection-status').getBoundingClientRect().top - document.querySelector('#hud-score-wrap').getBoundingClientRect().bottom);
+      const gap = await page.getByTestId('connection-status').evaluate(el => el.getBoundingClientRect().top)
+        - await page.getByTestId('hud-score').evaluate(el => el.getBoundingClientRect().bottom);
       assert(gap >= 0, `Chip overlaps score/timer by ${-gap}px`);
-      if (width <= 640) assert.equal(await page.locator('#hud-tutorial').isVisible(), false);
+      if (width <= 640) assert.equal(await page.getByTestId('hud-tutorial').isVisible(), false);
     });
     await page.screenshot({ path: resolve(out, `phone-hud-${width}x${height}.png`) });
-    await page.evaluate(() => { document.querySelector('#hud-tab').style.display = 'block'; });
+    await page.getByTestId('scoreboard').evaluate(el => { el.style.display = 'block'; });
     await check(`phone scoreboard placement ${width}x${height}`, async () => {
-      assert.equal(await page.locator('#connection-status').isVisible(), false);
+      assert.equal(await page.getByTestId('connection-status').isVisible(), false);
     });
-    await page.evaluate(() => { document.querySelector('#hud-tab').style.display = 'none'; window.qaApp.openSessionMenu(); });
+    await page.getByTestId('scoreboard').evaluate(el => { el.style.display = 'none'; });
+    await page.evaluate(() => window.qaApp.openSessionMenu());
     await check(`phone menu placement ${width}x${height}`, async () => {
-      assert.equal(await page.locator('#connection-status').isVisible(), false);
+      assert.equal(await page.getByTestId('connection-status').isVisible(), false);
     });
     await page.screenshot({ path: resolve(out, `phone-menu-${width}x${height}.png`) });
     await page.evaluate(() => { window.qaApp.closeSessionMenu(); window.qaApp.hud.setVisible(false); });
@@ -298,7 +341,7 @@ try {
   await page?.screenshot({ path: resolve(out, 'failure.png') }).catch(() => {});
   result.consoleErrors = consoleErrors;
   result.joinError = await page?.evaluate(() => window.qaJoinError).catch(() => null);
-  result.notice = await page?.locator("#connection-status").innerText().catch(() => null);
+  result.notice = await page?.getByTestId('connection-status').innerText().catch(() => null);
   result.snapshots = await page?.evaluate(() => window.qaSnapshots?.map(s => ({
     phase: s.phase, teamSize: s.teamSize, members: s.members.map(m => m.name),
   }))).catch(() => []);
