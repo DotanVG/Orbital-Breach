@@ -22,6 +22,10 @@ export class ActorState extends Schema {
   public velY = 0;
   public velZ = 0;
   public yaw = 0;
+  public orientX = 0;
+  public orientY = 0;
+  public orientZ = 0;
+  public orientW = 1;
   public phase = "BREACH";
   public frozen = false;
   public leftArm = false;
@@ -72,6 +76,10 @@ defineTypes(ActorState, {
   velY: "number",
   velZ: "number",
   yaw: "number",
+  orientX: "number",
+  orientY: "number",
+  orientZ: "number",
+  orientW: "number",
   phase: "string",
   frozen: "boolean",
   leftArm: "boolean",

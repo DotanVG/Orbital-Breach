@@ -4,6 +4,7 @@ import {
   BREACH_ROOM_W,
 } from "../../../shared/constants";
 import type { ShotEventMessage } from "../../../shared/multiplayer";
+import { quaternionFromYawPitchRoll } from "../../../shared/hitZoneColliders";
 import {
   bounceActorInArena,
   breachRoomCenter,
@@ -18,6 +19,18 @@ export interface BotActor extends ServerSimulatedOnlineActor {
   name: string;
   rightArm: boolean;
   yaw: number;
+  orientX: number;
+  orientY: number;
+  orientZ: number;
+  orientW: number;
+}
+
+function setBotOrientationFromYaw(actor: BotActor): void {
+  const orientation = quaternionFromYawPitchRoll(actor.yaw);
+  actor.orientX = orientation.x;
+  actor.orientY = orientation.y;
+  actor.orientZ = orientation.z;
+  actor.orientW = orientation.w;
 }
 
 /** Match-level effects the bot brain triggers but does not own. */
@@ -166,6 +179,7 @@ export class BotController<TActor extends BotActor> {
           const horizLen = Math.hypot(dx, dz);
           if (horizLen > 0.01) {
             actor.yaw = Math.atan2(-dx / horizLen, -dz / horizLen);
+            setBotOrientationFromYaw(actor);
           }
         }
         continue;
@@ -178,6 +192,7 @@ export class BotController<TActor extends BotActor> {
         const horizSpeed = Math.hypot(actor.velX, actor.velZ);
         if (horizSpeed > 0.5) {
           actor.yaw = Math.atan2(-actor.velX, -actor.velZ);
+          setBotOrientationFromYaw(actor);
         }
 
         if (!hooks.isRoundResolved() && isActorInEnemyBreachRoom(actor, goalAxis, goalSigns)) {

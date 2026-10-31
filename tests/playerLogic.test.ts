@@ -9,6 +9,7 @@ import {
   resolveActorCollisions,
   spawnPosition,
 } from "../shared/player-logic";
+import { IDENTITY_QUATERNION, quaternionFromYawPitchRoll } from "../shared/hitZoneColliders";
 import {
   BOTH_LEGS_HIT_LAUNCH_FACTOR,
   HITBOX_OFFSET_Y,
@@ -75,6 +76,18 @@ describe("classifyHitZone", () => {
     expect(
       classifyHitZone({ x: 0, y: 0.2, z: 0 }, playerPos, facing, -0.35),
     ).toBe("head");
+  });
+
+  it("rotates arm zones with the model so a fixed world shot swaps arms at 180 yaw", () => {
+    const worldShot = { x: 0.1375, y: -0.4, z: 0.0175 };
+    expect(classifyHitZone(worldShot, playerPos, IDENTITY_QUATERNION)).toBe("leftArm");
+    expect(classifyHitZone(worldShot, playerPos, quaternionFromYawPitchRoll(Math.PI))).toBe("rightArm");
+  });
+
+  it("keeps arm zones attached through a 90-degree yaw", () => {
+    const yaw90 = quaternionFromYawPitchRoll(Math.PI / 2);
+    expect(classifyHitZone({ x: 0.0175, y: -0.4, z: -0.1375 }, playerPos, yaw90)).toBe("leftArm");
+    expect(classifyHitZone({ x: -0.0175, y: -0.4, z: 0.1375 }, playerPos, yaw90)).toBe("rightArm");
   });
 });
 

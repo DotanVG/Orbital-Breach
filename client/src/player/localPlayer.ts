@@ -642,7 +642,7 @@ export class LocalPlayer {
   public static classifyHitZone(
     impactPoint: THREE.Vector3,
     playerPos: THREE.Vector3,
-    playerFacing: THREE.Vector3,
+    playerFacing: THREE.Vector3 | THREE.Quaternion,
     hitOffsetY = 0,
     hitRadius?: number,
   ): HitZone {
@@ -728,6 +728,11 @@ export class LocalPlayer {
 
   public getPosition(): THREE.Vector3 {
     return this.phys.pos;
+  }
+
+  /** Live visual orientation of the alien mesh. Callers must not mutate it. */
+  public getVisualQuaternion(): THREE.Quaternion {
+    return this.mesh.quaternion;
   }
 
   public getMesh(): THREE.Group {
