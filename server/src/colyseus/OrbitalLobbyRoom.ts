@@ -85,6 +85,9 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   public maxClients = 32;
   public autoDispose = true;
   public patchRate = 50;
+  // Covers every frame, including pings, before decoding/dispatch. Normal input
+  // is ~25 updates/s plus shots/reports; retain ample room for short bursts.
+  public maxMessagesPerSecond = 200;
 
   private countdownTimer: ReturnType<typeof setInterval> | null = null;
   private roundTimer: ReturnType<typeof setInterval> | null = null;
@@ -130,25 +133,28 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     void this.setPrivate(this.visibility === "private");
     void this.refreshRoomMetadata();
 
-    this.onMessage("ready", (client, message: SetReadyMessage) => {
+    this.onMessage<SetReadyMessage>("ready", messageSchema<SetReadyMessage>(m => typeof m.ready === "boolean"), (client, message) => {
       this.handleReadyMessage(client, message);
     });
-    this.onMessage("switch_team", (client, message: SwitchTeamMessage) => {
+    this.onMessage<SwitchTeamMessage>("switch_team", messageSchema<SwitchTeamMessage>(m => m.team === 0 || m.team === 1), (client, message) => {
       this.handleSwitchTeamMessage(client, message);
     });
-    this.onMessage("set_team_size", (client, message: SetTeamSizeMessage) => {
+    this.onMessage<SetTeamSizeMessage>("set_team_size", messageSchema<SetTeamSizeMessage>(m => typeof m.teamSize === "number" && isMatchTeamSizeValue(m.teamSize)), (client, message) => {
       this.handleSetTeamSizeMessage(client, message);
     });
-    this.onMessage("fill_bots", (client, message: FillBotsMessage) => {
+    this.onMessage<FillBotsMessage>("fill_bots", messageSchema<FillBotsMessage>(m => typeof m.fill === "boolean"), (client, message) => {
       this.handleFillBotsMessage(client, message);
     });
-    this.onMessage("player_update", (client, message: PlayerUpdateMessage) => {
+    this.onMessage<PlayerUpdateMessage>("player_update", messageSchema<PlayerUpdateMessage>(m =>
+      [m.posX, m.posY, m.posZ, m.velX, m.velY, m.velZ, m.yaw].every(v => typeof v === "number" && Number.isFinite(v))
+      && typeof m.phase === "string"), (client, message) => {
       this.handlePlayerUpdateMessage(client, message);
     });
-    this.onMessage("shot_event", (client, message: ShotEventMessage) => {
+    this.onMessage<ShotEventMessage>("shot_event", messageSchema<ShotEventMessage>(m =>
+      [m.originX, m.originY, m.originZ, m.dirX, m.dirY, m.dirZ].every(v => typeof v === "number" && Number.isFinite(v))), (client, message) => {
       this.handleShotEventMessage(client, message);
     });
-    this.onMessage("hit_report", (client, message: HitReportMessage) => {
+    this.onMessage<HitReportMessage>("hit_report", messageSchema<HitReportMessage>(m => typeof m.targetId === "string" && isHitZone(m.zone)), (client, message) => {
       this.handleHitReportMessage(client, message);
     });
     this.onMessage("breach_report", (client) => {
@@ -1040,6 +1046,23 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 }
 
 // ── Pure geometry helpers ───────────────────────────────────────────────────
+
+// Use Colyseus's Standard Schema hook: invalid payloads close only the sender
+// with WITH_ERROR before a handler can dereference/coerce untrusted values.
+// Validate fields consumed by the server; ignored client claims remain ignored.
+function messageSchema<T>(check: (message: Record<string, unknown>) => boolean) {
+  return {
+    "~standard": {
+      version: 1 as const,
+      vendor: "orbital-breach",
+      validate(input: unknown) {
+        return input !== null && typeof input === "object" && !Array.isArray(input) && check(input as Record<string, unknown>)
+          ? { value: input as T }
+          : { issues: [{ message: "Invalid message payload" }] };
+      },
+    },
+  };
+}
 
 function sanitizePlayerName(rawName?: string): string {
   const trimmed = rawName?.trim().replace(/[^\x20-\x7E]/g, "").slice(0, 16);

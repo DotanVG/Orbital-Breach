@@ -259,6 +259,7 @@ Shipped and implemented:
 - Post-match debrief stats, awards, credits, analytics, and Speed Insights instrumentation.
 - Crawlable landing content with VideoGame/WebApplication schema and an on-demand gameplay screenshot.
 - AI bot fill, ready checks, stale-player seat cleanup, and authoritative round/match scoring.
+- Multiplayer server payload validation, WebSocket origin checks, a 200-frame/second client cap, and loopback adversarial tests for malformed traffic and disconnect cleanup.
 - GitHub Actions typechecks the client and server and runs the Vitest suite on push and pull request. Lobby messages and `/matchmake` are rate-limited; the enforced content security policy frames the game for this origin and itch embedders.
 
 Pending or transitional:
