@@ -123,21 +123,11 @@ export function startWelcomeEffects(
   const depth = parseFloat(layer.dataset['depth'] ?? '0.012');
   let mouseNx = 0;
   let mouseNy = 0;
-  let gyroX = 0;
-  let gyroY = 0;
-  let usingGyro = false;
   let rafId = 0;
 
   const onMove = (e: MouseEvent) => {
     mouseNx = (e.clientX / window.innerWidth  - 0.5) * 2;
     mouseNy = (e.clientY / window.innerHeight - 0.5) * 2;
-  };
-
-  const onGyro = (e: DeviceOrientationEvent) => {
-    if (e.gamma == null) return;
-    usingGyro = true;
-    gyroX = Math.max(-12, Math.min(12, e.gamma)) / 12;
-    gyroY = Math.max(-10, Math.min(10, (e.beta ?? 0) - 30)) / 10;
   };
 
   const onBtnMove = (e: MouseEvent) => {
@@ -147,15 +137,12 @@ export function startWelcomeEffects(
   };
 
   window.addEventListener('mousemove', onMove);
-  window.addEventListener('deviceorientation', onGyro);
   btn.addEventListener('mousemove', onBtnMove);
 
   const tick = () => {
     if (!root.isConnected) return;
-    const px = usingGyro ? gyroX : mouseNx;
-    const py = usingGyro ? gyroY : mouseNy;
-    const ox = px * depth * window.innerWidth;
-    const oy = py * depth * window.innerHeight;
+    const ox = mouseNx * depth * window.innerWidth;
+    const oy = mouseNy * depth * window.innerHeight;
     layer.style.transform = `translate(${ox}px,${oy}px)`;
     rafId = requestAnimationFrame(tick);
   };
@@ -164,7 +151,6 @@ export function startWelcomeEffects(
   return () => {
     cancelAnimationFrame(rafId);
     window.removeEventListener('mousemove', onMove);
-    window.removeEventListener('deviceorientation', onGyro);
     btn.removeEventListener('mousemove', onBtnMove);
   };
 }
