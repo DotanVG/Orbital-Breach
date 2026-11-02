@@ -45,18 +45,9 @@ export class WelcomeScreen {
       status.hidden = false;
       status.textContent = 'Loading the game, models and audio…';
       try {
-        // Prime audio before fullscreen or orientation permission consumes activation.
+        // Prime audio before fullscreen consumes activation.
         const preparation = this.onPrepare?.();
         if (this.fullscreenOnClick) enterFullscreen();
-        if (
-          typeof DeviceOrientationEvent !== 'undefined' &&
-          'requestPermission' in DeviceOrientationEvent &&
-          typeof (DeviceOrientationEvent as { requestPermission?: () => Promise<string> }).requestPermission === 'function'
-        ) {
-          (DeviceOrientationEvent as { requestPermission: () => Promise<string> })
-            .requestPermission()
-            .catch(() => {});
-        }
         await preparation;
       } catch {
         this.onLoadError?.();
