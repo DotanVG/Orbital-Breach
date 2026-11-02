@@ -28,15 +28,6 @@ export class WelcomeScreen {
     btn.addEventListener('mouseleave', () => this.cursor.setHot(false));
     btn.addEventListener('click', () => {
       if (this.fullscreenOnClick) enterFullscreen();
-      if (
-        typeof DeviceOrientationEvent !== 'undefined' &&
-        'requestPermission' in DeviceOrientationEvent &&
-        typeof (DeviceOrientationEvent as { requestPermission?: () => Promise<string> }).requestPermission === 'function'
-      ) {
-        (DeviceOrientationEvent as { requestPermission: () => Promise<string> })
-          .requestPermission()
-          .catch(() => {});
-      }
       this.fadeOut(() => {
         this.hide();
         this.onBreach?.();
