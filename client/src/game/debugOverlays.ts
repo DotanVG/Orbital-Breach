@@ -53,7 +53,7 @@ export class DebugOverlays {
     }
     if (!this.colliderEditor.isVisible()) return;
     const axes = input.getColliderEditorAxes();
-    this.colliderEditor.tick(player.getPosition(), axes);
+    this.colliderEditor.tick(player.getPosition(), player.getVisualQuaternion(), axes);
   }
 
   public tickGunTuning(input: InputManager, player: LocalPlayer): void {

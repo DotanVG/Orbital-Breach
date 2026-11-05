@@ -29,6 +29,10 @@ import type { MatchTeamSize } from "../../../shared/match";
 import { findMatchWinner } from "../../../shared/match-flow";
 import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { generateArenaLayout } from "../../../shared/arena-gen";
+import {
+  normalizeQuaternion,
+  quaternionFromYawPitchRoll,
+} from "../../../shared/hitZoneColliders";
 import { isCallSignClean } from "../../../shared/profanity";
 import {
   ACTOR_COLLISION_RADIUS,
@@ -147,6 +151,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     });
     this.onMessage<PlayerUpdateMessage>("player_update", messageSchema<PlayerUpdateMessage>(m =>
       [m.posX, m.posY, m.posZ, m.velX, m.velY, m.velZ, m.yaw].every(v => typeof v === "number" && Number.isFinite(v))
+      && optionalQuaternionOk([m.orientX, m.orientY, m.orientZ, m.orientW])
       && typeof m.phase === "string"), (client, message) => {
       this.handlePlayerUpdateMessage(client, message);
     });
@@ -347,6 +352,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     actor.velY = clampFinite(Number(message.velY), -VEL_CLAMP, VEL_CLAMP);
     actor.velZ = clampFinite(Number(message.velZ), -VEL_CLAMP, VEL_CLAMP);
     actor.yaw = clampFinite(Number(message.yaw), -Math.PI * 2, Math.PI * 2);
+    setActorOrientation(actor, orientationFromPlayerUpdate(message, actor.yaw));
     const rawPhase = String(message.phase ?? "");
     const prevPhase = actor.phase;
     actor.phase = normalizeAuthoritativePhase(rawPhase, actor);
@@ -741,6 +747,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       actor.kills = 0;
       actor.deaths = 0;
       actor.yaw = this.botSpawnYaw[member.team];
+      setActorOrientation(actor, quaternionFromYawPitchRoll(actor.yaw));
 
       if (member.team === 0) {
         const slot = slots0[team0Index] ?? slots0[slots0.length - 1] ?? center0;
@@ -1087,6 +1094,43 @@ function normalizeDirection(
     y: y / length,
     z: z / length,
   };
+}
+
+function optionalQuaternionOk(values: unknown[]): boolean {
+  const present = values.filter((value) => value !== undefined);
+  if (present.length === 0) return true;
+  return present.length === values.length
+    && present.every((value) => typeof value === "number" && Number.isFinite(value));
+}
+
+function orientationFromPlayerUpdate(
+  message: PlayerUpdateMessage,
+  yaw: number,
+): { x: number; y: number; z: number; w: number } {
+  if (
+    typeof message.orientX === "number"
+    && typeof message.orientY === "number"
+    && typeof message.orientZ === "number"
+    && typeof message.orientW === "number"
+  ) {
+    return normalizeQuaternion({
+      x: message.orientX,
+      y: message.orientY,
+      z: message.orientZ,
+      w: message.orientW,
+    });
+  }
+  return quaternionFromYawPitchRoll(yaw);
+}
+
+function setActorOrientation(
+  actor: Pick<ActorState, "orientX" | "orientY" | "orientZ" | "orientW">,
+  orientation: { x: number; y: number; z: number; w: number },
+): void {
+  actor.orientX = orientation.x;
+  actor.orientY = orientation.y;
+  actor.orientZ = orientation.z;
+  actor.orientW = orientation.w;
 }
 
 function breachExitYaw(axis: "x" | "y" | "z", openSign: 1 | -1): number {

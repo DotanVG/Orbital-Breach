@@ -77,9 +77,42 @@ describe("OnlineMatch", () => {
 
     match.dispose();
   });
+
+  it("forwards full remote orientation to avatar updates instead of yaw only", () => {
+    const match = new OnlineMatch(new THREE.Scene());
+    const orientZ = Math.sin(Math.PI / 4);
+    const orientW = Math.cos(Math.PI / 4);
+    match.applySnapshot(
+      [
+        createActor("remote-rolled", 1, {
+          orientX: 0,
+          orientY: 0,
+          orientZ,
+          orientW,
+        }),
+      ],
+      "local-player",
+    );
+
+    avatarUpdate.mockClear();
+    match.update(1 / 60);
+
+    expect(avatarUpdate).toHaveBeenCalledTimes(1);
+    const orientation = avatarUpdate.mock.calls[0][4] as THREE.Quaternion;
+    expect(orientation.x).toBeCloseTo(0, 6);
+    expect(orientation.y).toBeCloseTo(0, 6);
+    expect(orientation.z).toBeCloseTo(orientZ, 6);
+    expect(orientation.w).toBeCloseTo(orientW, 6);
+
+    match.dispose();
+  });
 });
 
-function createActor(id: string, team: 0 | 1): OnlineActorSnapshot {
+function createActor(
+  id: string,
+  team: 0 | 1,
+  orientation?: Pick<OnlineActorSnapshot, "orientX" | "orientY" | "orientZ" | "orientW">,
+): OnlineActorSnapshot {
   return {
     id,
     name: id,
@@ -92,6 +125,10 @@ function createActor(id: string, team: 0 | 1): OnlineActorSnapshot {
     velY: 0,
     velZ: 0,
     yaw: 0,
+    orientX: 0,
+    orientY: 0,
+    orientZ: 0,
+    orientW: 1,
     phase: "BREACH",
     frozen: false,
     leftArm: false,
@@ -100,5 +137,6 @@ function createActor(id: string, team: 0 | 1): OnlineActorSnapshot {
     rightLeg: false,
     kills: 0,
     deaths: 0,
+    ...orientation,
   };
 }

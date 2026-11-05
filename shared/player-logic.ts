@@ -8,6 +8,11 @@ import {
   ONE_LEG_HIT_LAUNCH_FACTOR,
   PLAYER_RADIUS,
 } from "./constants";
+import {
+  classifyHitZoneByColliders,
+  isQuaternionLike,
+  type QuaternionLike,
+} from "./hitZoneColliders";
 import type { Vec3 } from "./vec3";
 import { v3 } from "./vec3";
 
@@ -55,7 +60,37 @@ export interface CollisionBody {
   vel?: Vec3;
 }
 
+/**
+ * Classify which body zone a shot landed on.
+ *
+ * Preferred path: pass a full orientation `QuaternionLike` as `playerFacing`.
+ * The hit is classified against the symmetric colliders, so left and right
+ * stay mirrored for yaw, pitch, and roll. `hitOffsetY` / `hitRadius` are
+ * ignored on that path; the colliders carry their own positions and extents.
+ *
+ * Legacy path: pass a `Vec3` facing direction to use the yaw-only heuristic.
+ */
 export function classifyHitZone(
+  impactPoint: Vec3,
+  playerPos: Vec3,
+  playerFacing: Vec3 | QuaternionLike,
+  hitOffsetY = 0,
+  hitRadius = PLAYER_RADIUS,
+): HitZone {
+  if (isQuaternionLike(playerFacing)) {
+    return classifyHitZoneByColliders(impactPoint, playerPos, playerFacing);
+  }
+
+  return classifyHitZoneFromFacing(
+    impactPoint,
+    playerPos,
+    playerFacing,
+    hitOffsetY,
+    hitRadius,
+  );
+}
+
+function classifyHitZoneFromFacing(
   impactPoint: Vec3,
   playerPos: Vec3,
   playerFacing: Vec3,
