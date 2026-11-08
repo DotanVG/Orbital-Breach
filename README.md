@@ -232,7 +232,7 @@ rebuild after a major refactor.
 - `client/src/player/` contains local-player movement, animation, combat, spawn helpers, and third-person presentation.
 - `client/src/arena/` contains procedural arena layout, breach-room queries, portal barriers, and obstacle collision helpers.
 - `client/src/render/` contains the Three.js scene manager, HUD renderers, materials, and player-facing overlays.
-- `client/src/ui/` contains the DOM UI stack: menu, welcome flow, room browser, multiplayer lobby, mobile controls, session menu, credits, instructions, and debrief.
+- `client/src/ui/` contains the DOM UI stack: menu, room browser, multiplayer lobby, mobile controls, session menu, credits, instructions, and debrief.
 - `client/src/net/` contains Colyseus client wiring, endpoint resolution, room-directory polling, reconciliation helpers, and backend wake-up support.
 - `client/src/audio/` and `client/src/analytics/` contain sound playback and Vercel analytics wrappers.
 - `server/src/colyseus/` contains the production multiplayer runtime: authoritative room lifecycle, state schema, damage handling, and room directory.
@@ -251,7 +251,7 @@ Shipped and implemented:
 - Transport failures before a match trigger up to eight reconnect attempts with jittered exponential backoff (30 second cap). Mid-match drops get one attempt with a five-second deadline. Connection lost offers Retry and Back to menu; server/join rejections fail fast, successful retries clear invite URLs, and the status chip leaves space for phone HUD/menu controls. Rejoins target the same room with no seat reservation.
 - Matchmaking gateway failures (HTTP 502/503/504) use that retry budget. Recoverable room message errors keep the current session; known fatal session errors still disconnect. Reconnect browser QA uses stable test IDs and button roles.
 - Mobile touch controls, embed support for itch.io, and Vibe Jam portal handoff/return flow.
-- Landing artwork uses mouse parallax only; entering the game never requests motion/orientation permission. Mobile gameplay uses the existing touch controls.
+- Entering the game never requests motion or orientation permission. Mobile gameplay uses the existing touch controls.
 - Local-player frame math reuses Vector3/Quaternion/Euler scratch objects; regression tests cover allocations and the previous facing/grip results. Pointer-lock helpers tolerate missing APIs, legacy void results, and rejected promises.
 - Bar-hold bone offsets start from a captured standing pose, keeping the grip stable across repeated animation frames and release/re-grab without changing grab or limb-damage rules.
 - Responsive main menu: tablet and phone mode grids, wrapping utilities, scrollable secondary actions, and an initially visible solo launcher on short landscape screens. Built-app headless QA covers ten phone/tablet/desktop viewports.
@@ -259,7 +259,7 @@ Shipped and implemented:
 - Replay the entire guide and intro from **Tutorial** on the main menu (during a match: `Esc` → **Main Menu** → **Tutorial**; if Instructions is open, close it first). This resets onboarding and starts the existing empty arena with bots off. Instructions stay closed by default; the ordinary intro appears only once per browser origin.
 - Closing Instructions blurs its controls; Space cannot activate the launcher (use `H`, pointer, or Enter). H is ignored in menus, lobbies, match-end celebrations, and debriefs without changing input state.
 - Post-match debrief stats, awards, credits, analytics, and Speed Insights instrumentation.
-- Crawlable landing content with VideoGame/WebApplication schema and an on-demand gameplay screenshot.
+- The game opens on its main menu. Title, description, Open Graph, and VideoGame/WebApplication JSON-LD stay in the document head, with no separate landing page.
 - AI bot fill, ready checks, stale-player seat cleanup, and authoritative round/match scoring.
 - Multiplayer server payload validation, WebSocket origin checks, a 200-frame/second client cap, and loopback adversarial tests for malformed traffic and disconnect cleanup.
 - GitHub Actions typechecks the client and server and runs the Vitest suite on push and pull request. Lobby messages and `/matchmake` are rate-limited; the enforced content security policy frames the game for this origin and itch embedders.

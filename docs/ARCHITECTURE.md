@@ -128,7 +128,7 @@ runs authoritative state at `TICK_RATE = 20` Hz.
 | File | Responsibility |
 |---|---|
 | `menu/`, `menu.ts` | Main menu controller and DOM view: solo size selection, Join Online, Rooms & Invites, call sign, settings, credits |
-| `welcome/`, `welcome.ts` | First-launch welcome / call-sign capture |
+| `entryGesture.ts` | Audio unlock and optional fullscreen on the main-menu gesture; embed and portal entry do not request fullscreen |
 | `roomBrowser.ts` | Public room browser, public/private room creation, invite-link detection, direct join |
 | `multiplayerLobby.ts` | Online lobby: rosters, ready check, fill-bots / humans-only controls, invite URL, native share, QR code |
 | `mobileControls.ts` | Touch joystick, look area, GRAB / JUMP / LAUNCH / FIRE / camera-toggle buttons |

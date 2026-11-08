@@ -182,7 +182,7 @@ these paths.
 
 ### Desktop browser (Chrome + Firefox at minimum)
 
-- [ ] Boot loads, welcome / call-sign capture works on first visit.
+- [ ] Boot opens directly on the main menu (call sign lives there). No page appears before that menu. Audio and fullscreen wait for a menu click.
 - [ ] Solo: 1v1, 2v2, 5v5, 10v10, 20v20 — bots fill empty seats; LMB fires; E
       grabs; Space launches with mouse-Y aim power.
 - [ ] **Win path A — Breach**: float through enemy portal while at least one

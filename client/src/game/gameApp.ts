@@ -25,6 +25,7 @@ import { SceneManager } from "../render/scene";
 import { isEmbedMode } from "../embed";
 import { KillFeed } from "../ui/kill-feed";
 import { initGlobalCursor, type GlobalCursor } from "../ui/globalCursor";
+import { armMenuEntryGesture, shouldRequestFullscreenOnMenuGesture } from "../ui/entryGesture";
 import { isApparentFullscreen, isFullscreen, leaveFullscreen, requestFullscreen } from "../ui/fullscreen";
 import { MainMenu } from "../ui/menu";
 import { MobileControls } from "../ui/mobileControls";
@@ -453,7 +454,7 @@ export class App {
     this.tickCtx = this.createTickContext();
   }
 
-  public start(audioPrimed = false): void {
+  public start(): void {
     this.menu.onPlaySolo = (selection) => {
       this.startSoloMatch(selection);
     };
@@ -494,20 +495,24 @@ export class App {
       this.menu.show();
     }
 
-    const unlockAudio = (): void => {
-      void this.sound.unlock().then(() => {
-        this.sound.startMusic();
-        document.removeEventListener('pointerdown', unlockAudio);
-        document.removeEventListener('keydown', unlockAudio);
-        document.removeEventListener('touchstart', unlockAudio);
-      }).catch((err) => {
-        console.warn("[GameApp] Audio unlock failed:", err);
-      });
-    };
-    document.addEventListener('pointerdown', unlockAudio);
-    document.addEventListener('keydown', unlockAudio);
-    document.addEventListener('touchstart', unlockAudio, { passive: true });
-    if (audioPrimed) unlockAudio();
+    const unlockAudio = (): Promise<void> => this.sound.unlock().then(() => {
+      this.sound.startMusic();
+    }).catch((err: unknown) => {
+      console.warn("[GameApp] Audio unlock failed:", err);
+      throw err;
+    });
+    armMenuEntryGesture({
+      requestFullscreenOnGesture: shouldRequestFullscreenOnMenuGesture({
+        embedMode: this.embedMode,
+        portalArrival: this.portalArrivalPending,
+        fullscreenPreference: this.fullscreenPreference,
+      }),
+      isMenuVisible: () => this.menu.isVisible(),
+      unlockAudio,
+      requestFullscreen: () => {
+        void requestFullscreen();
+      },
+    });
 
     // Resume music when user returns to tab/app (AudioContext suspends on hide)
     document.addEventListener('visibilitychange', () => {

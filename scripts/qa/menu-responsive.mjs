@@ -59,7 +59,7 @@ try {
     await probe.route('**/*', isolateNetwork);
     await probe.goto(`${base}/?embed=1`);
     await probe.waitForFunction(() => document.querySelector('#menu-root')
-      || document.querySelector('#landing-status')?.textContent.includes('could not load'));
+      || document.querySelector('#boot-status')?.textContent.includes('could not load'));
     const usable = await probe.locator('#menu-root').count();
     await probe.close();
     if (!usable) throw new Error(`Built app could not load: ${probeErrors.join('; ') || 'JS/WebGL unavailable'}`);
@@ -88,7 +88,6 @@ try {
     const row = { viewport: `${width}x${height}`, engine: `${engine}${device ? ` / ${device}` : ''}`, buttons: [], errors };
     try {
       await page.goto(base, { waitUntil: 'load' });
-      await page.locator('#wc-btn').click();
       await page.locator('#btn-play-solo').waitFor({ state: 'visible', timeout: 60000 });
       await page.waitForFunction(() => [...document.fonts].some(font => font.family.includes('JetBrains Mono')));
       await page.evaluate(async () => {
