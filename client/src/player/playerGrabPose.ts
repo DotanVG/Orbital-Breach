@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { AnimatedRig } from './playerTypes';
+import type { AnimatedRig, PoseBoneName } from './playerTypes';
 import { getFloatLimbRotation } from './playerAimPose';
 
 /**
@@ -29,9 +29,22 @@ const LEFT_HAND_GRIP_FINGER_ADVANCE = 0.01;
 
 export const DEFAULT_LEFT_HAND_GRIP_LOCAL = new THREE.Vector3(-0.27, -0.322, 0.287);
 
+const BAR_HOLD_BONES: PoseBoneName[] = [
+  'Hips', 'Abdomen', 'Torso', 'Neck',
+  'ShoulderL', 'UpperArmL', 'LowerArmL', 'PalmL',
+  'UpperLegL', 'LowerLegL', 'FootL', 'UpperLegR', 'LowerLegR', 'FootR',
+];
+
 export function applyBarHoldPose(rigs: AnimatedRig[]): void {
   const leftArmHangingOffset = getFloatLimbRotation('LeftArmHanging');
   for (const rig of rigs) {
+    // Apply once from the canonical pose, never on last frame's offsets.
+    // Three.js does not rewrite bones whose animation track stayed constant.
+    for (const name of BAR_HOLD_BONES) {
+      const bone = rig.bones[name];
+      const base = rig.standingReferencePose[name];
+      if (bone && base) bone.quaternion.copy(base);
+    }
     applyPoseOffset(rig.bones.Hips, BAR_HOLD_HIPS_OFFSET);
     applyPoseOffset(rig.bones.Abdomen, BAR_HOLD_ABDOMEN_OFFSET);
     applyPoseOffset(rig.bones.Torso, BAR_HOLD_TORSO_OFFSET);
