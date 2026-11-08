@@ -34,7 +34,7 @@ describe('armMenuEntryGesture', () => {
   function arm(overrides: Partial<Parameters<typeof armMenuEntryGesture>[0]> = {}) {
     const target = new EventTarget();
     const unlockAudio = vi.fn(() => Promise.resolve());
-    const requestFullscreen = vi.fn();
+    const requestFullscreen = vi.fn(() => Promise.resolve(true));
     const dispose = armMenuEntryGesture({
       requestFullscreenOnGesture: true,
       isMenuVisible: () => true,
@@ -105,6 +105,44 @@ describe('armMenuEntryGesture', () => {
       expect(unlockAudio).toHaveBeenCalledOnce();
       await Promise.resolve();
     }
+  });
+
+  it('retries one rejected menu fullscreen gesture, then keeps the successful entry', async () => {
+    const requestFullscreen = vi.fn<() => Promise<boolean>>()
+      .mockRejectedValueOnce(new DOMException('injected rejection', 'NotAllowedError'))
+      .mockResolvedValueOnce(true);
+    const { target } = arm({ requestFullscreen });
+
+    dispatch(target, 'pointerdown');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(requestFullscreen).toHaveBeenCalledOnce();
+
+    dispatch(target, 'pointerdown');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(requestFullscreen).toHaveBeenCalledTimes(2);
+
+    dispatch(target, 'pointerdown');
+    expect(requestFullscreen).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not start a second fullscreen request while the first is still pending', async () => {
+    let settle: (entered: boolean) => void = () => {};
+    const requestFullscreen = vi.fn(() => new Promise<boolean>((resolve) => {
+      settle = resolve;
+    }));
+    const { target } = arm({ requestFullscreen });
+
+    dispatch(target, 'pointerdown');
+    dispatch(target, 'click');
+    expect(requestFullscreen).toHaveBeenCalledOnce();
+
+    settle(false);
+    await Promise.resolve();
+    dispatch(target, 'click');
+    await Promise.resolve();
+    expect(requestFullscreen).toHaveBeenCalledTimes(2);
   });
 
   it('retries audio after a rejected unlock and requests fullscreen only once', async () => {

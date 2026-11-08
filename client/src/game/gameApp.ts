@@ -25,6 +25,7 @@ import { SceneManager } from "../render/scene";
 import { isEmbedMode } from "../embed";
 import { KillFeed } from "../ui/kill-feed";
 import { initGlobalCursor, type GlobalCursor } from "../ui/globalCursor";
+import { revealBootCoverNow } from "../ui/bootCover";
 import { armMenuEntryGesture, shouldRequestFullscreenOnMenuGesture } from "../ui/entryGesture";
 import { isApparentFullscreen, isFullscreen, leaveFullscreen, requestFullscreen } from "../ui/fullscreen";
 import { MainMenu } from "../ui/menu";
@@ -488,6 +489,7 @@ export class App {
         teamSize: 1,
         noBots: true,
       });
+      revealBootCoverNow();
     } else if (this.embedMode) {
       this.cleanEmbedUrl();
       this.menu.show();
@@ -509,9 +511,7 @@ export class App {
       }),
       isMenuVisible: () => this.menu.isVisible(),
       unlockAudio,
-      requestFullscreen: () => {
-        void requestFullscreen();
-      },
+      requestFullscreen: () => requestFullscreen(),
     });
 
     // Resume music when user returns to tab/app (AudioContext suspends on hide)

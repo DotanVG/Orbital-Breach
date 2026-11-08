@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const html = readFileSync(new URL('../client/index.html', import.meta.url), 'utf8');
 const head = html.match(/<head>([\s\S]*?)<\/head>/)?.[1] ?? '';
-const body = html.match(/<body>([\s\S]*?)<\/body>/)?.[1] ?? '';
+const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/)?.[1] ?? '';
 const schema = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)![1]);
 const description = 'Orbital Breach is a zero-g multiplayer browser shooter with 1v1 to 20v20 team modes. Freeze rivals or breach portals in rounds; first to 5 points wins.';
 
@@ -26,6 +26,10 @@ describe('metadata-only direct entry', () => {
   });
 
   it('opens on the game shell with no landing page and no crawlable body copy', () => {
+    expect(html).toContain('<body class="boot-cover">');
+    expect(html).toMatch(/body\.boot-cover > canvas[\s\S]*display:\s*none/);
+    expect(html).toMatch(/body\.boot-cover > \.ob-hud-root[\s\S]*display:\s*none/);
+    expect(html).toMatch(/body\.boot-cover:not\(:has\(#menu-root\)\) \.gc-cursor[\s\S]*display:\s*none/);
     expect(body).toContain('<div id="app"></div>');
     expect(body).toContain('<script type="module" src="/src/main.ts"></script>');
     expect(body).not.toMatch(/<(?:main|h1|h2|p|ul|li|noscript|details|img)\b/i);

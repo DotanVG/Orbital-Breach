@@ -26,9 +26,11 @@ function showFailure(): void {
   document.body.append(status);
 }
 
-document.body.classList.add("game-active");
 try {
-  new App(cursor).start();
+  const app = new App(cursor);
+  app.start();
+  document.body.classList.add("game-active");
 } catch {
+  cursor.hide();
   showFailure();
 }

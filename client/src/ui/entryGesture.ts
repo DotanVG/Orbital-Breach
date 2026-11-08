@@ -13,7 +13,7 @@ export interface MenuEntryGestureOptions {
   requestFullscreenOnGesture: boolean;
   isMenuVisible: () => boolean;
   unlockAudio: () => Promise<void>;
-  requestFullscreen: () => void;
+  requestFullscreen: () => boolean | Promise<boolean>;
   target?: EventTarget;
 }
 
@@ -25,6 +25,7 @@ export function armMenuEntryGesture(options: MenuEntryGestureOptions): () => voi
   const target = options.target ?? document;
   let audioListening = true;
   let fullscreenListening = options.requestFullscreenOnGesture;
+  let fullscreenPending = false;
 
   const stopAudio = (): void => {
     if (!audioListening) return;
@@ -49,9 +50,22 @@ export function armMenuEntryGesture(options: MenuEntryGestureOptions): () => voi
   };
 
   const onFullscreen = (): void => {
-    if (!options.isMenuVisible()) return;
-    options.requestFullscreen();
-    stopFullscreen();
+    if (!options.isMenuVisible() || fullscreenPending) return;
+    fullscreenPending = true;
+    let result: boolean | Promise<boolean>;
+    try {
+      result = options.requestFullscreen();
+    } catch {
+      fullscreenPending = false;
+      return;
+    }
+    // A rejected or unsuccessful request stays armed for a later menu gesture.
+    void Promise.resolve(result).then((entered) => {
+      fullscreenPending = false;
+      if (entered) stopFullscreen();
+    }, () => {
+      fullscreenPending = false;
+    });
   };
 
   target.addEventListener('pointerdown', onAudio);

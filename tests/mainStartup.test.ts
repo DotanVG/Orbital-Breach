@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { cursor, construct, start, reload, wakeBackend, boot } = vi.hoisted(() => ({
-  cursor: {},
+const { cursor, construct, start, reload, wakeBackend, boot, order } = vi.hoisted(() => ({
+  cursor: { hide: vi.fn() },
   construct: vi.fn(),
   start: vi.fn(),
   reload: vi.fn(),
   wakeBackend: vi.fn(),
-  boot: { fail: false },
+  boot: { fail: false, active: false },
+  order: [] as string[],
 }));
 vi.mock('../client/node_modules/@vercel/analytics/dist/index.mjs', () => ({ inject: vi.fn() }));
 vi.mock('../client/node_modules/@vercel/speed-insights/dist/index.mjs', () => ({ injectSpeedInsights: vi.fn() }));
@@ -16,10 +17,12 @@ vi.mock('../client/src/net/wakeBackend', () => ({ wakeBackend }));
 vi.mock('../client/src/app', () => ({
   App: class {
     constructor(received: unknown) {
+      order.push(boot.active ? 'construct-active' : 'construct-covered');
       construct(received);
       if (boot.fail) throw new Error('webgl');
     }
     start(): void {
+      order.push(boot.active ? 'start-active' : 'start-covered');
       start();
     }
   },
@@ -39,6 +42,8 @@ describe('main startup routing', () => {
     vi.resetModules();
     vi.clearAllMocks();
     boot.fail = false;
+    boot.active = false;
+    order.length = 0;
     selectors.length = 0;
     appended.length = 0;
     vi.stubGlobal('location', { reload, search: '' });
@@ -66,7 +71,13 @@ describe('main startup routing', () => {
         return node;
       },
       body: {
-        classList: { add: addClass },
+        classList: {
+          add: (name: string) => {
+            if (name === 'game-active') boot.active = true;
+            addClass(name);
+          },
+          contains: (name: string) => name === 'game-active' && boot.active,
+        },
         append: (...nodes: BootNode[]) => {
           appended.push(...nodes);
         },
@@ -88,6 +99,7 @@ describe('main startup routing', () => {
       expect(construct).toHaveBeenCalledExactlyOnceWith(cursor);
       expect(start).toHaveBeenCalledOnce();
       expect(start.mock.calls[0]).toEqual([]);
+      expect(order).toEqual(['construct-covered', 'start-covered']);
       expect(addClass).toHaveBeenCalledExactlyOnceWith('game-active');
       expect(appended).toEqual([]);
     },
@@ -99,6 +111,8 @@ describe('main startup routing', () => {
 
     await import('../client/src/main');
 
+    expect(order).toEqual(['construct-covered']);
+    expect(addClass).not.toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();
     expect(appended).toHaveLength(1);
     const status = appended[0];
