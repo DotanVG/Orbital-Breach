@@ -13,6 +13,7 @@ export class WelcomeScreen {
   private root: HTMLDivElement | null = null;
   private stopEffects: (() => void) | null = null;
   private active = false;
+  private cancelFade: (() => void) | null = null;
 
   constructor(private readonly cursor: GlobalCursor) {}
 
@@ -26,7 +27,10 @@ export class WelcomeScreen {
 
     btn.addEventListener('mouseenter', () => this.cursor.setHot(true));
     btn.addEventListener('mouseleave', () => this.cursor.setHot(false));
+    let breached = false;
     btn.addEventListener('click', () => {
+      if (breached) return;
+      breached = true;
       if (this.fullscreenOnClick) enterFullscreen();
       this.fadeOut(() => {
         this.hide();
@@ -36,13 +40,32 @@ export class WelcomeScreen {
   }
 
   fadeOut(cb: () => void): void {
-    if (!this.root) { cb(); return; }
+    this.cancelFade?.();
+    if (!this.root || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      cb();
+      return;
+    }
     const root = this.root;
-    root.addEventListener('animationend', () => cb(), { once: true });
+    let completed = false;
+    const finish = () => {
+      if (completed) return;
+      cancel();
+      cb();
+    };
+    const timer = setTimeout(finish, 450); // 300 ms CSS fade + 150 ms margin.
+    const cancel = () => {
+      completed = true;
+      clearTimeout(timer);
+      root.removeEventListener('animationend', finish);
+      this.cancelFade = null;
+    };
+    this.cancelFade = cancel;
+    root.addEventListener('animationend', finish, { once: true });
     root.classList.add('wc-fadeout');
   }
 
   hide(): void {
+    this.cancelFade?.();
     this.stopEffects?.();
     this.stopEffects = null;
     this.root?.remove();
