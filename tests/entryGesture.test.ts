@@ -167,7 +167,7 @@ describe('armMenuEntryGesture', () => {
 });
 
 describe('entry wiring', () => {
-  it('keeps boot free of landing controls and arms fullscreen from the game menu gesture', () => {
+  it('keeps boot free of landing controls and leaves fullscreen to the welcome button', () => {
     const main = readFileSync(new URL('../client/src/main.ts', import.meta.url), 'utf8');
     const gameApp = readFileSync(new URL('../client/src/game/gameApp.ts', import.meta.url), 'utf8');
     const menuQa = readFileSync(new URL('../scripts/qa/menu-responsive.mjs', import.meta.url), 'utf8');
@@ -176,7 +176,9 @@ describe('entry wiring', () => {
     expect(menuQa).toContain('#menu-root');
     expect(menuQa).toContain('#btn-play-solo');
     expect(gameApp).toContain('armMenuEntryGesture');
-    expect(gameApp).toContain('shouldRequestFullscreenOnMenuGesture');
+    expect(gameApp).toContain('requestFullscreenOnGesture: false');
+    expect(gameApp).not.toContain('shouldRequestFullscreenOnMenuGesture');
+    expect(gameApp).toContain('this.welcome.fullscreenOnClick = this.fullscreenPreference');
     expect(gameApp).toMatch(/portalArrivalPending[\s\S]*embedMode[\s\S]*menu\.show\(\)/);
   });
 });

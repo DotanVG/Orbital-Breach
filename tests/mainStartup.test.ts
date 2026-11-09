@@ -88,7 +88,7 @@ describe('main startup routing', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it.each(['', '?embed=1', '?portal=true', '?embed=0&portal=false', '?embed=1&portal=true'])(
-    'boots %s directly into the game without a landing gesture',
+    'constructs the app under the boot cover for %s without a landing page',
     async (search) => {
       vi.stubGlobal('window', { location: { search } });
 
