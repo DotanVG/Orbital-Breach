@@ -30,9 +30,9 @@ export const IDENTITY_QUATERNION: QuaternionLike = {
 /**
  * Normalized symmetric alien colliders from the issue #137 editor export.
  * Left/right limbs mirror across x. Head and body stay on the centerline.
- * Authored space: +X is the model's left arm, -X its right arm; legs use the
- * opposite x sign and still mirror as a pair. These offsets are model-local
- * and must be rotated by the alien's visual quaternion.
+ * After ALIEN_ROTATION_Y (PI), model left (UpperArmL/UpperLegL) is -X,
+ * model right is +X. These offsets are player-local, with the model's asset
+ * transform already accounted for; rotate them by the visual quaternion once.
  */
 export const defaultHitZoneColliders: HitZoneCollider[] = [
   {
@@ -55,7 +55,7 @@ export const defaultHitZoneColliders: HitZoneCollider[] = [
     id: "col_3",
     zone: "leftArm",
     shape: "box",
-    position: { x: 0.1375, y: -0.4, z: 0.0175 },
+    position: { x: -0.1375, y: -0.4, z: 0.0175 },
     size: { x: 0.051, y: 0.115, z: 0.093 },
     rotation: { x: 0, y: 0, z: 0 },
   },
@@ -63,7 +63,7 @@ export const defaultHitZoneColliders: HitZoneCollider[] = [
     id: "col_4",
     zone: "rightArm",
     shape: "box",
-    position: { x: -0.1375, y: -0.4, z: 0.0175 },
+    position: { x: 0.1375, y: -0.4, z: 0.0175 },
     size: { x: 0.051, y: 0.115, z: 0.093 },
     rotation: { x: 0, y: 0, z: 0 },
   },
@@ -151,11 +151,7 @@ export function classifyHitZoneByColliders(
   orientation: QuaternionLike,
   colliders: readonly HitZoneCollider[] = defaultHitZoneColliders,
 ): HitZone {
-  const normalizedOrientation = normalizeQuaternion(orientation);
-  const localPoint = rotateByQuaternion(
-    conjugateQuaternion(normalizedOrientation),
-    v3.sub(impactPoint, playerPos),
-  );
+  const localPoint = worldPointToPlayerLocal(impactPoint, playerPos, orientation);
 
   let bestZone: HitZone = colliders[0]?.zone ?? "body";
   let bestDistance = Number.POSITIVE_INFINITY;
@@ -170,6 +166,35 @@ export function classifyHitZoneByColliders(
   }
 
   return bestZone;
+}
+
+/** Inverse of the visual root's full rigid transform, shared by hit queries. */
+export function worldPointToPlayerLocal(
+  point: Vec3,
+  playerPos: Vec3,
+  orientation: QuaternionLike,
+): Vec3 {
+  return rotateByQuaternion(
+    conjugateQuaternion(normalizeQuaternion(orientation)),
+    v3.sub(point, playerPos),
+  );
+}
+
+/** Old/partial snapshots follow yaw until a complete orientation arrives. */
+export function orientationFromSnapshot(actor: {
+  yaw: number;
+  orientX?: unknown;
+  orientY?: unknown;
+  orientZ?: unknown;
+  orientW?: unknown;
+}): QuaternionLike {
+  const components = [actor.orientX, actor.orientY, actor.orientZ, actor.orientW];
+  if (!components.every((value) => typeof value === "number" && Number.isFinite(value))) {
+    return quaternionFromYawPitchRoll(actor.yaw);
+  }
+  const [x, y, z, w] = components as number[];
+  if (Math.hypot(x, y, z, w) <= 1e-8) return quaternionFromYawPitchRoll(actor.yaw);
+  return normalizeQuaternion({ x, y, z, w });
 }
 
 function toColliderLocalPoint(point: Vec3, collider: HitZoneCollider): Vec3 {

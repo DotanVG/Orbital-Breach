@@ -80,14 +80,14 @@ describe("classifyHitZone", () => {
 
   it("rotates arm zones with the model so a fixed world shot swaps arms at 180 yaw", () => {
     const worldShot = { x: 0.1375, y: -0.4, z: 0.0175 };
-    expect(classifyHitZone(worldShot, playerPos, IDENTITY_QUATERNION)).toBe("leftArm");
-    expect(classifyHitZone(worldShot, playerPos, quaternionFromYawPitchRoll(Math.PI))).toBe("rightArm");
+    expect(classifyHitZone(worldShot, playerPos, IDENTITY_QUATERNION)).toBe("rightArm");
+    expect(classifyHitZone(worldShot, playerPos, quaternionFromYawPitchRoll(Math.PI))).toBe("leftArm");
   });
 
   it("keeps arm zones attached through a 90-degree yaw", () => {
     const yaw90 = quaternionFromYawPitchRoll(Math.PI / 2);
-    expect(classifyHitZone({ x: 0.0175, y: -0.4, z: -0.1375 }, playerPos, yaw90)).toBe("leftArm");
-    expect(classifyHitZone({ x: -0.0175, y: -0.4, z: 0.1375 }, playerPos, yaw90)).toBe("rightArm");
+    expect(classifyHitZone({ x: 0.0175, y: -0.4, z: -0.1375 }, playerPos, yaw90)).toBe("rightArm");
+    expect(classifyHitZone({ x: -0.0175, y: -0.4, z: 0.1375 }, playerPos, yaw90)).toBe("leftArm");
   });
 });
 

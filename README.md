@@ -262,6 +262,7 @@ Shipped and implemented:
 - Multiplayer server payload validation, WebSocket origin checks, a 200-frame/second client cap, and loopback adversarial tests for malformed traffic and disconnect cleanup.
 - GitHub Actions typechecks the client and server and runs the Vitest suite on push and pull request. Lobby messages and `/matchmake` are rate-limited; the enforced content security policy frames the game for this origin and itch embedders.
 - Alien hitboxes are a symmetric collider set: left and right limbs mirror across the centerline, head and body stay centered, and the colliders rotate with the alien, including remote players.
+- A seeded SO(3) regression guard checks all six collider frames against GLB rest-bone bindings through grab, launch, and spin. Model-left arm damage releases a grab; snapshots missing orientation follow yaw until the full quaternion arrives.
 
 Pending or transitional:
 

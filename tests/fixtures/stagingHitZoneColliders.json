@@ -1,0 +1,12 @@
+{
+  "source": "B:/Code/OB-Staging-QA-20261109/client/src/player/hitZoneColliders.ts",
+  "description": "Numeric comparison data only; no staging source or runtime logic copied.",
+  "colliders": [
+    { "id": "col_1", "zone": "head", "shape": "sphere", "position": { "x": 0, "y": 0.12, "z": 0 }, "size": { "x": 0.18, "y": 0.18, "z": 0.18 }, "rotation": { "x": 0, "y": 0, "z": 0 } },
+    { "id": "col_2", "zone": "body", "shape": "box", "position": { "x": 0, "y": -0.18, "z": 0 }, "size": { "x": 0.19, "y": 0.23, "z": 0.14 }, "rotation": { "x": 0, "y": 0, "z": 0 } },
+    { "id": "col_3", "zone": "leftArm", "shape": "box", "position": { "x": -0.33, "y": -0.14, "z": 0 }, "size": { "x": 0.13, "y": 0.21, "z": 0.10 }, "rotation": { "x": 0, "y": 0, "z": 0 } },
+    { "id": "col_4", "zone": "rightArm", "shape": "box", "position": { "x": 0.33, "y": -0.14, "z": 0 }, "size": { "x": 0.13, "y": 0.21, "z": 0.10 }, "rotation": { "x": 0, "y": 0, "z": 0 } },
+    { "id": "col_5", "zone": "leftLeg", "shape": "box", "position": { "x": -0.13, "y": -0.54, "z": 0 }, "size": { "x": 0.10, "y": 0.23, "z": 0.10 }, "rotation": { "x": 0, "y": 0, "z": 0 } },
+    { "id": "col_6", "zone": "rightLeg", "shape": "box", "position": { "x": 0.13, "y": -0.54, "z": 0 }, "size": { "x": 0.10, "y": 0.23, "z": 0.10 }, "rotation": { "x": 0, "y": 0, "z": 0 } }
+  ]
+}

@@ -28,12 +28,12 @@ function toPlainQuat(q: THREE.Quaternion): QuaternionLike {
 }
 
 // Representative local-space points, one per zone, taken from the
-// defaultHitZoneColliders layout (local +X is the model's LEFT side).
+// defaultHitZoneColliders layout (after the asset rotation, model left is -X).
 const localZonePoints: Array<{ zone: string; point: Vec3 }> = [
   { zone: "head", point: { x: 0, y: -0.16, z: 0 } },
   { zone: "body", point: { x: 0, y: -0.45, z: 0 } },
-  { zone: "leftArm", point: { x: 0.17, y: -0.4, z: 0.0175 } },
-  { zone: "rightArm", point: { x: -0.17, y: -0.4, z: 0.0175 } },
+  { zone: "leftArm", point: { x: -0.17, y: -0.4, z: 0.0175 } },
+  { zone: "rightArm", point: { x: 0.17, y: -0.4, z: 0.0175 } },
   { zone: "leftLeg", point: { x: -0.0975, y: -0.66, z: -0.01 } },
   { zone: "rightLeg", point: { x: 0.0975, y: -0.66, z: -0.01 } },
 ];

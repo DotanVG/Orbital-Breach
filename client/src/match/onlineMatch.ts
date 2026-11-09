@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { HITBOX_OFFSET_Y, HITBOX_RADIUS } from "../../../shared/constants";
 import type { OnlineActorSnapshot } from "../../../shared/multiplayer";
+import { orientationFromSnapshot } from "../../../shared/hitZoneColliders";
 import { classifyHitZone, type HitZone } from "../../../shared/player-logic";
 import type { PlayerPhase } from "../../../shared/schema";
 import {
@@ -225,13 +226,10 @@ function cloneSnapshot(actor: OnlineActorSnapshot): OnlineActorSnapshot {
   return { ...actor };
 }
 
-function snapshotOrientation(
-  actor: Pick<OnlineActorSnapshot, "orientX" | "orientY" | "orientZ" | "orientW">,
+export function snapshotOrientation(
+  actor: Pick<OnlineActorSnapshot, "yaw"> & Partial<Pick<OnlineActorSnapshot, "orientX" | "orientY" | "orientZ" | "orientW">>,
   out: THREE.Quaternion = new THREE.Quaternion(),
 ): THREE.Quaternion {
-  out.set(actor.orientX, actor.orientY, actor.orientZ, actor.orientW);
-  if (out.lengthSq() <= 1e-8) {
-    return out.identity();
-  }
-  return out.normalize();
+  const q = orientationFromSnapshot(actor);
+  return out.set(q.x, q.y, q.z, q.w);
 }
