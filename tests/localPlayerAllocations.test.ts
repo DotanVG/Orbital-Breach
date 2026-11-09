@@ -11,6 +11,7 @@ import { breachRoomFloorY } from '../client/src/player/playerSpawn';
 import { integrateBreachRoom } from '../client/src/physics';
 import { BREACH_GRAVITY, BREACH_JUMP_SPEED, BREACH_WALK_SPEED } from '../shared/constants';
 import { applyArmRecoil, applyFloatArmTilt, getFloatLimbRotation } from '../client/src/player/playerAimPose';
+import { barHoldQuaternion } from '../client/src/player/playerGrabPose';
 
 const allocations = vi.hoisted(() => ({ Vector3: 0, Quaternion: 0, Euler: 0 }));
 vi.mock('three', async (importOriginal) => {
@@ -111,7 +112,7 @@ function oldFacing(phase: PlayerPhase, camera: THREE.Quaternion, previous: THREE
 
 describe('LocalPlayer math preservation', () => {
   it.each<PlayerPhase>(['BREACH', 'FLOATING', 'GRABBING', 'AIMING', 'FROZEN', 'RESPAWNING'])(
-    'matches old facing and grip math across orientations and dt in %s', (phase) => {
+    'preserves facing and grip math with the bar-aligned hold frame in %s', (phase) => {
       const { internals, player, cam } = fixture(phase);
       const expected = new THREE.Quaternion();
       const camera = new THREE.Quaternion();
@@ -120,6 +121,7 @@ describe('LocalPlayer math preservation', () => {
         camera.setFromEuler(new THREE.Euler(...angles as [number, number, number], 'YXZ'));
         for (const dt of [0, 1 / 144, 1 / 60, 0.2]) {
           oldFacing(phase, camera, expected, dt);
+          if (phase === 'GRABBING' || phase === 'AIMING') barHoldQuaternion(expected,new THREE.Vector3(1,0,0),expected);
           expect(internals.computeVisualQuaternion(cam, dt).toArray()).toEqual(expected.toArray());
           for (const grip of [null, new THREE.Vector3(-0.7, 0.4, 0.2)]) {
             player.grabbedBarPos = new THREE.Vector3(4, -3, 2);

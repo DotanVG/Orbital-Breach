@@ -16,6 +16,10 @@ const BREACH_BREATH_TORSO_Y = 0.008;
 const BREACH_BREATH_NECK_Y = 0.004;
 
 const POSE_BONE_NAMES: PoseBoneName[] = [
+  ...(['L', 'R'] as const).flatMap(side => [
+    ...[1,2,3,4].flatMap(i => [`PinkyFinger${i}${side}`, `MiddleFinger${i}${side}`]),
+    ...[1,2,3].map(i => `Thumb${i}${side}`),
+  ] as PoseBoneName[]),
   'Hips',
   'Abdomen',
   'Torso',
@@ -141,10 +145,11 @@ export class PlayerAnimationController {
    * locking the grab pose).
    */
   public snapToAnimation(name: string): void {
-    if (this.currentAnimation !== name) {
-      this.setTargetAnimation(name);
-    }
+    this.currentAnimation = name;
     for (const rig of this.rigs) {
+      for (const action of rig.actions.values()) action.stop();
+      const action = rig.actions.get(name) ?? rig.actions.get(ANIM_IDLE_HOLD);
+      action?.reset().setEffectiveWeight(1).play();
       rig.mixer.setTime(0);
     }
   }

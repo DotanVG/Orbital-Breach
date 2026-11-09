@@ -32,6 +32,8 @@ interface FakePlayer {
   resetForNewRound: ReturnType<typeof vi.fn>;
   team: 0 | 1;
   applyHit: ReturnType<typeof vi.fn>;
+  syncWorldPosition: () => void;
+  getVisualQuaternion: () => THREE.Quaternion;
   getPosition: () => THREE.Vector3;
 }
 
@@ -46,6 +48,8 @@ function createFakePlayer(team: 0 | 1 = 0): FakePlayer {
     resetForNewRound: vi.fn(),
     team,
     applyHit: vi.fn(() => false),
+    syncWorldPosition: () => {},
+    getVisualQuaternion: () => new THREE.Quaternion(),
     getPosition: () => new THREE.Vector3(0, 0, 0),
   };
 }
@@ -110,7 +114,7 @@ describe("LocalMatch", () => {
     match.handleProjectileHit(
       {
         direction: new THREE.Vector3(1, 0, 0),
-        impactPoint: enemyBot.phys.pos.clone().add(new THREE.Vector3(0, -0.7, 0)),
+        impactPoint: enemyBot.phys.pos.clone().add(new THREE.Vector3(-0.07, -0.563, 0.283).applyQuaternion(new THREE.Quaternion().setFromEuler(new THREE.Euler(0,(enemyBot as any).rot.yaw,0)))),
         ownerId: "local-player",
         targetId: enemyBot.id,
       },
@@ -146,8 +150,8 @@ describe("LocalMatch", () => {
     const bots = (match as unknown as { bots: Array<{ phys: { pos: THREE.Vector3 } }> }).bots;
 
     expect(playerSpawn).toBeDefined();
-    expect(playerSpawn.y).toBeCloseTo(-2.12, 4);
-    expect(bots.every((bot) => Math.abs(bot.phys.pos.y + 2.12) < 1e-4)).toBe(true);
+    expect(playerSpawn.y).toBeCloseTo(-2.358, 4);
+    expect(bots.every((bot) => Math.abs(bot.phys.pos.y + 2.358) < 1e-4)).toBe(true);
   });
 
   it("emits a score event for breach wins", () => {
@@ -252,6 +256,7 @@ describe("LocalMatch", () => {
 
     const player = createFakePlayer();
     const arena = {
+      advancePlayer: () => {},
       bounceObstacles: () => {},
       getAllBarGrabPoints: () => [],
       getBreachOpenAxis: () => "x" as const,

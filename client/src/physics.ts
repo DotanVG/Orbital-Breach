@@ -1,15 +1,12 @@
+import { bounceBodyArena, clampBodyBreach } from '../../shared/bodyCollider';
+import { IDENTITY_QUATERNION, type QuaternionLike } from '../../shared/hitZoneColliders';
 import * as THREE from 'three';
 import {
-  ARENA_SIZE,
-  PLAYER_RADIUS,
   ZERO_G_DAMPING,
   MAX_LAUNCH_SPEED,
   BREACH_GRAVITY,
   BREACH_JUMP_SPEED,
   BREACH_WALK_SPEED,
-  BREACH_ROOM_W,
-  BREACH_ROOM_H,
-  BREACH_ROOM_D,
 } from '../../shared/constants';
 import { clampMagnitude } from './util/math';
 
@@ -48,30 +45,10 @@ export function bounceArena(
   portalAxis?: 'x' | 'y' | 'z',
   portalPerpAxis?: 'x' | 'z',
   portalFacesOpen?: { positive: boolean; negative: boolean },
+  orientation: QuaternionLike = IDENTITY_QUATERNION,
+  phase = 'BREACH',
 ): void {
-  const limit = ARENA_SIZE / 2 - PLAYER_RADIUS;
-  for (const ax of ['x', 'y', 'z'] as const) {
-    if (ax === portalAxis && portalPerpAxis !== undefined) {
-      // Only allow passthrough when player is within the portal opening
-      const inWidth  = Math.abs(state.pos[portalPerpAxis]) < BREACH_ROOM_W / 2;
-      const inHeight = Math.abs(state.pos.y)               < BREACH_ROOM_H / 2;
-      if (inWidth && inHeight) {
-        const withinArena = Math.abs(state.pos[ax]) <= limit;
-        const positiveFaceOpen = state.pos[ax] > limit && portalFacesOpen?.positive;
-        const negativeFaceOpen = state.pos[ax] < -limit && portalFacesOpen?.negative;
-        if (withinArena || positiveFaceOpen || negativeFaceOpen) continue;
-      }
-      // Outside the opening → fall through to normal bounce
-    }
-    if (state.pos[ax] > limit) {
-      state.pos[ax] = limit;
-      if (state.vel[ax] > 0) state.vel[ax] *= -1;
-    }
-    if (state.pos[ax] < -limit) {
-      state.pos[ax] = -limit;
-      if (state.vel[ax] < 0) state.vel[ax] *= -1;
-    }
-  }
+  bounceBodyArena(state, orientation, phase, portalAxis, portalPerpAxis, portalFacesOpen);
 }
 
 /**
@@ -117,41 +94,8 @@ export function clampBreachRoom(
   openAxis: 'x' | 'y' | 'z',
   openSign: 1 | -1,
   portalOpen = true,
+  orientation: QuaternionLike = IDENTITY_QUATERNION,
+  phase = 'BREACH',
 ): void {
-  // Half-extents depend on room orientation: the open axis carries depth (D),
-  // the perpendicular horizontal axis carries width (W), y always carries height (H).
-  // Extra 0.3 margin on depth to prevent player model clipping through back wall
-  const depthHalf  = BREACH_ROOM_D / 2 - PLAYER_RADIUS - 0.3;
-  const widthHalf  = BREACH_ROOM_W / 2 - PLAYER_RADIUS;
-  const heightHalf = BREACH_ROOM_H / 2 - PLAYER_RADIUS;
-  const half = openAxis === 'x'
-    ? { x: depthHalf, y: heightHalf, z: widthHalf }   // depth along X, width along Z
-    : openAxis === 'z'
-      ? { x: widthHalf, y: heightHalf, z: depthHalf } // depth along Z, width along X
-      : { x: widthHalf, y: depthHalf, z: widthHalf }; // depth along Y
-
-  for (const ax of ['x', 'y', 'z'] as const) {
-    const lo = center[ax] - half[ax];
-    const hi = center[ax] + half[ax];
-
-    // Skip the open (portal-facing) side so player can exit into arena
-    if (portalOpen && ax === openAxis && openSign === 1 && state.pos[ax] > hi) continue;
-    if (portalOpen && ax === openAxis && openSign === -1 && state.pos[ax] < lo) continue;
-
-    if (state.pos[ax] < lo) {
-      state.pos[ax] = lo;
-      if (state.vel[ax] < 0) state.vel[ax] = 0;
-    }
-    if (state.pos[ax] > hi) {
-      state.pos[ax] = hi;
-      if (state.vel[ax] > 0) state.vel[ax] = 0;
-    }
-  }
-
-  // Hard floor: absolute stop
-  const floor = center.y - half.y;
-  if (state.pos.y <= floor) {
-    state.pos.y = floor;
-    if (state.vel.y < 0) state.vel.y = 0;
-  }
+  clampBodyBreach(state, center, openAxis, openSign, portalOpen, orientation, phase);
 }

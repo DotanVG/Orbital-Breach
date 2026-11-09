@@ -151,6 +151,11 @@ Production online multiplayer requires `VITE_COLYSEUS_ENDPOINT` on the client. T
 
 ## Development Tooling
 
+### DEV collider debugging
+
+- `[` toggles body boxes, hit zones and grab reach; `]` toggles the pose collider editor.
+- `\` toggles the exposed 12 cm of grab bars for palm close-ups, retaining the shaft. Grip points and collision stay fixed. QA can call `debugOverlays.setBarGrabTipsVisible(false)` (or `true` to restore); the key and visibility mutations are guarded by `import.meta.env.DEV` and inactive in production.
+
 This repo uses an AI-assisted workflow driven by [Symphony](https://github.com/openai/symphony), [Claude Code](https://docs.anthropic.com/claude-code), and Codex-compatible repo-local skills.
 
 | File / Dir | Purpose |
@@ -253,7 +258,7 @@ Shipped and implemented:
 - Mobile touch controls, embed support for itch.io, and Vibe Jam portal handoff/return flow.
 - Entering the game never requests motion or orientation permission. Mobile gameplay uses the existing touch controls.
 - Local-player frame math reuses Vector3/Quaternion/Euler scratch objects; regression tests cover allocations and the previous facing/grip results. Pointer-lock helpers tolerate missing APIs, legacy void results, and rejected promises.
-- Bar-hold bone offsets start from a captured standing pose, keeping the grip stable across repeated animation frames and release/re-grab without changing grab or limb-damage rules.
+- Bar holds raise both palms to the body-facing surface of the bar, with a reclined torso keeping the head and helmet clear. A bar-aligned frame supports vertical and diagonal bars while preserving the preferred up direction. CPU-skinned body/helmet tests guard mesh clearance, raised palms and fitted hang colliders. Grab reach and limb-damage rules are unchanged; obstructed holds release to keep bodies out of solid geometry.
 - Responsive main menu: tablet and phone mode grids, wrapping utilities, scrollable secondary actions, and an initially visible solo launcher on short landscape screens. Built-app headless QA covers ten phone/tablet/desktop viewports.
 - Visual first-flight onboarding: rail/launch/freeze/gate highlights, named gate and rail distance markers, a brief dismissible intro, and an Instructions button (`H`, close with `H`/`Esc`). Reduced motion keeps highlights static; completed actions are remembered across rounds and the completed guide across visits.
 - Replay the entire guide and intro from **Tutorial** on the main menu (during a match: `Esc` → **Main Menu** → **Tutorial**; if Instructions is open, close it first). This resets onboarding and starts the existing empty arena with bots off. Instructions stay closed by default; the ordinary intro appears only once per browser origin.
@@ -264,6 +269,11 @@ Shipped and implemented:
 - AI bot fill, ready checks, stale-player seat cleanup, and authoritative round/match scoring.
 - Multiplayer server payload validation, WebSocket origin checks, a 200-frame/second client cap, and loopback adversarial tests for malformed traffic and disconnect cleanup.
 - GitHub Actions typechecks the client and server and runs the Vitest suite on push and pull request. Lobby messages and `/matchmake` are rate-limited; the enforced content security policy frames the game for this origin and itch embedders.
+- World collision uses shared, rotated body boxes fitted to the alien instead of a 0.8 m anchor sphere. Client prediction, server bots and stale actors share wall/portal/obstacle contacts and bounded-displacement substeps, including launch clearance. Spawn feet rest on the breach floor.
+- The swimming box uses asymmetric sampled supports to close the pistol-side wall gap, with at most 3 cm of swinging limb graze. CPU-skinned face-contact tests cover the full swim cycle and freeze transitions, exact obstacle separation, and thin-wall parity at maximum speed. The frozen box conservatively encloses upright, swimming and hanging crossfades.
+- Hit zones are fitted from CPU-sampled Alien.glb animation channels for idle hold, swimming and a deterministic two-handed bar pose. Projectile broadphase and actor separation follow the rotated body centre. F1 model laterality and L1 yaw fallback remain guarded.
+- DEV `[` shows the green body box, coloured pose zones and a faint yellow 3 m grab reach; `]` edits the selected phase's table; `\` hides exposed bar tips for palm inspection. The 377-orientation guard also checks independent GLB joint/mesh projections and grip alignment.
+
 
 Pending or transitional:
 

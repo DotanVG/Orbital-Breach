@@ -1,11 +1,11 @@
 import * as THREE from "three";
-import { HITBOX_OFFSET_Y, HITBOX_RADIUS } from "../../../shared/constants";
+import { projectileBodyTarget } from "../../../shared/projectileCollider";
 import type { OnlineActorSnapshot } from "../../../shared/multiplayer";
+import { quaternionFromYawPitchRoll, orientationFromSnapshot } from "../../../shared/hitZoneColliders";
 import { classifyHitZone, type HitZone } from "../../../shared/player-logic";
 import type { PlayerPhase } from "../../../shared/schema";
 import {
   predictPosition,
-  reconcileAngle,
   reconcileVector,
 } from "../net/reconciliation";
 import { buildHudRosters } from "./rosterView";
@@ -22,8 +22,8 @@ export interface OnlineProjectileTarget {
 interface RemoteActorTrack {
   avatar: SimulatedPlayerAvatar;
   renderPos: THREE.Vector3;
+  renderOrientation: THREE.Quaternion;
   renderVel: THREE.Vector3;
-  renderYaw: number;
   snapshot: OnlineActorSnapshot;
   receivedAtMs: number;
 }
@@ -31,6 +31,7 @@ interface RemoteActorTrack {
 export class OnlineMatch {
   private celebratingTeam: 0 | 1 | null = null;
   private tracks = new Map<string, RemoteActorTrack>();
+  private readonly orientationScratch = new THREE.Quaternion();
 
   public constructor(private scene: THREE.Scene) {}
 
@@ -54,7 +55,7 @@ export class OnlineMatch {
           avatar: new SimulatedPlayerAvatar(this.scene, actor.team, actor.name),
           renderPos: new THREE.Vector3(actor.posX, actor.posY, actor.posZ),
           renderVel: new THREE.Vector3(actor.velX, actor.velY, actor.velZ),
-          renderYaw: actor.yaw,
+          renderOrientation: snapshotOrientation(actor),
           snapshot,
           receivedAtMs: nowMs,
         });
@@ -73,7 +74,7 @@ export class OnlineMatch {
       ) {
         existing.renderPos.copy(authoritativePos);
         existing.renderVel.set(actor.velX, actor.velY, actor.velZ);
-        existing.renderYaw = actor.yaw;
+        existing.renderOrientation.copy(snapshotOrientation(actor));
       }
     }
   }
@@ -101,7 +102,9 @@ export class OnlineMatch {
       const previousPos = track.renderPos.clone();
       const sharpness = track.snapshot.phase === "FROZEN" ? 20 : 12;
       reconcileVector(track.renderPos, predictedPos, dt, sharpness, 3.5);
-      track.renderYaw = reconcileAngle(track.renderYaw, track.snapshot.yaw, dt, 16);
+      const targetOrientation = snapshotOrientation(track.snapshot, this.orientationScratch);
+      const orientationAlpha = 1 - Math.pow(0.0008, dt);
+      track.renderOrientation.slerp(targetOrientation, orientationAlpha);
 
       if (dt > 1e-5) {
         track.renderVel.copy(track.renderPos).sub(previousPos).multiplyScalar(1 / dt);
@@ -119,7 +122,7 @@ export class OnlineMatch {
           rightLeg: track.snapshot.rightLeg,
         },
         track.snapshot.phase as PlayerPhase,
-        track.renderYaw,
+        track.renderOrientation,
         dt,
         track.renderVel.length(),
         this.celebratingTeam === track.snapshot.team,
@@ -151,26 +154,26 @@ export class OnlineMatch {
         z: track.renderPos.z,
       },
       {
-        x: -Math.sin(track.renderYaw),
-        y: 0,
-        z: -Math.cos(track.renderYaw),
+        x: track.renderOrientation.x,
+        y: track.renderOrientation.y,
+        z: track.renderOrientation.z,
+        w: track.renderOrientation.w,
       },
-      HITBOX_OFFSET_Y,
-      HITBOX_RADIUS,
+      undefined, undefined, track.snapshot.phase,
     );
+  }
+
+  public getDebugActors() {
+    return [...this.tracks.values()].map(t=>({position:t.renderPos,orientation:t.renderOrientation,phase:t.snapshot.phase}));
   }
 
   public getProjectileTargets(): OnlineProjectileTarget[] {
     return Array.from(this.tracks.values()).map((track) => ({
       id: track.snapshot.id,
-      pos: new THREE.Vector3(
-        track.renderPos.x,
-        track.renderPos.y + HITBOX_OFFSET_Y,
-        track.renderPos.z,
-      ),
+      pos: new THREE.Vector3().copy(projectileBodyTarget(track.renderPos,track.renderOrientation,track.snapshot.phase).center),
       team: track.snapshot.team,
       active: !track.snapshot.frozen && track.snapshot.phase !== "RESPAWNING" && track.snapshot.phase !== "BREACH",
-      radius: HITBOX_RADIUS,
+      radius: projectileBodyTarget(track.renderPos,track.renderOrientation,track.snapshot.phase).radius,
     }));
   }
 
@@ -222,4 +225,12 @@ export class OnlineMatch {
 
 function cloneSnapshot(actor: OnlineActorSnapshot): OnlineActorSnapshot {
   return { ...actor };
+}
+
+export function snapshotOrientation(
+  actor: Pick<OnlineActorSnapshot, "yaw"> & Partial<Pick<OnlineActorSnapshot, "orientX" | "orientY" | "orientZ" | "orientW" | "phase">>,
+  out: THREE.Quaternion = new THREE.Quaternion(),
+): THREE.Quaternion {
+  const q = actor.phase === "BREACH" ? quaternionFromYawPitchRoll(actor.yaw) : orientationFromSnapshot(actor);
+  return out.set(q.x, q.y, q.z, q.w);
 }

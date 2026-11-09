@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { hitZoneCollidersForPhase } from '../../../shared/hitZoneColliders';
 import type { HitZone } from '../player/playerTypes';
 import {
   type ColliderShape,
@@ -75,7 +76,7 @@ function makeCapsuleMesh(col: HitZoneCollider): THREE.Mesh {
   return new THREE.Mesh(geo, mat);
 }
 
-function buildMesh(col: HitZoneCollider): THREE.Mesh {
+export function buildMesh(col: HitZoneCollider): THREE.Mesh {
   if (col.shape === 'sphere')  return makeSphereMesh(col);
   if (col.shape === 'capsule') return makeCapsuleMesh(col);
   return makeBoxMesh(col);
@@ -94,6 +95,8 @@ export class ColliderEditor {
   private visible       = false;
   private colliders     : HitZoneCollider[] = cloneColliders(defaultHitZoneColliders);
   private selectedIndex = 0;
+  private poseSource = hitZoneCollidersForPhase();
+  private readonly poseEdits = new Map<readonly HitZoneCollider[], HitZoneCollider[]>();
 
   private group  = new THREE.Group();
   private meshes : THREE.Mesh[] = [];
@@ -139,15 +142,27 @@ export class ColliderEditor {
    */
   public tick(
     playerPos: THREE.Vector3,
+    orientation: THREE.Quaternion,
     axes: {
       move:     { x: number; y: number; z: number };
       resize:   { x: number; y: number; z: number };
       rotation: { x: number; y: number; z: number };
     },
+    phase = 'BREACH',
   ): void {
     if (!this.visible) return;
+    const source = hitZoneCollidersForPhase(phase);
+    if (source !== this.poseSource) {
+      this.poseEdits.set(this.poseSource, this.colliders);
+      this.colliders = this.poseEdits.get(source) ?? cloneColliders([...source]);
+      this.poseSource = source;
+      this.selectedIndex = Math.min(this.selectedIndex, this.colliders.length-1);
+      this.rebuildAllMeshes();
+    }
     this.applyAxes(axes);
-    this.updateMeshWorldPositions(playerPos);
+    this.group.position.copy(playerPos);
+    this.group.quaternion.copy(orientation);
+    this.updateMeshLocalTransforms();
     this.renderPanel();
   }
 
@@ -227,17 +242,13 @@ export class ColliderEditor {
     this.highlightSelected();
   }
 
-  /** Position/rotate each mesh relative to the player world pos. */
-  private updateMeshWorldPositions(playerPos: THREE.Vector3): void {
+  /** Local offsets. The group carries the alien position and quaternion. */
+  private updateMeshLocalTransforms(): void {
     for (let i = 0; i < this.colliders.length; i++) {
       const col  = this.colliders[i];
       const mesh = this.meshes[i];
       if (!mesh) continue;
-      mesh.position.set(
-        playerPos.x + col.position.x,
-        playerPos.y + col.position.y,
-        playerPos.z + col.position.z,
-      );
+      mesh.position.set(col.position.x, col.position.y, col.position.z);
       mesh.rotation.set(col.rotation.x, col.rotation.y, col.rotation.z);
     }
   }

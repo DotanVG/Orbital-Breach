@@ -1,5 +1,8 @@
+import { bodyWorldBounds, breachFloorAnchorY } from '../../../shared/bodyCollider';
+import { projectileBodyTarget } from '../../../shared/projectileCollider';
+import { BAR_GRIP_LOCAL, barHoldQuaternion } from '../player/playerGrabPose';
 import * as THREE from "three";
-import { ACTOR_COLLISION_RADIUS, GRAB_RADIUS, HITBOX_OFFSET_Y, HITBOX_RADIUS, MATCH_POINT_TARGET, PLAYER_RADIUS } from "../../../shared/constants";
+import { ACTOR_COLLISION_RADIUS, GRAB_RADIUS, MATCH_POINT_TARGET, BAR_LAUNCH_CLEARANCE } from "../../../shared/constants";
 import { DEFAULT_PLAYER_NAME, getBotCallSign } from "../../../shared/callSigns";
 import { findMatchWinner } from "../../../shared/match-flow";
 import { getSoloBotFill, type SoloMatchConfig } from "../../../shared/match";
@@ -10,16 +13,14 @@ import {
   maxLaunchPower,
   resolveActorCollisions,
 } from "../../../shared/player-logic";
+import { quaternionFromYawPitchRoll } from "../../../shared/hitZoneColliders";
 import type { EnemyPlayerInfo, FullPlayerInfo, PlayerPhase, DamageState } from "../../../shared/schema";
 import type { Vec3 } from "../../../shared/vec3";
-import { v3 } from "../../../shared/vec3";
 import { Arena } from "../arena/arena";
 import { CameraController } from "../camera";
 import {
-  bounceArena,
   clampBreachRoom,
   integrateBreachRoom,
-  integrateZeroG,
   type PhysicsState,
 } from "../physics";
 import { LocalPlayer } from "../player";
@@ -71,6 +72,8 @@ export interface LocalMatchStatsActor {
   freezes: number;
   frozen: number;
   position: Vec3;
+  orientation?: import("../../../shared/hitZoneColliders").QuaternionLike;
+  phase?: string;
 }
 
 export type LocalMatchEvent =
@@ -112,6 +115,7 @@ interface BotState {
   damage: DamageState;
   deaths: number;
   grabbedBarPos: THREE.Vector3 | null;
+  grabbedBarDirection?: THREE.Vector3;
   id: string;
   isBot: true;
   kills: number;
@@ -142,6 +146,7 @@ export class LocalMatch {
   private roundResolved = false;
   private roundSeed = 0;
   private score = { team0: 0, team1: 0 };
+  private readonly botOrientationScratch = new THREE.Quaternion();
 
   public onEvent: ((event: LocalMatchEvent) => void) | null = null;
 
@@ -219,6 +224,7 @@ export class LocalMatch {
         freezes: player.kills,
         frozen: player.deaths,
         position: toVec3(player.getPosition()),
+        orientation: player.getVisualQuaternion(), phase: player.phase,
       },
       ...this.bots.map((bot) => ({
         id: bot.id,
@@ -229,6 +235,7 @@ export class LocalMatch {
         freezes: bot.kills,
         frozen: bot.deaths,
         position: toVec3(bot.phys.pos),
+        orientation: botOrientation(bot), phase: bot.phase,
       })),
     ];
   }
@@ -267,24 +274,24 @@ export class LocalMatch {
   }
 
   public getProjectileTargets(player: LocalPlayer): ProjectileActorTarget[] {
-    const humanCentre = player.getPosition().clone();
-    humanCentre.y += HITBOX_OFFSET_Y;
+    const humanBody = projectileBodyTarget(player.getPosition(),player.getVisualQuaternion(),player.phase);
+    const humanCentre = new THREE.Vector3().copy(humanBody.center);
     return [
       {
         active: player.phase !== "RESPAWNING" && player.phase !== "BREACH" && !player.damage.frozen,
         id: LOCAL_PLAYER_ID,
         pos: humanCentre,
-        radius: HITBOX_RADIUS,
+        radius: humanBody.radius,
         team: this.config.humanTeam,
       },
       ...this.bots.map((bot) => {
-        const botCentre = bot.phys.pos.clone();
-        botCentre.y += HITBOX_OFFSET_Y;
+        const botBody = projectileBodyTarget(bot.phys.pos,botOrientation(bot),bot.phase);
+        const botCentre = new THREE.Vector3().copy(botBody.center);
         return {
           active: bot.phase !== "RESPAWNING" && bot.phase !== "BREACH" && !bot.damage.frozen,
           id: bot.id,
           pos: botCentre,
-          radius: HITBOX_RADIUS,
+          radius: botBody.radius,
           team: bot.team,
         };
       }),
@@ -294,7 +301,10 @@ export class LocalMatch {
   public handleProjectileHit(
     event: ProjectileHitEvent,
     player: LocalPlayer,
-    camera: CameraController,
+    // Kept so existing callers stay source-compatible. Zone classification
+    // uses the alien's visual quaternion, which includes roll the camera
+    // forward vector does not.
+    _camera: CameraController,
   ): void {
     if (this.roundResolved) return;
 
@@ -308,9 +318,8 @@ export class LocalMatch {
       const zone = LocalPlayer.classifyHitZone(
         event.impactPoint,
         player.getPosition(),
-        camera.getForward(),
-        HITBOX_OFFSET_Y,
-        HITBOX_RADIUS,
+        player.getVisualQuaternion(),
+        undefined, undefined, player.phase,
       );
       const frozen = player.applyHit(zone, impulse);
       if (frozen) {
@@ -335,9 +344,8 @@ export class LocalMatch {
     const zone = classifyHitZone(
       toVec3(event.impactPoint),
       toVec3(bot.phys.pos),
-      yawForward(bot.rot.yaw),
-      HITBOX_OFFSET_Y,
-      HITBOX_RADIUS,
+      botOrientation(bot),
+      undefined, undefined, bot.phase,
     );
     const frozen = applyHitToBot(bot, zone, impulse);
     if (event.ownerId === LOCAL_PLAYER_ID) {
@@ -397,14 +405,23 @@ export class LocalMatch {
       }
     }
 
+    for (const bot of this.bots) if (isAnchored(bot.phase)) {
+      const before=bot.phys.pos.clone();
+      arena.advancePlayer(bot.phys,0,botOrientation(bot),bot.phase);
+      if (before.distanceToSquared(bot.phys.pos)>1e-12) {bot.phase='FLOATING';bot.grabbedBarPos=null;}
+    }
     this.resolveActorOverlap(player);
+    player.syncWorldPosition();
 
     for (const bot of this.bots) {
       bot.avatar.update(
         bot.phys.pos,
         bot.damage,
         bot.phase,
-        bot.rot.yaw,
+        toThreeQuaternion(
+          botOrientation(bot),
+          this.botOrientationScratch,
+        ),
         dt,
         bot.phys.vel.length(),
         this.celebratingTeam === bot.team,
@@ -601,6 +618,7 @@ export class LocalMatch {
         active: player.phase !== "RESPAWNING",
         anchored: isAnchored(player.phase),
         pos: player.getPosition(),
+        offset: bodyWorldBounds({x:0,y:0,z:0},player.getVisualQuaternion(),player.phase).center,
         radius: ACTOR_COLLISION_RADIUS,
         vel: player.phys.vel,
       },
@@ -608,6 +626,7 @@ export class LocalMatch {
         active: bot.phase !== "RESPAWNING",
         anchored: isAnchored(bot.phase),
         pos: bot.phys.pos,
+        offset: bodyWorldBounds({x:0,y:0,z:0},botOrientation(bot),bot.phase).center,
         radius: ACTOR_COLLISION_RADIUS,
         vel: bot.phys.vel,
       })),
@@ -649,7 +668,7 @@ export class LocalMatch {
       const forward = toThree(command.fireDirection).normalize();
       shots.push({
         direction: forward.clone(),
-        origin: bot.phys.pos.clone().addScaledVector(forward, PLAYER_RADIUS + 0.25),
+        origin: bot.phys.pos.clone().addScaledVector(forward, 1.05),
         ownerId: bot.id,
         team: bot.team,
       });
@@ -668,7 +687,7 @@ export class LocalMatch {
           return;
         }
         bot.phys.vel.set(0, 0, 0);
-        bot.phys.pos.copy(bot.grabbedBarPos);
+        bot.phys.pos.copy(bot.grabbedBarPos).sub(BAR_GRIP_LOCAL.clone().applyQuaternion(toThreeQuaternion(botOrientation(bot))));
         if (command.aimHeld) {
           bot.phase = "AIMING";
           bot.launchPower = 0;
@@ -680,13 +699,13 @@ export class LocalMatch {
           return;
         }
         bot.phys.vel.set(0, 0, 0);
-        bot.phys.pos.copy(bot.grabbedBarPos);
+        bot.phys.pos.copy(bot.grabbedBarPos).sub(BAR_GRIP_LOCAL.clone().applyQuaternion(toThreeQuaternion(botOrientation(bot))));
         bot.launchPower = Math.min(
           maxLaunchPower(bot.damage),
           bot.launchPower + (maxLaunchPower(bot.damage) * dt) / bot.brain.getLaunchChargeSeconds(),
         );
         if (!command.aimHeld) {
-          launchBot(bot);
+          launchBot(bot,arena);
         }
         break;
       default:
@@ -717,7 +736,7 @@ export class LocalMatch {
       case "AIMING":
         if (bot.grabbedBarPos) {
           bot.phys.vel.set(0, 0, 0);
-          bot.phys.pos.copy(bot.grabbedBarPos);
+          bot.phys.pos.copy(bot.grabbedBarPos).sub(BAR_GRIP_LOCAL.clone().applyQuaternion(toThreeQuaternion(botOrientation(bot))));
         } else {
           bot.phase = "FLOATING";
         }
@@ -751,12 +770,13 @@ export class LocalMatch {
       dt,
     );
     decayBreachEntryCarry(bot, isOnBreachGround(bot, center.y), dt);
-    clampBreachRoom(bot.phys, center, openAxis, openSign, arena.isGoalDoorOpen(bot.currentBreachTeam));
+    clampBreachRoom(bot.phys, center, openAxis, openSign, arena.isGoalDoorOpen(bot.currentBreachTeam), botOrientation(bot), bot.phase);
 
     if (command.grab && !bot.damage.leftArm && arena.isGoalDoorOpen(bot.currentBreachTeam)) {
       const nearest = query.getNearestBar(toVec3(bot.phys.pos), GRAB_RADIUS);
       if (nearest) {
         bot.grabbedBarPos = toThree(nearest.pos);
+        bot.grabbedBarDirection = nearest.normal ? toThree(nearest.normal) : new THREE.Vector3(1,0,0);
         bot.phase = "GRABBING";
       }
     }
@@ -785,6 +805,7 @@ export class LocalMatch {
       const nearest = query.getNearestBar(toVec3(bot.phys.pos), GRAB_RADIUS);
       if (nearest) {
         bot.grabbedBarPos = toThree(nearest.pos);
+        bot.grabbedBarDirection = nearest.normal ? toThree(nearest.normal) : new THREE.Vector3(1,0,0);
         bot.phase = "GRABBING";
       }
     }
@@ -808,7 +829,7 @@ export class LocalMatch {
       dt,
     );
     decayBreachEntryCarry(bot, isOnBreachGround(bot, center.y), dt);
-    clampBreachRoom(bot.phys, center, openAxis, openSign, arena.isGoalDoorOpen(bot.currentBreachTeam));
+    clampBreachRoom(bot.phys, center, openAxis, openSign, arena.isGoalDoorOpen(bot.currentBreachTeam), botOrientation(bot), bot.phase);
   }
 }
 
@@ -896,22 +917,7 @@ function promoteBotToFullFreeze(bot: BotState): true {
 }
 
 function integrateFloating(bot: BotState, arena: Arena, dt = 0): void {
-  const goalAxis = arena.getBreachOpenAxis(bot.team);
-  const perpAxis: "x" | "z" = goalAxis === "z" ? "x" : "z";
-  const team0FaceSign = (-arena.getBreachOpenSign(0)) as 1 | -1;
-  const team1FaceSign = (-arena.getBreachOpenSign(1)) as 1 | -1;
-  const portalFacesOpen = {
-    positive:
-      (team0FaceSign === 1 && arena.isGoalDoorOpen(0))
-      || (team1FaceSign === 1 && arena.isGoalDoorOpen(1)),
-    negative:
-      (team0FaceSign === -1 && arena.isGoalDoorOpen(0))
-      || (team1FaceSign === -1 && arena.isGoalDoorOpen(1)),
-  };
-
-  integrateZeroG(bot.phys, dt);
-  bounceArena(bot.phys, goalAxis, perpAxis, portalFacesOpen);
-  arena.bounceObstacles(bot.phys);
+  arena.advancePlayer(bot.phys,dt,botOrientation(bot),bot.phase);
 }
 
 /**
@@ -921,9 +927,7 @@ function integrateFloating(bot: BotState, arena: Arena, dt = 0): void {
  * FLOATING branch (see integrateFloating + returnBotToOwnBreach).
  */
 function integrateFrozenDrift(bot: BotState, arena: Arena, dt = 0): void {
-  integrateZeroG(bot.phys, dt);
-  bounceArena(bot.phys);
-  arena.bounceObstacles(bot.phys);
+  arena.advancePlayer(bot.phys,dt,botOrientation(bot),bot.phase);
 }
 
 function isAnchored(phase: PlayerPhase): boolean {
@@ -931,14 +935,15 @@ function isAnchored(phase: PlayerPhase): boolean {
 }
 
 function isOnBreachGround(bot: BotState, centerY: number): boolean {
-  const floorY = centerY - 3 + PLAYER_RADIUS;
+  const floorY = breachFloorAnchorY(centerY);
   return bot.phys.pos.y <= floorY + 0.08;
 }
 
-function launchBot(bot: BotState): void {
+function launchBot(bot: BotState, arena: Arena): void {
   const forward = directionFromRotation(bot.rot.yaw, bot.rot.pitch);
-  bot.phys.pos.addScaledVector(forward, PLAYER_RADIUS + 0.8);
-  bot.phys.vel.copy(forward).multiplyScalar(bot.launchPower);
+  bot.phys.vel.copy(forward).multiplyScalar(BAR_LAUNCH_CLEARANCE);
+  arena.advancePlayer(bot.phys,1,botOrientation(bot),'FLOATING');
+  bot.phys.vel.multiplyScalar(bot.launchPower/BAR_LAUNCH_CLEARANCE);
   bot.breachEntryCarry.set(0, 0, 0);
   bot.breachEntryCarryTimer = 0;
   bot.grabbedBarPos = null;
@@ -974,7 +979,14 @@ function resetBotsForRound(
     bot.breachEntryCarryTimer = 0;
     bot.rot = exitRotation(query, bot.team);
     bot.brain.resetForRound(roundSeed * 37 + i * 13 + bot.team);
-    bot.avatar.update(bot.phys.pos, bot.damage, bot.phase, bot.rot.yaw, 0, 0);
+    bot.avatar.update(
+      bot.phys.pos,
+      bot.damage,
+      bot.phase,
+      toThreeQuaternion(quaternionFromYawPitchRoll(bot.rot.yaw, bot.rot.pitch)),
+      0,
+      0,
+    );
   }
 }
 
@@ -1004,7 +1016,7 @@ function settleSpawnOnFloor(
   team: 0 | 1,
 ): Vec3 {
   const center = query.getBreachRoomCenter(team);
-  const floorY = center.y - 3 + PLAYER_RADIUS + 0.08;
+  const floorY = breachFloorAnchorY(center.y);
   return {
     x: spawn.x,
     y: floorY,
@@ -1047,6 +1059,14 @@ function decayBreachEntryCarry(bot: BotState, onGround: boolean, dt: number): vo
   bot.breachEntryCarry.y = 0;
 }
 
-function yawForward(yaw: number): Vec3 {
-  return v3.normalize({ x: -Math.sin(yaw), y: 0, z: -Math.cos(yaw) });
+function toThreeQuaternion(
+  quaternion: ReturnType<typeof quaternionFromYawPitchRoll>,
+  out: THREE.Quaternion = new THREE.Quaternion(),
+): THREE.Quaternion {
+  return out.set(quaternion.x, quaternion.y, quaternion.z, quaternion.w);
+}
+
+function botOrientation(bot: BotState) {
+  const q = quaternionFromYawPitchRoll(bot.rot.yaw,bot.phase === 'BREACH' ? 0 : bot.rot.pitch);
+  return isAnchored(bot.phase) ? barHoldQuaternion(toThreeQuaternion(q),bot.grabbedBarDirection ?? new THREE.Vector3(1,0,0)) : q;
 }

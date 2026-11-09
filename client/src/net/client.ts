@@ -1,5 +1,6 @@
 import { Client as ColyseusClient, type Room } from "@colyseus/sdk";
 import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
+import { orientationFromSnapshot } from "../../../shared/hitZoneColliders";
 import { getColyseusEndpoint } from "./endpoint";
 import { MAX_RECONNECT_ATTEMPTS, reconnectDelay, isAbnormalClose, isFatalRoomError, isTransportError } from "./reconnect";
 import { isMatchTeamSize, type MatchTeamSize } from "../../../shared/match";
@@ -395,7 +396,9 @@ function toLobbyMember(value: Record<string, unknown>): LobbyMemberSnapshot {
   };
 }
 
-function toActorSnapshot(value: Record<string, unknown>): OnlineActorSnapshot {
+export function toActorSnapshot(value: Record<string, unknown>): OnlineActorSnapshot {
+  const yaw = Number(value.yaw ?? 0);
+  const orientation = orientationFromSnapshot({ ...value, yaw });
   return {
     id: String(value.id ?? ""),
     name: String(value.name ?? DEFAULT_PLAYER_NAME),
@@ -407,7 +410,11 @@ function toActorSnapshot(value: Record<string, unknown>): OnlineActorSnapshot {
     velX: Number(value.velX ?? 0),
     velY: Number(value.velY ?? 0),
     velZ: Number(value.velZ ?? 0),
-    yaw: Number(value.yaw ?? 0),
+    yaw,
+    orientX: orientation.x,
+    orientY: orientation.y,
+    orientZ: orientation.z,
+    orientW: orientation.w,
     phase: String(value.phase ?? "BREACH"),
     frozen: Boolean(value.frozen),
     leftArm: Boolean(value.leftArm),

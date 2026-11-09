@@ -1,71 +1,40 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import * as THREE from 'three';
-import { applyBarHoldPose } from '../client/src/player/playerGrabPose';
-import { resetFloatLimbRotation, setFloatLimbRotation } from '../client/src/player/playerAimPose';
-import type { AnimatedRig, PoseBoneName } from '../client/src/player/playerTypes';
-
-// Quaternion-only inputs: no scene graph, renderer, assets or mixer I/O.
-function fixture() {
-  const names: PoseBoneName[] = [
-    'Hips', 'Abdomen', 'Torso', 'Neck',
-    'ShoulderL', 'UpperArmL', 'LowerArmL', 'PalmL',
-    'UpperLegL', 'LowerLegL', 'FootL', 'UpperLegR', 'LowerLegR', 'FootR',
-    'ShoulderR', 'UpperArmR', 'LowerArmR', 'PalmR',
-  ];
-  const bones = Object.fromEntries(names.map(name => [name, {
-    quaternion: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.2, -0.3, 0.1)),
-  }]));
-  const standingReferencePose = Object.fromEntries(names.map(name => [name, bones[name].quaternion.clone()]));
-  return { bones, standingReferencePose } as unknown as AnimatedRig;
-}
-
-function snapshot(rig: AnimatedRig) {
-  return Object.fromEntries(Object.entries(rig.bones).map(([name, bone]) => [name, bone!.quaternion.toArray()]));
-}
-
-afterEach(() => resetFloatLimbRotation('LeftArmHanging'));
-
-describe('applyBarHoldPose', () => {
-  it('keeps the hold identical over 600 frames when a constant clip skips bone writes', () => {
-    const rig = fixture();
-    applyBarHoldPose([rig]);
-    const held = snapshot(rig);
-    for (let frame = 0; frame < 600; frame++) applyBarHoldPose([rig]);
-    expect(snapshot(rig)).toEqual(held);
+import { describe, expect, it } from 'vitest';
+import { Group, Quaternion, Vector3 } from 'three';
+import { applyBarHoldPose, measureHandGripOffset } from '../client/src/player/playerGrabPose';
+import { sampleAlienPose } from './helpers/alienPose';
+import { ANIM_STANDING } from '../client/src/player/playerAnimationController';
+describe('two-handed bar hold on the real rig',()=>{
+  it('separates the palms along the bar so their grip zones keep their laterality',async()=>{
+    const {bones}=await sampleAlienPose('GRABBING');
+    const spacing=bones.get('PalmR')!.x-bones.get('PalmL')!.x;
+    expect(spacing).toBeGreaterThan(0.10);
+    expect(spacing).toBeLessThan(0.14);
   });
-
-  it('returns to the same hold after launch or another animation changes the bones', () => {
-    const rig = fixture();
+  it('restores both arm chains after a launch/other animation without mutating reference quaternions',async()=>{
+    const {root,rig}=await sampleAlienPose('GRABBING');
+    const held=['L','R'].map(side=>measureHandGripOffset(root,side as 'L'|'R')!.clone());
+    const reference=Object.values(rig.standingReferencePose).map(q=>q.toArray());
+    for(const bone of Object.values(rig.bones)) bone!.quaternion.copy(new Quaternion(0.5,0.5,0.5,0.5));
     applyBarHoldPose([rig]);
-    const held = snapshot(rig);
-    for (const name of ['ShoulderL', 'UpperArmL', 'LowerArmL', 'PalmL'] as const) {
-      rig.bones[name]!.quaternion.setFromEuler(new THREE.Euler(-1.2, 0.7, 2.4));
+    for(const [i,side] of ['L','R'].entries()) expect(measureHandGripOffset(root,side as 'L'|'R')!.distanceTo(held[i])).toBeLessThan(1e-8);
+    expect(Object.values(rig.standingReferencePose).map(q=>q.toArray())).toEqual(reference);
+  });
+  it('locks the same real rig after swimming at different animation times',async()=>{
+    const held=await sampleAlienPose('GRABBING');
+    for(const time of [0,.3,1.2]) {
+      const p=await sampleAlienPose('FLOATING',time);
+      p.animation.snapToAnimation(ANIM_STANDING);
+      p.animation.resetBreathing();
+      applyBarHoldPose([p.rig]);
+      p.root.updateWorldMatrix(true,true);
+      for(const [name,position] of held.bones) expect(p.root.getObjectByName(name)!.getWorldPosition(new Vector3()).distanceTo(position),name).toBeLessThan(1e-5);
     }
-    applyBarHoldPose([rig]);
-    expect(snapshot(rig)).toEqual(held);
   });
-
-  it('preserves the pistol arm and its reference quaternions', () => {
-    const rig = fixture();
-    const before = snapshot(rig);
-    const reference = Object.values(rig.standingReferencePose).map(q => q.toArray());
-    applyBarHoldPose([rig]);
-    for (const name of ['ShoulderR', 'UpperArmR', 'LowerArmR', 'PalmR'] as const) {
-      expect(rig.bones[name]!.quaternion.toArray()).toEqual(before[name]);
-    }
-    expect(Object.values(rig.standingReferencePose).map(q => q.toArray())).toEqual(reference);
-  });
-
-  it('applies left-arm tuning once without accumulating it on subsequent frames', () => {
-    const rig = fixture();
-    applyBarHoldPose([rig]);
-    const untuned = rig.bones.UpperArmL!.quaternion.clone();
-    const tuning = new THREE.Euler(0.1, -0.2, 0.3);
-    setFloatLimbRotation('LeftArmHanging', tuning);
-    applyBarHoldPose([rig]);
-    const expected = untuned.multiply(new THREE.Quaternion().setFromEuler(tuning));
-    expect(rig.bones.UpperArmL!.quaternion.angleTo(expected)).toBeLessThan(1e-7);
-    for (let frame = 0; frame < 600; frame++) applyBarHoldPose([rig]);
-    expect(rig.bones.UpperArmL!.quaternion.angleTo(expected)).toBeLessThan(1e-7);
+  it('solves the same player-local grips under a translated, rolling visual root',async()=>{
+    const {root,rig}=await sampleAlienPose('GRABBING');
+    const before=['L','R'].map(side=>measureHandGripOffset(root,side as 'L'|'R')!.clone());
+    const parent=new Group();parent.position.set(8,-3,11);parent.quaternion.setFromAxisAngle(new Vector3(1,2,3).normalize(),1.4);parent.add(root);
+    for(let i=0;i<60;i++) applyBarHoldPose([rig]);
+    for(const [i,side] of ['L','R'].entries()) expect(measureHandGripOffset(root,side as 'L'|'R')!.distanceTo(before[i])).toBeLessThan(1e-7);
   });
 });

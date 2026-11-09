@@ -1,3 +1,4 @@
+import { bodyWorldBounds, breachFloorAnchorY, type CollisionBox } from '../../../shared/bodyCollider';
 import { Room, type Client } from "@colyseus/core";
 import {
   buildBotName,
@@ -29,6 +30,11 @@ import type { MatchTeamSize } from "../../../shared/match";
 import { findMatchWinner } from "../../../shared/match-flow";
 import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { generateArenaLayout } from "../../../shared/arena-gen";
+import {
+  normalizeQuaternion,
+  orientationFromSnapshot,
+  quaternionFromYawPitchRoll,
+} from "../../../shared/hitZoneColliders";
 import { isCallSignClean } from "../../../shared/profanity";
 import {
   ACTOR_COLLISION_RADIUS,
@@ -39,16 +45,15 @@ import {
   MATCH_POINT_TARGET,
   MAX_LAUNCH_SPEED,
   MAX_SPEED,
-  PLAYER_RADIUS,
+  PLAYER_DIAMOND_AABB_INSET,
 } from "../../../shared/constants";
 import type { PlayerPhase } from "../../../shared/schema";
 import { generateSpawnPositions, resolveActorCollisions, type CollisionBody, type HitZone } from "../../../shared/player-logic";
 import { applyHitToOnlineActor, isHitZone, normalizeAuthoritativePhase } from "./actorDamage";
 import { BotController, botIdHash, botPersonality, type BotCombatHooks } from "./botAI";
 import {
-  bounceActorInArena,
   breachRoomCenter,
-  integrateZeroGActor,
+  stepActorWorld,
   isActorInEnemyBreachRoom,
   isHitReportDistancePlausible,
   shouldServerSimulateHumanActor,
@@ -147,6 +152,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     });
     this.onMessage<PlayerUpdateMessage>("player_update", messageSchema<PlayerUpdateMessage>(m =>
       [m.posX, m.posY, m.posZ, m.velX, m.velY, m.velZ, m.yaw].every(v => typeof v === "number" && Number.isFinite(v))
+      && optionalQuaternionOk([m.orientX, m.orientY, m.orientZ, m.orientW])
       && typeof m.phase === "string"), (client, message) => {
       this.handlePlayerUpdateMessage(client, message);
     });
@@ -347,6 +353,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     actor.velY = clampFinite(Number(message.velY), -VEL_CLAMP, VEL_CLAMP);
     actor.velZ = clampFinite(Number(message.velZ), -VEL_CLAMP, VEL_CLAMP);
     actor.yaw = clampFinite(Number(message.yaw), -Math.PI * 2, Math.PI * 2);
+    setActorOrientation(actor, orientationFromPlayerUpdate(message, actor.yaw));
     const rawPhase = String(message.phase ?? "");
     const prevPhase = actor.phase;
     actor.phase = normalizeAuthoritativePhase(rawPhase, actor);
@@ -696,10 +703,16 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
   // ── Actor management ────────────────────────────────────────────────────────
 
+  private botCollisionBoxes: CollisionBox[] = [];
+
   private spawnActors(): void {
     this.clearActors();
 
     const layout = generateArenaLayout(this.state.roundNumber);
+    this.botCollisionBoxes = layout.obstacles.map(o => ({
+      min: { x: o.pos.x-o.size.x*PLAYER_DIAMOND_AABB_INSET/2, y: o.pos.y-o.size.y*PLAYER_DIAMOND_AABB_INSET/2, z: o.pos.z-o.size.z*PLAYER_DIAMOND_AABB_INSET/2 },
+      max: { x: o.pos.x+o.size.x*PLAYER_DIAMOND_AABB_INSET/2, y: o.pos.y+o.size.y*PLAYER_DIAMOND_AABB_INSET/2, z: o.pos.z+o.size.z*PLAYER_DIAMOND_AABB_INSET/2 },
+    }));
     const { goalAxis, goalSigns } = layout;
     this.botGoalAxis = goalAxis as "x" | "z";
     this.botGoalSigns = goalSigns;
@@ -720,8 +733,8 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     const slots1 = generateSpawnPositions(1, team1Count, arenaQuery, roundSeed * 17 + 13);
     const center0 = arenaQuery.getBreachRoomCenter(0);
     const center1 = arenaQuery.getBreachRoomCenter(1);
-    const floorY0 = center0.y - BREACH_ROOM_H / 2 + PLAYER_RADIUS + 0.08;
-    const floorY1 = center1.y - BREACH_ROOM_H / 2 + PLAYER_RADIUS + 0.08;
+    const floorY0 = breachFloorAnchorY(center0.y);
+    const floorY1 = breachFloorAnchorY(center1.y);
 
     let team0Index = 0;
     let team1Index = 0;
@@ -741,6 +754,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       actor.kills = 0;
       actor.deaths = 0;
       actor.yaw = this.botSpawnYaw[member.team];
+      setActorOrientation(actor, quaternionFromYawPitchRoll(actor.yaw));
 
       if (member.team === 0) {
         const slot = slots0[team0Index] ?? slots0[slots0.length - 1] ?? center0;
@@ -792,7 +806,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
   private tickBots(dt: number): void {
     if (this.state.phase !== "PLAYING") return;
-    this.bots.tick(dt, this.state.actors.values(), this.botGoalAxis, this.botGoalSigns, this.botHooks);
+    this.bots.tick(dt, this.state.actors.values(), this.botGoalAxis, this.botGoalSigns, this.botHooks, this.botCollisionBoxes);
   }
 
   private tickStaleHumanActors(dt: number): void {
@@ -805,8 +819,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
         continue;
       }
 
-      integrateZeroGActor(actor, dt);
-      bounceActorInArena(actor, this.botGoalAxis);
+      stepActorWorld(actor, dt, this.botGoalAxis, this.botCollisionBoxes);
 
       if (!this.roundResolved && isActorInEnemyBreachRoom(actor, this.botGoalAxis, this.botGoalSigns)) {
         actor.phase = "BREACH";
@@ -825,6 +838,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
         id: actor.id,
         isBot: actor.isBot,
         pos: { x: actor.posX, y: actor.posY, z: actor.posZ },
+        offset: bodyWorldBounds({x:0,y:0,z:0}, actor.phase === "BREACH" ? quaternionFromYawPitchRoll(actor.yaw) : orientationFromSnapshot(actor),actor.phase).center,
         vel: actor.isBot ? { x: actor.velX, y: actor.velY, z: actor.velZ } : undefined,
         radius: ACTOR_COLLISION_RADIUS,
         anchored: !actor.isBot,
@@ -1087,6 +1101,43 @@ function normalizeDirection(
     y: y / length,
     z: z / length,
   };
+}
+
+function optionalQuaternionOk(values: unknown[]): boolean {
+  const present = values.filter((value) => value !== undefined);
+  if (present.length === 0) return true;
+  return present.length === values.length
+    && present.every((value) => typeof value === "number" && Number.isFinite(value));
+}
+
+function orientationFromPlayerUpdate(
+  message: PlayerUpdateMessage,
+  yaw: number,
+): { x: number; y: number; z: number; w: number } {
+  if (
+    typeof message.orientX === "number"
+    && typeof message.orientY === "number"
+    && typeof message.orientZ === "number"
+    && typeof message.orientW === "number"
+  ) {
+    return normalizeQuaternion({
+      x: message.orientX,
+      y: message.orientY,
+      z: message.orientZ,
+      w: message.orientW,
+    });
+  }
+  return quaternionFromYawPitchRoll(yaw);
+}
+
+function setActorOrientation(
+  actor: Pick<ActorState, "orientX" | "orientY" | "orientZ" | "orientW">,
+  orientation: { x: number; y: number; z: number; w: number },
+): void {
+  actor.orientX = orientation.x;
+  actor.orientY = orientation.y;
+  actor.orientZ = orientation.z;
+  actor.orientW = orientation.w;
 }
 
 function breachExitYaw(axis: "x" | "y" | "z", openSign: 1 | -1): number {

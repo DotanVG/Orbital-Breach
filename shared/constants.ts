@@ -1,12 +1,13 @@
 export const ARENA_SIZE             = 40;
-export const PLAYER_RADIUS          = 0.8;
-// Projectile hit test radius — tight to the alien's torso/head silhouette.
-// The hit sphere is also shifted down by HITBOX_OFFSET_Y so it sits on the
-// alien body rather than centered on the physics anchor (which is near the
-// top of the head).
+// Legacy facing-vector classifier only; never world collision.
+export const LEGACY_HIT_RADIUS      = 0.8;
+export const BAR_LAUNCH_CLEARANCE   = 1.6;
+// Historical facing-vector classifier / staging-sampler inputs only.
+// Production broadphase uses projectileCollider.ts: rotated body centre and
+// a radius enclosing the selected pose's hit zones.
 export const HITBOX_RADIUS          = 0.42;
 export const HITBOX_OFFSET_Y        = -0.35;
-// Actor-vs-actor separation radius. Tighter than PLAYER_RADIUS so alien
+// Actor-vs-actor separation radius, centred on the rotated body. Alien
 // models can brush shoulders without a visible gap between them.
 export const ACTOR_COLLISION_RADIUS = 0.5;
 export const TICK_RATE              = 20;

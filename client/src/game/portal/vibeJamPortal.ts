@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { BREACH_ROOM_D, PLAYER_RADIUS } from "../../../../shared/constants";
+const PORTAL_TRIGGER_MARGIN = 0.8; // Outbound travel trigger only, never world collision.
+import { BREACH_ROOM_D } from "../../../../shared/constants";
 import { computeBreachSpawnPosition } from "../../player/playerSpawn";
 import { parsePortalParams, type PortalParams } from "./parsePortalParams";
 
@@ -323,10 +324,10 @@ function createPortal(
   // Box collider sized to the disc
   const triggerCenter = options.position
     .clone()
-    .addScaledVector(options.normal, PLAYER_RADIUS * 0.4);
+    .addScaledVector(options.normal, PORTAL_TRIGGER_MARGIN * 0.4);
   const halfSize = new THREE.Vector3(
-    PORTAL_RADIUS + PLAYER_RADIUS,
-    PORTAL_RADIUS + PLAYER_RADIUS,
+    PORTAL_RADIUS + PORTAL_TRIGGER_MARGIN,
+    PORTAL_RADIUS + PORTAL_TRIGGER_MARGIN,
     TRIGGER_DEPTH / 2,
   );
   const box = boxFromOrientedPortal(triggerCenter, options.normal, halfSize);

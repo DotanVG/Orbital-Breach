@@ -11,6 +11,7 @@ export class VictoryPresentation {
   private readonly reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   private readonly origin = new THREE.Vector3();
   private readonly size = new THREE.Vector2();
+  private readonly orientation = new THREE.Quaternion();
   private readonly damage = { frozen: false, leftArm: false, rightArm: false, leftLeg: false, rightLeg: false };
   private elapsed = 0;
 
@@ -38,7 +39,7 @@ export class VictoryPresentation {
     const layout = getVictoryLayout(width / height);
     const motion = getVictoryMotion(this.elapsed, dt, this.reducedMotion.matches);
     this.elapsed = motion.elapsed;
-    this.avatar.update(this.origin, this.damage, "BREACH", 0, motion.animationDt, 0, true);
+    this.avatar.update(this.origin, this.damage, "BREACH", this.orientation, motion.animationDt, 0, true);
     this.camera.aspect = width / height;
     const radius = width < height ? 7.5 : 4;
     this.camera.position.set(Math.sin(motion.orbitAngle) * radius, 1.2, Math.cos(motion.orbitAngle) * radius);
