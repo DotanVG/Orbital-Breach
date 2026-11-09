@@ -27,13 +27,9 @@ export const IDENTITY_QUATERNION: QuaternionLike = {
   w: 1,
 };
 
-/** CPU-sampled Alien.glb runtime poses (asset transform included once).
- * Boxes are half-extents; joint means locate limb centres, never the physics anchor.
- * Damage volumes retain measured centres/bone coverage; limb extents are
- * deliberately forgiving to balance broad-sphere contact classification. They
- * are NOT physical wall colliders (see bodyParts.ts). Deterministic varied-angle
- * shot coverage and the pinned 36f81cc baseline live in hitDistribution.test.ts.
- * Model left is -X after ALIEN_ROTATION_Y=PI (F1).
+/** Legacy pose-table diagnostics and point-classification API. Runtime damage
+ * uses current skinned triangles (projectileCollider.ts), not these volumes.
+ * Kept for the manual collider editor and historical orientation regressions.
  */
 export const defaultHitZoneColliders: HitZoneCollider[] = [
   {"id":"head","zone":"head","shape":"sphere","position":{"x":-0.00037,"y":-0.18192,"z":0.24174},"size":{"x":0.09623,"y":0.09623,"z":0.09623},"rotation":{"x":0,"y":0,"z":0}},

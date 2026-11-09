@@ -3,8 +3,7 @@ export const ARENA_SIZE             = 40;
 export const LEGACY_HIT_RADIUS      = 0.8;
 export const BAR_LAUNCH_CLEARANCE   = 1.6;
 // Historical facing-vector classifier / staging-sampler inputs only.
-// Production broadphase uses projectileCollider.ts: rotated body centre and
-// a radius enclosing the selected pose's hit zones.
+// Production damage uses current skinned triangles; no enclosing sphere.
 export const HITBOX_RADIUS          = 0.42;
 export const HITBOX_OFFSET_Y        = -0.35;
 // Actor-vs-actor separation radius, centred on the rotated body. Alien

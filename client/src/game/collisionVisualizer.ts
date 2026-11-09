@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { GRAB_RADIUS } from '../../../shared/constants';
 import { bodyPartsForPhase } from '../../../shared/bodyParts';
-import { hitZoneCollidersForPhase, IDENTITY_QUATERNION, type QuaternionLike, type HitZoneCollider } from '../../../shared/hitZoneColliders';
+import { IDENTITY_QUATERNION, type QuaternionLike } from '../../../shared/hitZoneColliders';
 import type { Arena } from '../arena/arena';
-import { buildMesh } from './colliderEditor';
-interface DebugActor { position: {x:number;y:number;z:number}; orientation?: QuaternionLike; phase?: string }
-interface ActorMeshes { root: THREE.Group; bodies: THREE.Mesh[]; reach: THREE.Mesh; label: THREE.Sprite; zones: THREE.Mesh[]; source?: readonly HitZoneCollider[] }
+import type { HitSurface } from '../../../shared/projectileCollider';
+interface DebugActor { position: {x:number;y:number;z:number}; orientation?: QuaternionLike; phase?: string; getSurfaces?: () => readonly HitSurface[] }
+interface ActorMeshes { root: THREE.Group; bodies: THREE.Mesh[]; reach: THREE.Mesh; label: THREE.Sprite; zones: THREE.Mesh[] }
 export class CollisionVisualizer {
   private visible=false;
   private group=new THREE.Group();
@@ -35,15 +35,39 @@ export class CollisionVisualizer {
       root.add(...bodies); this.group.add(root,reach,label); this.actors.push({root,bodies,reach,label,zones:[]});
     }
     actors.forEach((actor,i)=>{
-      const a=this.actors[i], parts=bodyPartsForPhase(actor.phase), source=hitZoneCollidersForPhase(actor.phase);
+      const a=this.actors[i], parts=bodyPartsForPhase(actor.phase);
       a.root.position.copy(actor.position); a.root.quaternion.copy(actor.orientation??IDENTITY_QUATERNION);
       a.bodies.forEach((mesh,j)=>{const p=parts[j];mesh.position.copy(p.center);mesh.scale.set(p.half.x*2,p.half.y*2,p.half.z*2);mesh.name=p.zone+' world';});
       a.reach.position.copy(actor.position); a.label.position.copy(actor.position); a.label.position.y+=GRAB_RADIUS;
-      if(a.source!==source) {
-        for(const mesh of a.zones) { a.root.remove(mesh); disposeMesh(mesh); }
-        a.zones=source.map(c=>{ const m=buildMesh(c); m.position.copy(c.position); m.rotation.set(c.rotation.x,c.rotation.y,c.rotation.z,'YXZ'); m.name=c.id; (m.material as THREE.MeshBasicMaterial).depthTest=false; a.root.add(m); return m; });
-        a.source=source;
-      }
+      // Exact current damage surfaces, independent of the green world boxes.
+      a.root.updateWorldMatrix(true,false);
+      const inverse=a.root.matrixWorld.clone().invert();
+      const colors={head:0xff4444,body:0xffffff,leftArm:0x44aaff,rightArm:0xffaa44,leftLeg:0xaa44ff,rightLeg:0xffff44};
+      const point=new THREE.Vector3();
+      const surfaces=actor.getSurfaces?.() ?? [];
+      while(a.zones.length>surfaces.length) { const mesh=a.zones.pop()!;a.root.remove(mesh);disposeMesh(mesh); }
+      surfaces.forEach((surface,si)=>{
+        let mesh: THREE.Mesh | undefined=a.zones[si];
+        if(mesh && mesh.geometry.getAttribute('position').count!==surface.indices.length) {
+          a.root.remove(mesh);disposeMesh(mesh);mesh=undefined;
+        }
+        if(!mesh) {
+          const geometry=new THREE.BufferGeometry();
+          geometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(surface.indices.length*3),3));
+          const rgb=new Float32Array(surface.indices.length*3);
+          for(let j=0;j<surface.indices.length;j++) new THREE.Color(colors[surface.zones[Math.floor(j/3)]]).toArray(rgb,j*3);
+          geometry.setAttribute('color',new THREE.BufferAttribute(rgb,3));
+          mesh=new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({vertexColors:true,wireframe:true,depthTest:false}));
+          mesh.frustumCulled=false;
+          a.root.add(mesh);a.zones[si]=mesh;
+        }
+        const positions=mesh.geometry.getAttribute('position');
+        for(let j=0;j<surface.indices.length;j++) {
+          point.fromArray(surface.positions,surface.indices[j]*3).applyMatrix4(inverse);
+          positions.setXYZ(j,point.x,point.y,point.z);
+        }
+        positions.needsUpdate=true;
+      });
     });
   }
   public dispose(): void { this.clearStatic(); while(this.actors.length) this.removeActor(); this.scene.remove(this.group); }

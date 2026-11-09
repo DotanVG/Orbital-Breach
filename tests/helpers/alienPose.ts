@@ -24,11 +24,11 @@ async function loadRig(asset: string) {
   return { root, animations };
 }
 
-export async function sampleAlienPose(phase = 'BREACH', time = 0, frozenFrom = 'BREACH', originTime = 0, collectZones = false) {
+export async function sampleAlienPose(phase = 'BREACH', time = 0, frozenFrom = 'BREACH', originTime = 0, collectZones = false, includeHelmet = false) {
   const {root, animations} = await loadRig('Alien');
   // Only hold samples need the second asset; retaining it in hundreds of swim
   // envelope samples would duplicate the entire body mesh in memory.
-  const helmet = phase === 'GRABBING' || phase === 'AIMING' || (phase === 'FROZEN' && frozenFrom === 'GRABBING') ? await loadRig('Alien_Helmet') : null;
+  const helmet = includeHelmet || phase === 'GRABBING' || phase === 'AIMING' || (phase === 'FROZEN' && frozenFrom === 'GRABBING') ? await loadRig('Alien_Helmet') : null;
   const helmetRoot = helmet?.root ?? new Group();
   const animation = new PlayerAnimationController();
   const rig = animation.registerRig(root, animations);
@@ -43,7 +43,7 @@ export async function sampleAlienPose(phase = 'BREACH', time = 0, frozenFrom = '
       animation.setTargetAnimation(ANIM_FLOAT);
       animation.tickMixers(1 + originTime);
       animation.restoreFloatRightArmPose();
-      applyFloatArmTilt([rig]);
+      applyFloatArmTilt(animation.getRigs());
     } else if (frozenFrom === 'GRABBING') {
       animation.snapToAnimation(ANIM_STANDING);
       animation.tickMixers(0);
@@ -56,7 +56,7 @@ export async function sampleAlienPose(phase = 'BREACH', time = 0, frozenFrom = '
     animation.setTargetAnimation(ANIM_FLOAT);
     animation.tickMixers(1 + time);
     animation.restoreFloatRightArmPose();
-    applyFloatArmTilt([rig]);
+    applyFloatArmTilt(animation.getRigs());
   } else {
     animation.tickMixers(time);
   }

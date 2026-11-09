@@ -3,7 +3,8 @@ import { ARENA_SIZE } from "../../../shared/constants";
 import { Projectile, type ProjectileTrailMode } from "../projectile";
 import { bulletHitPoint } from "./bulletCollision";
 import { buildObstacleGrid, type ObstacleGrid } from "./obstacleGrid";
-import { segmentSphereHitPoint } from "./projectileActorCollision";
+import { segmentHitSurface, type HitSurface } from '../../../shared/projectileCollider';
+import type { HitZone } from '../../../shared/player-logic';
 
 const BULLET_RADIUS = 0.07;
 const FLASH_DURATION = 0.13;
@@ -40,12 +41,12 @@ interface SparkBurst {
 export interface ProjectileActorTarget {
   active: boolean;
   id: string;
-  pos: THREE.Vector3;
-  radius: number;
+  getSurfaces: () => readonly HitSurface[];
   team: 0 | 1;
 }
 
 export interface ProjectileActorHit {
+  zone: HitZone;
   direction: THREE.Vector3;
   impactPoint: THREE.Vector3;
   ownerId: string;
@@ -53,7 +54,7 @@ export interface ProjectileActorHit {
 }
 
 type CollisionHit =
-  | { kind: "actor"; point: THREE.Vector3; distance: number; targetId: string }
+  | { kind: "actor"; point: THREE.Vector3; distance: number; targetId: string; zone: HitZone }
   | { kind: "obstacle"; point: THREE.Vector3; distance: number }
   | { kind: "portal"; point: THREE.Vector3; distance: number };
 
@@ -140,6 +141,7 @@ export class ProjectileSystem {
               fxMode,
             );
             onActorHit({
+              zone: nearestHit.zone,
               direction: direction.clone(),
               impactPoint: nearestHit.point,
               ownerId: projectile.getOwnerId(),
@@ -289,11 +291,12 @@ export class ProjectileSystem {
       if (!actor.active) continue;
       if (actor.team === projectile.getTeam()) continue;
       if (actor.id === projectile.getOwnerId()) continue;
-      const hit = segmentSphereHitPoint(oldPos, newPos, actor.pos, actor.radius);
+      const hit = segmentHitSurface(oldPos, newPos, actor.getSurfaces());
       if (!hit) continue;
-      const distance = hit.distanceToSquared(oldPos);
+      const point = new THREE.Vector3().copy(hit.point);
+      const distance = point.distanceToSquared(oldPos);
       if (!nearest || distance < nearest.distance) {
-        nearest = { kind: "actor", point: hit, distance, targetId: actor.id };
+        nearest = { kind: "actor", point, distance, targetId: actor.id, zone: hit.zone };
       }
     }
 

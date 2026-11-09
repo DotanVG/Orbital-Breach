@@ -4,7 +4,7 @@ export interface BodyPart { zone: HitZone; center: Vec3; half: Vec3 }
 // CPU-skinned per-zone mesh envelopes, 1 mm padding, clipped to existing wall supports.
 // Swim: 129 samples across 2 s. Freeze: 385 samples covering upright, hold,
 // and 33 swim origins through the complete 0.16 s crossfade (DOT-124).
-// Physics volumes are independent of the deliberately forgiving damage volumes.
+// Physics volumes are independent of the current skinned damage surfaces.
 const parts: Record<string, readonly BodyPart[]> = {
   BREACH: [
     {"zone":"head","center":{"x":-0.0003245702513933746,"y":-0.17297990196751775,"z":0.29126896150514425},"half":{"x":0.11448205991584146,"y":0.12397990196751776,"z":0.13873103849485582}},

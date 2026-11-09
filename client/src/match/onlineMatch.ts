@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { projectileBodyTarget } from "../../../shared/projectileCollider";
+import { lazyHitSurfaces } from '../player/hitSurface';
+import type { HitSurface } from '../../../shared/projectileCollider';
 import type { OnlineActorSnapshot } from "../../../shared/multiplayer";
 import { quaternionFromYawPitchRoll, orientationFromSnapshot } from "../../../shared/hitZoneColliders";
-import { classifyHitZone, type HitZone } from "../../../shared/player-logic";
 import type { PlayerPhase } from "../../../shared/schema";
 import {
   predictPosition,
@@ -13,10 +13,9 @@ import { SimulatedPlayerAvatar } from "./simulatedPlayerAvatar";
 
 export interface OnlineProjectileTarget {
   id: string;
-  pos: THREE.Vector3;
+  getSurfaces: () => readonly HitSurface[];
   team: 0 | 1;
   active: boolean;
-  radius: number;
 }
 
 interface RemoteActorTrack {
@@ -138,42 +137,16 @@ export class OnlineMatch {
     this.tracks.get(actorId)?.avatar.triggerArmRecoil();
   }
 
-  public classifyHitZone(actorId: string, impactPoint: THREE.Vector3): HitZone | null {
-    const track = this.tracks.get(actorId);
-    if (!track) return null;
-
-    return classifyHitZone(
-      {
-        x: impactPoint.x,
-        y: impactPoint.y,
-        z: impactPoint.z,
-      },
-      {
-        x: track.renderPos.x,
-        y: track.renderPos.y,
-        z: track.renderPos.z,
-      },
-      {
-        x: track.renderOrientation.x,
-        y: track.renderOrientation.y,
-        z: track.renderOrientation.z,
-        w: track.renderOrientation.w,
-      },
-      undefined, undefined, track.snapshot.phase,
-    );
-  }
-
   public getDebugActors() {
-    return [...this.tracks.values()].map(t=>({position:t.renderPos,orientation:t.renderOrientation,phase:t.snapshot.phase}));
+    return [...this.tracks.values()].map(t=>({position:t.renderPos,orientation:t.renderOrientation,phase:t.snapshot.phase,getSurfaces:lazyHitSurfaces(t.avatar.getMesh())}));
   }
 
   public getProjectileTargets(): OnlineProjectileTarget[] {
     return Array.from(this.tracks.values()).map((track) => ({
       id: track.snapshot.id,
-      pos: new THREE.Vector3().copy(projectileBodyTarget(track.renderPos,track.renderOrientation,track.snapshot.phase).center),
+      getSurfaces: lazyHitSurfaces(track.avatar.getMesh()),
       team: track.snapshot.team,
       active: !track.snapshot.frozen && track.snapshot.phase !== "RESPAWNING" && track.snapshot.phase !== "BREACH",
-      radius: projectileBodyTarget(track.renderPos,track.renderOrientation,track.snapshot.phase).radius,
     }));
   }
 

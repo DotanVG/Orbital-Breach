@@ -106,6 +106,11 @@ export function bodyClearsDiamond(pos: Vec3, q: QuaternionLike, phase: string, d
 export function bounceBodyBoxes(state: BodyPhysicsState, boxes: readonly CollisionBox[], q: QuaternionLike = IDENTITY_QUATERNION, phase = 'BREACH', padding = 0): void {
   if (!boxes.length) return;
   const bounds = bodyWorldBounds(state.pos,q,phase);
+  // Reject empty space before building the six parts' SAT axes/supports.
+  // Keep the full ordered box scan after contact: a correction can enter a
+  // previously disjoint box, so filtering candidates up front is unsafe.
+  if (!boxes.some(box => AXES.every(a => bounds.center[a]+bounds.half[a]+padding > box.min[a]
+    && bounds.center[a]-bounds.half[a]-padding < box.max[a]))) return;
   const rotation = normalizeQuaternion(q);
   const basis = AXES.map(a => ({ x: 0, y: 0, z: 0, [a]: 1 }));
   const localAxes = basis.map(axis => rotateByQuaternion(rotation, axis));
