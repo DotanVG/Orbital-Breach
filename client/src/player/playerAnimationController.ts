@@ -69,11 +69,25 @@ export class PlayerAnimationController {
       mixer,
       actions,
       bones: collectPoseBones(root),
+      standingReferencePose: {},
       breathingBasePositions: captureBreathingBasePositions(root),
       frozenJumpRightArmPose: {},
       floatReferenceRightArmPose: {},
     };
     this.rigs.push(rig);
+
+    // Sample the standing clip before procedural poses or crossfades can
+    // modify it. Constant animation tracks may skip later bone writes.
+    const standingAction = actions.get(ANIM_STANDING);
+    if (standingAction) {
+      standingAction.reset().play();
+      mixer.update(0);
+    }
+    for (const name of POSE_BONE_NAMES) {
+      const bone = rig.bones[name];
+      if (bone) rig.standingReferencePose[name] = bone.quaternion.clone();
+    }
+    standingAction?.stop();
 
     const idleHoldAction = actions.get(ANIM_IDLE_HOLD);
     if (idleHoldAction) {

@@ -30,7 +30,7 @@ export class SimulatedPlayerAvatar {
   private readonly root = new THREE.Group();
   private victoryDanceElapsed = 0;
 
-  public constructor(scene: THREE.Scene, team: 0 | 1, name = "") {
+  public constructor(scene: THREE.Scene, team: 0 | 1, name = "", private readonly presentationOnly = false) {
     this.damageGlow = new PlayerDamageGlow(team);
     this.nameTag = new PlayerNameTag(name, team);
     this.root.add(this.nameTag.getObject());
@@ -38,15 +38,27 @@ export class SimulatedPlayerAvatar {
 
     void loadAlienRenderClone({ team, variant: "bot" })
       .then(({ body, bodyAnimations, helmet, helmetAnimations }) => {
-        if (this.disposed) return;
+        if (this.disposed) {
+          // A rematch/exit may dispose the victory stage before its clone arrives.
+          // Geometry is shared with the cached prototype; only materials are owned.
+          for (const rig of [body, helmet]) {
+            rig.traverse((object) => {
+              if (!(object instanceof THREE.Mesh)) return;
+              for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+                material.dispose();
+              }
+            });
+          }
+          return;
+        }
 
         this.root.add(body);
         this.root.add(helmet);
         this.animation.registerRig(body, bodyAnimations);
         this.animation.registerRig(helmet, helmetAnimations);
         this.damageGlow.attachTo(body);
-        this.gun.attachTo(body);
-        this.gun.setVisible(true);
+        if (!this.presentationOnly) this.gun.attachTo(body);
+        this.gun.setVisible(!this.presentationOnly);
         this.collectMaterials();
         this.ready = true;
       })
@@ -68,8 +80,8 @@ export class SimulatedPlayerAvatar {
     this.root.quaternion.copy(orientation);
     const visible = phase !== "RESPAWNING";
     this.root.visible = visible;
-    this.gun.setVisible(visible);
-    this.nameTag.setVisible(visible);
+    this.gun.setVisible(visible && !this.presentationOnly);
+    this.nameTag.setVisible(visible && !this.presentationOnly);
     this.damageGlow.update(damage, phase, dt);
 
     if (!this.ready) return;
