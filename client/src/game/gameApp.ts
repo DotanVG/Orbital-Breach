@@ -325,6 +325,7 @@ export class App {
         if (this.helpVisible) this.setHelpVisible(false);
         this.setCelebratingTeam(event.matchWinner);
         this.onlineMatchConcluding = true;
+        this.tutorial.completeMatch();
         this.pendingOnlineDebrief = this.buildOnlineDebrief(event.matchWinner, event.finalScore);
         this.sessionMenu.close();
         this.hud.showRoundEnd(
@@ -587,6 +588,7 @@ export class App {
     if (this.helpVisible) this.setHelpVisible(false);
 
     this.clearCelebrationState();
+    if (!this.onlineGameActive) this.tutorial.beginMatch();
     if (
       snapshot.roundNumber === 1
       && snapshot.score.team0 === 0
@@ -768,6 +770,7 @@ export class App {
     if (this.matchOver || this.appMode !== "solo") return;
     if (this.helpVisible) this.setHelpVisible(false);
     this.matchOver = true;
+    this.tutorial.completeMatch();
     this.setCelebratingTeam(winningTeam);
     this.round.cancelPendingRestart();
     if (this.matchEndHandle) clearTimeout(this.matchEndHandle);
@@ -1061,10 +1064,11 @@ export class App {
 
   private startTutorialMatch(selection: PlaySelection): void {
     this.tutorial.forceRestart();
-    this.startSoloMatch({ ...selection, teamSize: 1, noBots: true });
+    this.startSoloMatch({ ...selection, teamSize: 1, noBots: true }, true);
   }
 
-  private startSoloMatch(selection: PlaySelection): void {
+  private startSoloMatch(selection: PlaySelection, tutorial = false): void {
+    this.tutorial.beginMatch(tutorial);
     this.lastSoloSelection = selection;
     // Defensive: solo entry can be invoked outside the menu fadeOut path (e.g. rematch / tests).
     this.menu.hide();

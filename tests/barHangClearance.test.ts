@@ -34,16 +34,16 @@ describe('real GLB hang clearance (A1–A3)',()=>{
       const distance=(v:Vector3)=>v.distanceTo(segment.closestPointToPoint(v,true,new Vector3()));
       const axisDistance=(v:Vector3)=>v.distanceTo(segment.closestPointToPoint(v,false,new Vector3()));
       const headUp=world(pose.bones.get('Head')!).dot(up);
-      const helmetTop=Math.max(...pose.helmetVertices.map(v=>world(v).dot(up)));
+      const helmetTop=Math.max(...pose.helmetHeadVertices.map(v=>world(v).dot(up)));
       const hands: Record<string,object>={};
-      for(const side of ['L','R'] as const) {
+      for(const side of ['L'] as const) {
         expect(pose.handVertices[side].length).toBeGreaterThan(100);
         const handMin=Math.min(...pose.handVertices[side].map(v=>axisDistance(world(v))));
         expect(handMin).toBeGreaterThanOrEqual(BAR_RADIUS);
         expect(handMin-BAR_RADIUS).toBeLessThanOrEqual(.03);
         const palm=world(pose.bones.get(`Palm${side}`)!), palmRadius=axisDistance(palm);
         expect(palmRadius).toBeGreaterThanOrEqual(BAR_RADIUS);
-        expect(palmRadius).toBeLessThanOrEqual(BAR_RADIUS+.035);
+        expect(palmRadius).toBeLessThanOrEqual(BAR_RADIUS+.03);
         const along=palm.clone().sub(start).dot(direction);
         expect(along).toBeGreaterThanOrEqual(0); expect(along).toBeLessThanOrEqual(BAR_LENGTH);
         const tips=[...pose.bones].filter(([name])=>new RegExp(`(Finger4|Thumb3)${side}$`).test(name));
@@ -57,12 +57,17 @@ describe('real GLB hang clearance (A1–A3)',()=>{
         expect(palm.dot(up)).toBeLessThan(tip.dot(up)); // palms on the body-facing surface
         hands[side]={vertexCount:pose.handVertices[side].length,minMeshAxisM:handMin,meshSurfaceGapM:handMin-BAR_RADIUS,palmBoneAxisM:palmRadius,palmAlongSegmentM:along,fingertipAxisM:tipMin,palmAboveHeadM:palmAboveHead,curlAnglesRad:curlAngles};
       }
+      // The right hand and its gun keep aiming, well away from the rail.
+      const rightPalm = axisDistance(world(pose.bones.get('PalmR')!));
+      expect(rightPalm - BAR_RADIUS).toBeGreaterThan(.10);
+      expect(Math.min(...pose.handVertices.R.map(v => distance(world(v)))) - BAR_RADIUS).toBeGreaterThan(.10);
       expect(pose.helmetVertices).toHaveLength(9920); // entire helmet asset, including its body/gloves
       expect(pose.headVertices.length).toBeGreaterThan(100);
       const headMin=Math.min(...pose.headVertices.map(v=>distance(world(v))));
       const helmetMin=Math.min(...pose.helmetVertices.map(v=>distance(world(v))));
       expect(headMin).toBeGreaterThanOrEqual(BAR_RADIUS+.02);
-      expect(helmetMin).toBeGreaterThanOrEqual(BAR_RADIUS+.02);
+      expect(helmetMin).toBeGreaterThanOrEqual(BAR_RADIUS); // helmet asset also includes the gripping glove
+      expect(Math.min(...pose.helmetHeadVertices.map(v=>distance(world(v))))).toBeGreaterThanOrEqual(BAR_RADIUS+.02);
       const head=hitZoneCollidersForPhase('GRABBING').find(c=>c.id==='head')!;
       const sphereDistance=distance(world(new Vector3().copy(head.position)));
       expect(sphereDistance).toBeGreaterThan(BAR_RADIUS+head.size.x);

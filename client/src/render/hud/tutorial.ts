@@ -1,6 +1,7 @@
 import type { PlayerPhase } from "../../../../shared/schema";
 
 export const FIRST_TIME_TUTORIAL_STORAGE_KEY = "orbital_first_flight_tutorial_v1";
+export const FIRST_MATCH_STORAGE_KEY = "orbital_first_match_completed_v1";
 export const INTRO_STORAGE_KEY = "orbital_visual_intro_v1";
 
 interface StorageLike {
@@ -60,13 +61,43 @@ const STEPS: TutorialStep[] = [
   },
 ];
 
+/** Seconds since match start: hold, two brief pulses, then a 1.25 s ease-out. */
+export function guidanceOpacity(elapsed: number, keepVisible: boolean, reducedMotion: boolean): number {
+  if (keepVisible || elapsed < 4) return 1;
+  const pulseTime = elapsed - 4;
+  if (pulseTime < 0.8) {
+    return reducedMotion ? 1 : 1 - 0.65 * Math.sin(Math.PI * pulseTime / 0.4) ** 2;
+  }
+  const fade = Math.min(1, Math.max(0, (pulseTime - 0.8) / 1.25));
+  return (1 - fade) ** 3;
+}
+
 export class FirstTimeTutorial {
   private active = false;
+  private guidanceElapsed = 0;
+  private firstMatch = true;
+  private tutorialMatch = false;
   private attachedLastFrame = false;
   private completed = [false, false, false, false];
   private introRemaining = 0;
 
   public constructor(private storage: StorageLike = resolveStorage()) {}
+
+  public beginMatch(tutorial = false): void {
+    this.firstMatch = this.storage.getItem(FIRST_MATCH_STORAGE_KEY) !== 'done';
+    this.tutorialMatch = tutorial;
+    this.guidanceElapsed = 0;
+  }
+
+  public completeMatch(): void {
+    if (!this.tutorialMatch) this.storage.setItem(FIRST_MATCH_STORAGE_KEY, 'done');
+  }
+
+  public updateGuidance(dt: number, inRound: boolean, reducedMotion: boolean): number {
+    const keepVisible = this.firstMatch || this.tutorialMatch || this.active || this.isIntroVisible();
+    if (inRound && !keepVisible) this.guidanceElapsed += Math.max(0, dt);
+    return guidanceOpacity(this.guidanceElapsed, keepVisible, reducedMotion);
+  }
 
   public forceRestart(): void {
     this.storage.setItem(FIRST_TIME_TUTORIAL_STORAGE_KEY, "");

@@ -1,6 +1,6 @@
 import { ARENA_SIZE, MAX_LAUNCH_SPEED, BREACH_ROOM_D, BREACH_ROOM_H, BREACH_ROOM_W } from './constants';
 import { IDENTITY_QUATERNION, normalizeQuaternion, rotateByQuaternion, type QuaternionLike } from './hitZoneColliders';
-import type { Vec3 } from './vec3';
+import { v3, type Vec3 } from './vec3';
 
 export interface BodyCollider { center: Vec3; half: Vec3 }
 // CPU-skinned Alien_IdleHold envelope with helmet clearance, metres in player-local space.
@@ -12,7 +12,7 @@ export const STANDING_BODY: BodyCollider = { center: { x: 0, y: -0.3455, z: 0.26
 export const FLOATING_BODY: BodyCollider = { center: { x: -0.0515, y: -0.56525, z: 0.14 }, half: { x: 0.2385, y: 0.17575, z: 0.30 } };
 // Reclined surface hold: CPU-skinned body + all 9,920 helmet-asset vertices,
 // with 1 mm support padding on every face. Local +X follows the bar.
-export const HANGING_BODY: BodyCollider = {"center":{"x":0.00124,"y":-0.48042,"z":0.16239},"half":{"x":0.14853,"y":0.16127,"z":0.26891}};
+export const HANGING_BODY: BodyCollider = {"center":{"x":0.02575,"y":-0.47792,"z":0.16177},"half":{"x":0.17304,"y":0.16377,"z":0.26828}};
 // Freeze crossfades can start upright, hanging or anywhere in the swim cycle.
 // Their union cannot fit each individual pose tightly; preserve non-penetration.
 export const FROZEN_BODY: BodyCollider = { center: { x: 0.0035, y: -0.414, z: 0.2015 }, half: { x: 0.3335, y: 0.359, z: 0.3605 } };
@@ -73,6 +73,23 @@ export function clampBodyBreach(state: BodyPhysicsState, center: Vec3, openAxis:
     }
   }
 }
+/** A separating diamond face proves the rigid body is in empty AABB corner
+ * space. Retain conservative box collision when no such separation exists.
+ * `diamond` is the FULL octahedron envelope, never the inset bounce box. */
+export function bodyClearsDiamond(pos: Vec3, q: QuaternionLike, phase: string, diamond: CollisionBox): boolean {
+  const body = bodyColliderForPhase(phase), rotation = normalizeQuaternion(q);
+  const center = v3.add(pos, rotateByQuaternion(rotation, body.center));
+  const axes = [rotateByQuaternion(rotation, { x: body.half.x, y: 0, z: 0 }), rotateByQuaternion(rotation, { x: 0, y: body.half.y, z: 0 }), rotateByQuaternion(rotation, { x: 0, y: 0, z: body.half.z })];
+  const half = v3.scale(v3.sub(diamond.max, diamond.min), 0.5);
+  const relative = v3.sub(center, v3.scale(v3.add(diamond.min, diamond.max), 0.5));
+  for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) {
+    const normal = { x: x / half.x, y: y / half.y, z: z / half.z };
+    const support = axes.reduce((sum, axis) => sum + Math.abs(v3.dot(normal, axis)), 0);
+    if (v3.dot(normal, relative) - support > 1 + 1e-6) return true;
+  }
+  return false;
+}
+
 /** Minkowski AABB contact: least penetration axis; reflect only inward speed. */
 export function bounceBodyBoxes(state: BodyPhysicsState, boxes: readonly CollisionBox[], q: QuaternionLike = IDENTITY_QUATERNION, phase = 'BREACH', padding = 0): void {
   const b = bodyWorldBounds(state.pos,q,phase);

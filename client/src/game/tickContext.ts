@@ -129,6 +129,7 @@ export function updateOnboarding(ctx: GameTickContext, inRound: boolean, dt: num
     grab,
     ctx.mobile ? 'RAIL · GRAB' : 'RAIL · E',
     prompt?.cue === 'breach',
+    ctx.tutorial.updateGuidance(dt, inRound, window.matchMedia('(prefers-reduced-motion: reduce)').matches),
   );
   return prompt;
 }

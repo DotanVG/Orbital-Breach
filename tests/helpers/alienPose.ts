@@ -92,10 +92,18 @@ export async function sampleAlienPose(phase = 'BREACH', time = 0, frozenFrom = '
   });
   helmetRoot.updateMatrixWorld(true);
   const helmetVertices: Vector3[] = [];
+  const helmetHeadVertices: Vector3[] = [];
   helmetRoot.traverse(node => {
     if (!(node instanceof SkinnedMesh)) return;
     node.skeleton.update();
-    for (let i = 0; i < node.geometry.attributes.position.count; i++) helmetVertices.push(node.getVertexPosition(i, new Vector3()).applyMatrix4(node.matrixWorld));
+    for (let i = 0; i < node.geometry.attributes.position.count; i++) {
+      const vertex = node.getVertexPosition(i, new Vector3()).applyMatrix4(node.matrixWorld);
+      helmetVertices.push(vertex);
+      const indices = node.geometry.attributes.skinIndex, weights = node.geometry.attributes.skinWeight;
+      let dominant = 0;
+      for (let k = 1; k < 4; k++) if (weights.getComponent(i, k) > weights.getComponent(i, dominant)) dominant = k;
+      if (node.skeleton.bones[indices.getComponent(i, dominant)].name === 'Head') helmetHeadVertices.push(vertex);
+    }
   });
-  return { root, rig, helmetRoot, helmetRig, bones, vertices, headVertices, coreVertices, handVertices, helmetVertices, bounds: new Box3().setFromPoints(phase === 'GRABBING' || phase === 'AIMING' ? [...vertices,...helmetVertices] : vertices), animation };
+  return { root, rig, helmetRoot, helmetRig, bones, vertices, headVertices, coreVertices, handVertices, helmetVertices, helmetHeadVertices, bounds: new Box3().setFromPoints(phase === 'GRABBING' || phase === 'AIMING' ? [...vertices,...helmetVertices] : vertices), animation };
 }
