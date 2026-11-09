@@ -5,6 +5,7 @@ import { Box3, Quaternion, Vector3 } from 'three';
 import { bodyColliderForPhase, bodySubsteps, bodyWorldBounds, type BodyCollider } from '../shared/bodyCollider';
 import { bounceAgainstBoxes } from '../client/src/arena/obstacleCollision';
 import { sampleAlienPose } from './helpers/alienPose';
+import { bodyPartsForPhase } from '../shared/bodyParts';
 
 const axes = ['x', 'y', 'z'] as const;
 const before: Record<string, BodyCollider> = {
@@ -18,12 +19,12 @@ const poses: Record<string, Pose[]> = { FLOATING: [], FROZEN: [], GRABBING: [] }
 // Reproduce real animation channels, including the entire 0.16 s freeze blend.
 // Two seconds cover more than a complete swimming loop; no renderer is involved.
 beforeAll(async () => {
-  poses.GRABBING.push(await sampleAlienPose('GRABBING'));
-  for (let i = 0; i <= 128; i++) poses.FLOATING.push(await sampleAlienPose('FLOATING', i / 64));
+  poses.GRABBING.push(await sampleAlienPose('GRABBING',0,'BREACH',0,true));
+  for (let i = 0; i <= 128; i++) poses.FLOATING.push(await sampleAlienPose('FLOATING', i / 64,'BREACH',0,true));
   for (const origin of ['BREACH', 'GRABBING', 'FLOATING']) {
     for (let frame = 0; frame <= (origin === 'FLOATING' ? 32 : 0); frame++) {
       for (let blend = 0; blend <= 10; blend++) {
-        poses.FROZEN.push(await sampleAlienPose('FROZEN', blend * 0.016, origin, frame / 16));
+        poses.FROZEN.push(await sampleAlienPose('FROZEN', blend * 0.016, origin, frame / 16,true));
       }
     }
   }
@@ -79,6 +80,15 @@ describe('CPU-skinned mesh contact with axis-aligned obstacle faces', () => {
       if (phase === 'FLOATING') expect(clearances.reduce((a, b) => a + b, 0) / clearances.length).toBeLessThanOrEqual(0.03);
     });
   }
+  it('each compound part covers its CPU-skinned mesh across swim and all freeze origins (DOT-124)',()=>{
+    for(const phase of ['FLOATING','FROZEN','GRABBING']) for(const pose of poses[phase]) {
+      for(const part of bodyPartsForPhase(phase)) for(const a of axes) {
+        let worst=-Infinity;
+        for(const vertex of pose.zoneVertices[part.zone]) worst=Math.max(worst,Math.abs(vertex[a]-part.center[a])-part.half[a]);
+        expect(worst,phase+' '+part.zone+' '+a).toBeLessThanOrEqual(phase==='FLOATING'?.030001:.010001);
+      }
+    }
+  });
   it('swim substeps follow half the new smallest half-extent at maximum speed', () => {
     const body = bodyColliderForPhase('FLOATING');
     for (const dt of [1 / 60, 1 / 20, 0.25, 1]) {

@@ -1,6 +1,7 @@
 import { ARENA_SIZE, MAX_LAUNCH_SPEED, BREACH_ROOM_D, BREACH_ROOM_H, BREACH_ROOM_W } from './constants';
 import { IDENTITY_QUATERNION, normalizeQuaternion, rotateByQuaternion, type QuaternionLike } from './hitZoneColliders';
 import { v3, type Vec3 } from './vec3';
+import { bodyPartsForPhase } from './bodyParts';
 
 export interface BodyCollider { center: Vec3; half: Vec3 }
 // CPU-skinned Alien_IdleHold envelope with helmet clearance, metres in player-local space.
@@ -22,13 +23,20 @@ export function bodyColliderForPhase(phase = 'BREACH'): BodyCollider {
     : phase === 'FLOATING' ? FLOATING_BODY : STANDING_BODY;
 }
 export function bodyWorldBounds(pos: Vec3, orientation: QuaternionLike = IDENTITY_QUATERNION, phase = 'BREACH'): BodyCollider {
-  const body = bodyColliderForPhase(phase), q = normalizeQuaternion(orientation);
-  const offset = rotateByQuaternion(q, body.center);
-  const axes = [rotateByQuaternion(q, { x: body.half.x, y: 0, z: 0 }), rotateByQuaternion(q, { x: 0, y: body.half.y, z: 0 }), rotateByQuaternion(q, { x: 0, y: 0, z: body.half.z })];
-  return { center: { x: pos.x + offset.x, y: pos.y + offset.y, z: pos.z + offset.z }, half: {
-    x: axes.reduce((s,a)=>s+Math.abs(a.x),0), y: axes.reduce((s,a)=>s+Math.abs(a.y),0), z: axes.reduce((s,a)=>s+Math.abs(a.z),0),
-  } };
+  const q = normalizeQuaternion(orientation);
+  const min = { x: Infinity, y: Infinity, z: Infinity }, max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  for (const part of bodyPartsForPhase(phase)) {
+    const center = v3.add(pos, rotateByQuaternion(q, part.center));
+    const axes = AXES.map(a => rotateByQuaternion(q, { x: 0, y: 0, z: 0, [a]: part.half[a] }));
+    for (const a of AXES) {
+      const support = axes.reduce((sum, axis) => sum + Math.abs(axis[a]), 0);
+      min[a] = Math.min(min[a], center[a] - support);
+      max[a] = Math.max(max[a], center[a] + support);
+    }
+  }
+  return { center: v3.scale(v3.add(min, max), 0.5), half: v3.scale(v3.sub(max, min), 0.5) };
 }
+
 export const breachFloorAnchorY = (centerY: number): number => centerY - BREACH_ROOM_H / 2 - STANDING_BODY.center.y + STANDING_BODY.half.y;
 export interface BodyPhysicsState { pos: Vec3; vel: Vec3 }
 export interface CollisionBox { min: Vec3; max: Vec3 }
@@ -77,41 +85,81 @@ export function clampBodyBreach(state: BodyPhysicsState, center: Vec3, openAxis:
  * space. Retain conservative box collision when no such separation exists.
  * `diamond` is the FULL octahedron envelope, never the inset bounce box. */
 export function bodyClearsDiamond(pos: Vec3, q: QuaternionLike, phase: string, diamond: CollisionBox): boolean {
-  const body = bodyColliderForPhase(phase), rotation = normalizeQuaternion(q);
-  const center = v3.add(pos, rotateByQuaternion(rotation, body.center));
-  const axes = [rotateByQuaternion(rotation, { x: body.half.x, y: 0, z: 0 }), rotateByQuaternion(rotation, { x: 0, y: body.half.y, z: 0 }), rotateByQuaternion(rotation, { x: 0, y: 0, z: body.half.z })];
-  const half = v3.scale(v3.sub(diamond.max, diamond.min), 0.5);
-  const relative = v3.sub(center, v3.scale(v3.add(diamond.min, diamond.max), 0.5));
-  for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) {
-    const normal = { x: x / half.x, y: y / half.y, z: z / half.z };
-    const support = axes.reduce((sum, axis) => sum + Math.abs(v3.dot(normal, axis)), 0);
-    if (v3.dot(normal, relative) - support > 1 + 1e-6) return true;
-  }
-  return false;
+  const rotation = normalizeQuaternion(q), half = v3.scale(v3.sub(diamond.max, diamond.min), 0.5);
+  const diamondCenter = v3.scale(v3.add(diamond.min, diamond.max), 0.5);
+  return bodyPartsForPhase(phase).every(body => {
+    const relative = v3.sub(v3.add(pos,rotateByQuaternion(rotation,body.center)),diamondCenter);
+    const axes = AXES.map(a => rotateByQuaternion(rotation,{x:0,y:0,z:0,[a]:body.half[a]}));
+    for (const x of [-1,1]) for (const y of [-1,1]) for (const z of [-1,1]) {
+      const normal={x:x/half.x,y:y/half.y,z:z/half.z};
+      const support=axes.reduce((sum,axis)=>sum+Math.abs(v3.dot(normal,axis)),0);
+      if (v3.dot(normal,relative)-support > 1+1e-6) return true;
+    }
+    return false;
+  });
 }
 
-/** Minkowski AABB contact: least penetration axis; reflect only inward speed. */
+/** Compound OBB vs AABB using separating axes. For each world axis, find
+ * forbidden translation intervals, then leave their connected union once.
+ * Resolving each limb separately can push two overlapping limbs back and forth.
+ * World-axis response preserves the existing restitution and sliding behavior. */
 export function bounceBodyBoxes(state: BodyPhysicsState, boxes: readonly CollisionBox[], q: QuaternionLike = IDENTITY_QUATERNION, phase = 'BREACH', padding = 0): void {
-  const b = bodyWorldBounds(state.pos,q,phase);
+  if (!boxes.length) return;
+  const bounds = bodyWorldBounds(state.pos,q,phase);
+  const rotation = normalizeQuaternion(q);
+  const basis = AXES.map(a => ({ x: 0, y: 0, z: 0, [a]: 1 }));
+  const localAxes = basis.map(axis => rotateByQuaternion(rotation, axis));
+  const normals = [...basis, ...localAxes, ...basis.flatMap(a => localAxes.map(b => v3.cross(a,b)))].filter(n => v3.lengthSq(n) > 1e-12);
+  const parts = bodyPartsForPhase(phase).map(part => ({
+    center: rotateByQuaternion(rotation, part.center),
+    supports: normals.map(n => localAxes.reduce((sum, axis, i) => sum + Math.abs(v3.dot(n,axis)) * part.half[AXES[i]], 0)),
+  }));
   for (const box of boxes) {
-    let depth = Infinity, axis: 'x'|'y'|'z' = 'x', sign = 1;
-    let overlaps = true;
-    for (const ax of AXES) {
-      const lo = box.min[ax]-b.half[ax]-padding, hi = box.max[ax]+b.half[ax]+padding;
-      if (b.center[ax] <= lo || b.center[ax] >= hi) { overlaps=false; break; }
-      const near = b.center[ax]-lo, far = hi-b.center[ax];
-      if (Math.min(near,far) < depth) { depth=Math.min(near,far); axis=ax; sign=near<=far?-1:1; }
+    if (AXES.some(a => bounds.center[a]+bounds.half[a]+padding <= box.min[a]
+      || bounds.center[a]-bounds.half[a]-padding >= box.max[a])) continue;
+    const boxCenter = v3.scale(v3.add(box.min,box.max),0.5);
+    const half = v3.scale(v3.sub(box.max,box.min),0.5);
+    const intervals: Array<Array<[number,number]>> = [[],[],[]];
+    let overlaps = false;
+    for (const part of parts) {
+      const relative = v3.sub(v3.add(state.pos,part.center),boxCenter);
+      const distances = normals.map(n => v3.dot(relative,n));
+      const supports = normals.map((n,i) => part.supports[i] + AXES.reduce((sum,a) => sum + Math.abs(n[a]) * (half[a]+padding),0));
+      if (distances.every((d,i) => Math.abs(d) < supports[i] - 1e-10)) overlaps = true;
+      for (let ai=0; ai<3; ai++) {
+        let lo = -Infinity, hi = Infinity;
+        for (let i=0; i<normals.length; i++) {
+          const slope = normals[i][AXES[ai]], d = distances[i], support = supports[i];
+          if (Math.abs(slope) < 1e-10) {
+            if (Math.abs(d) >= support - 1e-10) { lo=1; hi=0; break; }
+          } else {
+            const t1=(-support-d)/slope, t2=(support-d)/slope;
+            lo=Math.max(lo,Math.min(t1,t2)); hi=Math.min(hi,Math.max(t1,t2));
+          }
+        }
+        if (lo < hi) intervals[ai].push([lo,hi]);
+      }
     }
     if (!overlaps) continue;
-    state.pos[axis] += sign*depth;
-    b.center[axis] += sign*depth;
-    if (state.vel[axis]*sign < 0) state.vel[axis] *= -0.5;
+    let correction = Infinity, axis: 'x'|'y'|'z' = 'x';
+    for (let ai=0; ai<3; ai++) {
+      let lo=0, hi=0;
+      // At most one expansion per part; catches chains in either order.
+      for (let pass=0; pass<parts.length; pass++) for (const [a,b] of intervals[ai]) {
+        if (a <= hi+1e-10 && b >= lo-1e-10) { lo=Math.min(lo,a); hi=Math.max(hi,b); }
+      }
+      const delta = -lo <= hi ? lo : hi;
+      if (Math.abs(delta) < Math.abs(correction)) { correction=delta; axis=AXES[ai]; }
+    }
+    state.pos[axis] += correction;
+    bounds.center[axis] += correction;
+    if (state.vel[axis]*correction < 0) state.vel[axis] *= -0.5;
   }
 }
 /** Bound displacement by half the smallest support: even zero-thickness slabs cannot be skipped. */
 export function bodySubsteps(velocity: Vec3, dt: number, phase = 'BREACH'): number {
-  const h=bodyColliderForPhase(phase).half;
-  return Math.max(1, Math.ceil(Math.hypot(velocity.x,velocity.y,velocity.z)*Math.max(0,dt)/(Math.min(h.x,h.y,h.z)*0.5)));
+  const smallest = Math.min(...bodyPartsForPhase(phase).flatMap(p => AXES.map(a => p.half[a])));
+  return Math.max(1, Math.ceil(Math.hypot(velocity.x,velocity.y,velocity.z)*Math.max(0,dt)/(smallest*0.5)));
 }
 
 /** Shared bounded-displacement integration, including the launch clearance step. */

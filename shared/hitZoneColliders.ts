@@ -29,31 +29,35 @@ export const IDENTITY_QUATERNION: QuaternionLike = {
 
 /** CPU-sampled Alien.glb runtime poses (asset transform included once).
  * Boxes are half-extents; joint means locate limb centres, never the physics anchor.
+ * Damage volumes retain measured centres/bone coverage; limb extents are
+ * deliberately forgiving to balance broad-sphere contact classification. They
+ * are NOT physical wall colliders (see bodyParts.ts). Deterministic varied-angle
+ * shot coverage and the pinned 36f81cc baseline live in hitDistribution.test.ts.
  * Model left is -X after ALIEN_ROTATION_Y=PI (F1).
  */
 export const defaultHitZoneColliders: HitZoneCollider[] = [
-  {"id":"head","zone":"head","shape":"sphere","position":{"x":-0.00037,"y":-0.18192,"z":0.24174},"size":{"x":0.16731,"y":0.16731,"z":0.16731},"rotation":{"x":0,"y":0,"z":0}},
-  {"id":"body","zone":"body","shape":"box","position":{"x":-0.00018,"y":-0.44016,"z":0.28132},"size":{"x":0.078,"y":0.14142,"z":0.055},"rotation":{"x":0,"y":0,"z":0}},
-  {"id":"leftArm","zone":"leftArm","shape":"box","position":{"x":-0.10286,"y":-0.39013,"z":0.28134},"size":{"x":0.02587,"y":0.07808,"z":0.02362},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"head","zone":"head","shape":"sphere","position":{"x":-0.00037,"y":-0.18192,"z":0.24174},"size":{"x":0.09623,"y":0.09623,"z":0.09623},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"body","zone":"body","shape":"box","position":{"x":-0.00018,"y":-0.44016,"z":0.28132},"size":{"x":0.078,"y":0.14354,"z":0.055},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"leftArm","zone":"leftArm","shape":"box","position":{"x":-0.10286,"y":-0.39013,"z":0.28134},"size":{"x":0.0318,"y":0.10957,"z":0.03071},"rotation":{"x":0,"y":0,"z":0}},
   {"id":"rightArm","zone":"rightArm","shape":"box","position":{"x":0.11281,"y":-0.35792,"z":0.23172},"size":{"x":0.036,"y":0.04577,"z":0.06926},"rotation":{"x":0,"y":0,"z":0}},
-  {"id":"leftLeg","zone":"leftLeg","shape":"box","position":{"x":-0.06964,"y":-0.56299,"z":0.2828},"size":{"x":0.025,"y":0.07856,"z":0.03},"rotation":{"x":0,"y":0,"z":0}},
-  {"id":"rightLeg","zone":"rightLeg","shape":"box","position":{"x":0.07514,"y":-0.56389,"z":0.28248},"size":{"x":0.025,"y":0.07766,"z":0.03},"rotation":{"x":0,"y":0,"z":0}}
+  {"id":"leftLeg","zone":"leftLeg","shape":"box","position":{"x":-0.06964,"y":-0.56299,"z":0.2828},"size":{"x":0.05005,"y":0.19022,"z":0.039},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"rightLeg","zone":"rightLeg","shape":"box","position":{"x":0.07514,"y":-0.56389,"z":0.28248},"size":{"x":0.075,"y":0.08357,"z":0.04374},"rotation":{"x":0,"y":0,"z":0}}
 ];
 export const floatingHitZoneColliders: HitZoneCollider[] = [
-  {"id":"head","zone":"head","shape":"sphere","position":{"x":-0.00942,"y":-0.5594,"z":-0.03713},"size":{"x":0.16735,"y":0.16735,"z":0.16735},"rotation":{"x":0,"y":0,"z":0}},
-  {"id":"body","zone":"body","shape":"box","position":{"x":-0.00146,"y":-0.58464,"z":0.22576},"size":{"x":0.078,"y":0.03178,"z":0.14071},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"head","zone":"head","shape":"sphere","position":{"x":-0.00942,"y":-0.5594,"z":-0.03713},"size":{"x":0.167,"y":0.167,"z":0.167},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"body","zone":"body","shape":"box","position":{"x":-0.00146,"y":-0.58464,"z":0.22576},"size":{"x":0.234,"y":0.04452,"z":0.14071},"rotation":{"x":0,"y":0,"z":0}},
   {"id":"leftArm","zone":"leftArm","shape":"box","position":{"x":-0.13604,"y":-0.55084,"z":0.08598},"size":{"x":0.06273,"y":0.121,"z":0.125},"rotation":{"x":0,"y":0,"z":0}},
-  {"id":"rightArm","zone":"rightArm","shape":"box","position":{"x":0.11064,"y":-0.6092,"z":0.07477},"size":{"x":0.03666,"y":0.04977,"z":0.06687},"rotation":{"x":0,"y":0,"z":0}},
-  {"id":"leftLeg","zone":"leftLeg","shape":"box","position":{"x":-0.05399,"y":-0.59524,"z":0.35248},"size":{"x":0.025,"y":0.055,"z":0.08402},"rotation":{"x":0,"y":0,"z":0}},
-  {"id":"rightLeg","zone":"rightLeg","shape":"box","position":{"x":0.05211,"y":-0.59088,"z":0.35201},"size":{"x":0.03115,"y":0.06,"z":0.08551},"rotation":{"x":0,"y":0,"z":0}}
+  {"id":"rightArm","zone":"rightArm","shape":"box","position":{"x":0.11064,"y":-0.6092,"z":0.07477},"size":{"x":0.10845,"y":0.11011,"z":0.07255},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"leftLeg","zone":"leftLeg","shape":"box","position":{"x":-0.05399,"y":-0.59524,"z":0.35248},"size":{"x":0.07016,"y":0.12621,"z":0.12194},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"rightLeg","zone":"rightLeg","shape":"box","position":{"x":0.05211,"y":-0.59088,"z":0.35201},"size":{"x":0.09215,"y":0.10282,"z":0.25473},"rotation":{"x":0,"y":0,"z":0}}
 ];
 export const grabbingHitZoneColliders: HitZoneCollider[] = [
-  {"id":"head","zone":"head","shape":"sphere","position":{"x":0.00025,"y":-0.50174,"z":0.05071},"size":{"x":0.16724,"y":0.16724,"z":0.16724},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"head","zone":"head","shape":"sphere","position":{"x":0.00025,"y":-0.50174,"z":0.05071},"size":{"x":0.14006,"y":0.14006,"z":0.14006},"rotation":{"x":0,"y":0,"z":0}},
   {"id":"body","zone":"body","shape":"box","position":{"x":0.00153,"y":-0.52772,"z":0.30116},"size":{"x":0.078,"y":0.05054,"z":0.12293},"rotation":{"x":0,"y":0,"z":0}},
   {"id":"leftArm","zone":"leftArm","shape":"box","position":{"x":-0.05477,"y":-0.40212,"z":0.28543},"size":{"x":0.01888,"y":0.06278,"z":0.04625},"rotation":{"x":0,"y":0,"z":0}},
   {"id":"rightArm","zone":"rightArm","shape":"box","position":{"x":0.12639,"y":-0.50877,"z":0.23174},"size":{"x":0.05186,"y":0.03928,"z":0.04819},"rotation":{"x":0,"y":0,"z":0}},
-  {"id":"leftLeg","zone":"leftLeg","shape":"box","position":{"x":-0.06826,"y":-0.57323,"z":0.32228},"size":{"x":0.025,"y":0.07433,"z":0.05448},"rotation":{"x":0,"y":0,"z":0}},
-  {"id":"rightLeg","zone":"rightLeg","shape":"box","position":{"x":0.0761,"y":-0.57414,"z":0.31956},"size":{"x":0.025,"y":0.07342,"z":0.05233},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"leftLeg","zone":"leftLeg","shape":"box","position":{"x":-0.06826,"y":-0.57323,"z":0.32228},"size":{"x":0.04934,"y":0.16216,"z":0.07912},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"rightLeg","zone":"rightLeg","shape":"box","position":{"x":0.0761,"y":-0.57414,"z":0.31956},"size":{"x":0.04622,"y":0.16017,"z":0.06844},"rotation":{"x":0,"y":0,"z":0}},
   {"id":"handL","zone":"leftArm","shape":"box","position":{"x":-0.06704,"y":-0.35517,"z":0.3694},"size":{"x":0.06134,"y":0.02651,"z":0.06509},"rotation":{"x":0,"y":0,"z":0}},
   {"id":"handR","zone":"rightArm","shape":"box","position":{"x":0.17728,"y":-0.50025,"z":0.14389},"size":{"x":0.02517,"y":0.06074,"z":0.06366},"rotation":{"x":0,"y":0,"z":0}}
 ];

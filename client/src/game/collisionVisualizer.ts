@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { GRAB_RADIUS } from '../../../shared/constants';
-import { bodyColliderForPhase } from '../../../shared/bodyCollider';
+import { bodyPartsForPhase } from '../../../shared/bodyParts';
 import { hitZoneCollidersForPhase, IDENTITY_QUATERNION, type QuaternionLike, type HitZoneCollider } from '../../../shared/hitZoneColliders';
 import type { Arena } from '../arena/arena';
 import { buildMesh } from './colliderEditor';
 interface DebugActor { position: {x:number;y:number;z:number}; orientation?: QuaternionLike; phase?: string }
-interface ActorMeshes { root: THREE.Group; body: THREE.Mesh; reach: THREE.Mesh; label: THREE.Sprite; zones: THREE.Mesh[]; source?: readonly HitZoneCollider[] }
+interface ActorMeshes { root: THREE.Group; bodies: THREE.Mesh[]; reach: THREE.Mesh; label: THREE.Sprite; zones: THREE.Mesh[]; source?: readonly HitZoneCollider[] }
 export class CollisionVisualizer {
   private visible=false;
   private group=new THREE.Group();
@@ -25,19 +25,19 @@ export class CollisionVisualizer {
     while(this.actors.length>actors.length) this.removeActor();
     while(this.actors.length<actors.length) {
       const root=new THREE.Group();
-      const body=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshBasicMaterial({color:0x00ff44,wireframe:true,depthTest:false}));
+      const bodies=Array.from({length:6},()=>new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshBasicMaterial({color:0x00ff44,wireframe:true,depthTest:false})));
       const reach=new THREE.Mesh(new THREE.SphereGeometry(GRAB_RADIUS,16,8),new THREE.MeshBasicMaterial({color:0xffff00,wireframe:true,transparent:true,opacity:0.08,depthWrite:false}));
       reach.name='grab reach';
       const canvas=document.createElement('canvas'); canvas.width=256; canvas.height=32;
       const ctx=canvas.getContext('2d')!; ctx.fillStyle='#ffff66'; ctx.font='20px monospace'; ctx.fillText('grab reach (3 m)',4,24);
       const label=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(canvas),transparent:true,depthTest:false}));
       label.scale.set(1.8,0.225,1);
-      root.add(body); this.group.add(root,reach,label); this.actors.push({root,body,reach,label,zones:[]});
+      root.add(...bodies); this.group.add(root,reach,label); this.actors.push({root,bodies,reach,label,zones:[]});
     }
     actors.forEach((actor,i)=>{
-      const a=this.actors[i], body=bodyColliderForPhase(actor.phase), source=hitZoneCollidersForPhase(actor.phase);
+      const a=this.actors[i], parts=bodyPartsForPhase(actor.phase), source=hitZoneCollidersForPhase(actor.phase);
       a.root.position.copy(actor.position); a.root.quaternion.copy(actor.orientation??IDENTITY_QUATERNION);
-      a.body.position.copy(body.center); a.body.scale.set(body.half.x*2,body.half.y*2,body.half.z*2);
+      a.bodies.forEach((mesh,j)=>{const p=parts[j];mesh.position.copy(p.center);mesh.scale.set(p.half.x*2,p.half.y*2,p.half.z*2);mesh.name=p.zone+' world';});
       a.reach.position.copy(actor.position); a.label.position.copy(actor.position); a.label.position.y+=GRAB_RADIUS;
       if(a.source!==source) {
         for(const mesh of a.zones) { a.root.remove(mesh); disposeMesh(mesh); }
@@ -49,7 +49,7 @@ export class CollisionVisualizer {
   public dispose(): void { this.clearStatic(); while(this.actors.length) this.removeActor(); this.scene.remove(this.group); }
   private removeActor(): void {
     const a=this.actors.pop()!; this.group.remove(a.root,a.reach,a.label);
-    for(const m of [a.body,a.reach,...a.zones]) disposeMesh(m);
+    for(const m of [...a.bodies,a.reach,...a.zones]) disposeMesh(m);
     (a.label.material as THREE.SpriteMaterial).map?.dispose(); (a.label.material as THREE.SpriteMaterial).dispose();
   }
   private clearStatic(): void { for(const h of this.staticObjects) { this.group.remove(h); h.geometry.dispose(); (h.material as THREE.Material).dispose(); } this.staticObjects=[]; }
