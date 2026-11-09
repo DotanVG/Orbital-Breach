@@ -1,5 +1,5 @@
-﻿import { readFileSync } from 'node:fs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { createWelcomeView, injectWelcomeStyle, startWelcomeEffects, stopEffects, enterFullscreen } = vi.hoisted(() => ({
   createWelcomeView: vi.fn(),
@@ -20,10 +20,17 @@ describe('original Click-to-BREACH screen', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.stubGlobal('window', { matchMedia: vi.fn(() => ({ matches: false })) });
     root = Object.assign(new EventTarget(), { remove: vi.fn(), classList: { add: vi.fn() } });
     btn = new EventTarget();
     createWelcomeView.mockReturnValue({ root, layer: {}, btn });
     startWelcomeEffects.mockReturnValue(stopEffects);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it('keeps the original full-screen art, parallax, and button without SEO body copy', () => {
@@ -69,5 +76,80 @@ describe('original Click-to-BREACH screen', () => {
     expect(root.remove).toHaveBeenCalledOnce();
     expect(screen.isVisible()).toBe(false);
     expect(showMenu).toHaveBeenCalledOnce();
+  });
+
+  it('opens the menu after the fade timeout when animationend never fires', () => {
+    const screen = new WelcomeScreen(cursor);
+    const showMenu = vi.fn();
+    screen.onBreach = showMenu;
+    screen.show();
+    btn.dispatchEvent(new Event('click'));
+    vi.advanceTimersByTime(449);
+    expect(showMenu).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(showMenu).toHaveBeenCalledOnce();
+    expect(screen.isVisible()).toBe(false);
+    expect(stopEffects).toHaveBeenCalledOnce();
+    expect(root.remove).toHaveBeenCalledOnce();
+    root.dispatchEvent(new Event('animationend'));
+    expect(showMenu).toHaveBeenCalledOnce();
+  });
+
+  it('opens the menu immediately without fading when reduced motion is preferred', () => {
+    vi.mocked(window.matchMedia).mockReturnValue({ matches: true } as MediaQueryList);
+    const screen = new WelcomeScreen(cursor);
+    const showMenu = vi.fn();
+    screen.onBreach = showMenu;
+    screen.show();
+    btn.dispatchEvent(new Event('click'));
+    expect(window.matchMedia).toHaveBeenCalledWith('(prefers-reduced-motion: reduce)');
+    expect(showMenu).toHaveBeenCalledOnce();
+    expect(root.classList.add).not.toHaveBeenCalled();
+    expect(screen.isVisible()).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    btn.dispatchEvent(new Event('click'));
+    expect(showMenu).toHaveBeenCalledOnce();
+  });
+
+  it('runs fullscreen, fade, and the menu callback only once on a fast double click', () => {
+    const screen = new WelcomeScreen(cursor);
+    const showMenu = vi.fn();
+    screen.fullscreenOnClick = true;
+    screen.onBreach = showMenu;
+    screen.show();
+    btn.dispatchEvent(new Event('click'));
+    btn.dispatchEvent(new Event('click'));
+    expect(enterFullscreen).toHaveBeenCalledOnce();
+    expect(root.classList.add).toHaveBeenCalledExactlyOnceWith('wc-fadeout');
+    root.dispatchEvent(new Event('animationend'));
+    vi.runAllTimers();
+    expect(showMenu).toHaveBeenCalledOnce();
+  });
+
+  it('clears the fallback timer after animationend so the menu cannot open twice', () => {
+    const screen = new WelcomeScreen(cursor);
+    const showMenu = vi.fn();
+    screen.onBreach = showMenu;
+    screen.show();
+    btn.dispatchEvent(new Event('click'));
+    expect(vi.getTimerCount()).toBe(1);
+    root.dispatchEvent(new Event('animationend'));
+    expect(showMenu).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(1000);
+    expect(showMenu).toHaveBeenCalledOnce();
+  });
+
+  it('cancels the pending transition when hidden', () => {
+    const screen = new WelcomeScreen(cursor);
+    const showMenu = vi.fn();
+    screen.onBreach = showMenu;
+    screen.show();
+    btn.dispatchEvent(new Event('click'));
+    screen.hide();
+    expect(vi.getTimerCount()).toBe(0);
+    root.dispatchEvent(new Event('animationend'));
+    vi.runAllTimers();
+    expect(showMenu).not.toHaveBeenCalled();
   });
 });

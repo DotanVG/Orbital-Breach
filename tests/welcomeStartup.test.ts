@@ -1,4 +1,4 @@
-﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Startup does not load models; keep addon loaders out of this Node-only test.
 vi.mock('three/addons/loaders/GLTFLoader.js', () => ({ GLTFLoader: class {} }));
 vi.mock('three/addons/utils/SkeletonUtils.js', () => ({ clone: vi.fn() }));
