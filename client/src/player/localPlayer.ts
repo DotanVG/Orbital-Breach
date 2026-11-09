@@ -354,6 +354,7 @@ export class LocalPlayer {
 
     this.phys.vel.set(0, 0, 0);
 
+    input.consumeGrab(); // A second tap while charging is still an attach request, never a deferred grab.
     const { dy } = input.consumeAimDelta();
     this.launchPower += dy * LAUNCH_AIM_SENSITIVITY;
     this.launchPower = clamp(this.launchPower, 0, this.maxLaunchPower());

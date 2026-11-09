@@ -8,7 +8,7 @@ import {
   PLAYER_DIAMOND_AABB_INSET,
 } from '../../../shared/constants';
 import { type PhysicsState } from '../physics';
-import { advanceBodyWorld } from '../../../shared/bodyCollider';
+import { advanceBodyWorld, bodyClearsDiamond } from '../../../shared/bodyCollider';
 import type { QuaternionLike } from '../../../shared/hitZoneColliders';
 import { GoalPlane, type GoalDef } from './goal';
 import { BarObject } from './bar';
@@ -239,7 +239,12 @@ export class Arena {
     const axis=this.getBreachOpenAxis(0);
     const positiveTeam=this.getBreachOpenSign(0) === -1 ? 0 : 1;
     const faces={positive:this.isGoalDoorOpen(positiveTeam),negative:this.isGoalDoorOpen(positiveTeam === 0 ? 1 : 0)};
-    advanceBodyWorld(state,dt,orientation,phase,this.playerCollisionBoxes,phase === 'FROZEN' ? undefined : axis,faces);
+    // Edge-mounted rails sit in empty corners of the diamond's inset AABB.
+    // A constrained hold must test the real faces before cancelling the grab.
+    const boxes = phase === 'GRABBING' || phase === 'AIMING'
+      ? this.playerCollisionBoxes.filter((_, i) => !bodyClearsDiamond(state.pos, orientation, phase, this.physicsBoxes[i]))
+      : this.playerCollisionBoxes;
+    advanceBodyWorld(state,dt,orientation,phase,boxes,phase === 'FROZEN' ? undefined : axis,faces);
   }
 
   public bounceObstacles(state: PhysicsState, orientation?: QuaternionLike, phase = 'BREACH'): void {

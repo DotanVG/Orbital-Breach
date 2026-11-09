@@ -140,7 +140,12 @@ export class HUD {
     grab: THREE.Vector3 | null,
     grabName: string,
     pulseGate: boolean,
+    guidanceOpacity = 1,
   ): void {
+    for (const el of [this.view.destination, this.view.cue, this.view.grab]) {
+      el.style.opacity = String(guidanceOpacity);
+      el.setAttribute('aria-hidden', String(guidanceOpacity === 0));
+    }
     camera.updateMatrixWorld();
     this.view.destination.style.setProperty('--gate-color', goalName.startsWith('CYAN') ? '#aaffff' : '#ff9df1');
     this.renderMarker(this.view.destination, camera, position, goal, goalName, pulseGate);

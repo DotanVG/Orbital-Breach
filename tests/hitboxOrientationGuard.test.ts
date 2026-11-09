@@ -81,7 +81,7 @@ describe('independent pose and 377-orientation guard',()=>{
     for(let i=0;i<=4;i++) samples.push(await sampleAlienPose('FROZEN',i/100));
     for(const pose of samples) for(const p of pose.vertices) for(const a of ['x','y','z'] as const) expect(Math.abs(p[a]-body.center[a])).toBeLessThanOrEqual(body.half[a]+0.01);
   });
-  it('both palms stay outside the bar surface, including after 600 stable frames',()=>{
+  it('left palm grips and the right palm stays clear after 600 stable frames',()=>{
     const pose=poses.get('GRABBING')!, midpoint=BAR_GRIP_LOCAL;
     const before=[...pose.bones].map(([n,p])=>[n,p.toArray()]);
     for(let i=0;i<600;i++) applyBarHoldPose([pose.rig]);
@@ -89,7 +89,8 @@ describe('independent pose and 377-orientation guard',()=>{
       const p=measureHandGripOffset(pose.root,side)!;
       const palm=pose.root.getObjectByName('Palm'+side)!.getWorldPosition(new Vector3());
       expect(Math.hypot(palm.y-midpoint.y,palm.z-midpoint.z)).toBeGreaterThanOrEqual(0.1);
-      expect(Math.hypot(palm.y-midpoint.y,palm.z-midpoint.z)).toBeLessThanOrEqual(0.135);
+      if(side === 'L') expect(Math.hypot(palm.y-midpoint.y,palm.z-midpoint.z)).toBeLessThanOrEqual(0.13);
+      else expect(Math.hypot(palm.y-midpoint.y,palm.z-midpoint.z)).toBeGreaterThan(0.2);
       expect(p.distanceTo(new Vector3().copy(hitZoneCollidersForPhase('GRABBING').find(c=>c.id==='hand'+side)!.position))).toBeLessThan(0.06);
     }
     pose.root.updateMatrixWorld(true);

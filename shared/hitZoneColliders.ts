@@ -51,11 +51,11 @@ export const grabbingHitZoneColliders: HitZoneCollider[] = [
   {"id":"head","zone":"head","shape":"sphere","position":{"x":0.00025,"y":-0.50174,"z":0.05071},"size":{"x":0.16724,"y":0.16724,"z":0.16724},"rotation":{"x":0,"y":0,"z":0}},
   {"id":"body","zone":"body","shape":"box","position":{"x":0.00153,"y":-0.52772,"z":0.30116},"size":{"x":0.078,"y":0.05054,"z":0.12293},"rotation":{"x":0,"y":0,"z":0}},
   {"id":"leftArm","zone":"leftArm","shape":"box","position":{"x":-0.05477,"y":-0.40212,"z":0.28543},"size":{"x":0.01888,"y":0.06278,"z":0.04625},"rotation":{"x":0,"y":0,"z":0}},
-  {"id":"rightArm","zone":"rightArm","shape":"box","position":{"x":0.05545,"y":-0.40356,"z":0.28511},"size":{"x":0.01837,"y":0.06317,"z":0.04567},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"rightArm","zone":"rightArm","shape":"box","position":{"x":0.12639,"y":-0.50877,"z":0.23174},"size":{"x":0.05186,"y":0.03928,"z":0.04819},"rotation":{"x":0,"y":0,"z":0}},
   {"id":"leftLeg","zone":"leftLeg","shape":"box","position":{"x":-0.06826,"y":-0.57323,"z":0.32228},"size":{"x":0.025,"y":0.07433,"z":0.05448},"rotation":{"x":0,"y":0,"z":0}},
   {"id":"rightLeg","zone":"rightLeg","shape":"box","position":{"x":0.0761,"y":-0.57414,"z":0.31956},"size":{"x":0.025,"y":0.07342,"z":0.05233},"rotation":{"x":0,"y":0,"z":0}},
   {"id":"handL","zone":"leftArm","shape":"box","position":{"x":-0.06704,"y":-0.35517,"z":0.3694},"size":{"x":0.06134,"y":0.02651,"z":0.06509},"rotation":{"x":0,"y":0,"z":0}},
-  {"id":"handR","zone":"rightArm","shape":"box","position":{"x":0.06422,"y":-0.3557,"z":0.3708},"size":{"x":0.05371,"y":0.02667,"z":0.06706},"rotation":{"x":0,"y":0,"z":0}}
+  {"id":"handR","zone":"rightArm","shape":"box","position":{"x":0.17728,"y":-0.50025,"z":0.14389},"size":{"x":0.02517,"y":0.06074,"z":0.06366},"rotation":{"x":0,"y":0,"z":0}}
 ];
 export function hitZoneCollidersForPhase(phase = 'BREACH'): readonly HitZoneCollider[] {
   return phase === 'GRABBING' || phase === 'AIMING' ? grabbingHitZoneColliders

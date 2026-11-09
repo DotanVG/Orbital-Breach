@@ -5,37 +5,57 @@ import { BAR_RADIUS } from '../../../shared/constants';
 export const DEFAULT_LEFT_HAND_GRIP_LOCAL = new THREE.Vector3(-0.27, -0.322, 0.287);
 /** Bar axis at the exposed tip, in the rigid player frame (not a palm target).
  * Local +X follows the bar towards its tip; the body hangs on the -Y side.
- * The reclined torso keeps this alien's large helmet behind the raised hands.
+ * The reclined torso keeps this alien's large helmet behind the raised left hand.
  */
 export const BAR_GRIP_LOCAL = new THREE.Vector3(0.07, -0.22, 0.32);
-const HAND_SPACING = 0.12;
 const holdRight = new THREE.Vector3();
 const holdUp = new THREE.Vector3();
 const holdForward = new THREE.Vector3();
 const holdBasis = new THREE.Matrix4();
 
-/** Canonical standing rig + two short CCD chains. Never accumulate last frame's pose. */
+/** Canonical standing rig + a left-arm CCD chain; the right hand keeps aiming. Never accumulate last frame's pose. */
 export function applyBarHoldPose(rigs: AnimatedRig[]): void {
   for (const rig of rigs) {
     for (const [name, base] of Object.entries(rig.standingReferencePose)) {
       const bone = rig.bones[name as keyof typeof rig.bones];
       if (bone) bone.quaternion.copy(base);
     }
+    for (const name of ['ShoulderR', 'UpperArmR', 'LowerArmR', 'PalmR'] as const) {
+      const aiming = rig.floatReferenceRightArmPose[name];
+      if (aiming) rig.bones[name]?.quaternion.copy(aiming);
+    }
     rig.root.updateWorldMatrix(true, true);
-    const abdomen = rig.bones.Abdomen!;
+    const abdomen = rig.bones.Abdomen;
+    if (!abdomen) continue;
+    const rightShoulder = rig.bones.ShoulderR;
+    const aimingShoulder = rightShoulder?.getWorldQuaternion(new THREE.Quaternion());
+    const rightPalm = rig.bones.PalmR;
+    const aimingPalm = rightPalm?.getWorldQuaternion(new THREE.Quaternion());
     const frame = rig.root.parent?.getWorldQuaternion(new THREE.Quaternion()) ?? new THREE.Quaternion();
     const tilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0).applyQuaternion(frame), -1.35);
     abdomen.quaternion.copy(abdomen.parent!.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(tilt).multiply(abdomen.getWorldQuaternion(new THREE.Quaternion())));
-    for (const side of ['L', 'R'] as const) {
+    // Keep the pistol just outside the reclined helmet's silhouette.
+    aimingShoulder?.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0).applyQuaternion(frame), -0.65));
+    // Counter the torso recline at the shoulder and preserve the pistol aim at
+    // the wrist; only the left arm solves onto the bar.
+    rig.root.updateWorldMatrix(true, true);
+    if (rightShoulder && aimingShoulder) {
+      rightShoulder.quaternion.copy(rightShoulder.parent!.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(aimingShoulder));
+    }
+    rig.root.updateWorldMatrix(true, true);
+    if (rightPalm && aimingPalm) {
+      rightPalm.quaternion.copy(rightPalm.parent!.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(aimingPalm));
+    }
+    for (const side of ['L'] as const) {
       const upper = rig.bones[`UpperArm${side}`];
       const lower = rig.bones[`LowerArm${side}`];
       if (!upper || !lower || !rig.bones[`Shoulder${side}`] || !rig.root) continue;
       const target = BAR_GRIP_LOCAL.clone();
       target.y -= BAR_RADIUS + 0.025;
-      target.x = (side === 'L' ? -1 : 1) * HAND_SPACING / 2;
+      target.x = -0.06;
       if (rig.root.parent) rig.root.parent.localToWorld(target);
       // Solve palm BONES below the surface; fingers extend tangentially around it.
-      for (let step = 0; step < 32; step++) {
+      for (let step = 0; step < 96; step++) {
         for (const bone of [lower, upper, rig.bones[`Shoulder${side}`]!]) {
           rig.root.updateWorldMatrix(true, true);
           const grip = rig.bones[`Palm${side}`]?.getWorldPosition(new THREE.Vector3());
@@ -57,7 +77,7 @@ export function applyBarHoldPose(rigs: AnimatedRig[]): void {
       const wristTurn = new THREE.Quaternion().setFromUnitVectors(alongHand,tangent);
       palm.quaternion.copy(palm.parent!.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(wristTurn).multiply(palm.getWorldQuaternion(new THREE.Quaternion())));
       rig.root.updateWorldMatrix(true,true);
-      const roll = new THREE.Quaternion().setFromAxisAngle(tangent, THREE.MathUtils.degToRad(side === 'L' ? 200 : 140));
+      const roll = new THREE.Quaternion().setFromAxisAngle(tangent, THREE.MathUtils.degToRad(200));
       palm.quaternion.copy(palm.parent!.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(roll).multiply(palm.getWorldQuaternion(new THREE.Quaternion())));
       // Curl each digit along an exterior arc, preserving bone lengths. Aiming
       // only the wrist sends the fingertips away from the cylinder or through it.
