@@ -259,6 +259,7 @@ Shipped and implemented:
 - Replay the entire guide and intro from **Tutorial** on the main menu (during a match: `Esc` → **Main Menu** → **Tutorial**; if Instructions is open, close it first). This resets onboarding and starts the existing empty arena with bots off. Instructions stay closed by default; the ordinary intro appears only once per browser origin.
 - Closing Instructions blurs its controls; Space cannot activate the launcher (use `H`, pointer, or Enter). H is ignored in menus, lobbies, match-end celebrations, and debriefs without changing input state.
 - Post-match debrief stats, awards, credits, analytics, and Speed Insights instrumentation.
+- A local victory stage keeps the winning team's dance and camera running beneath interactive statistics without ticking combat. WINS sits 27.5% from the top; reduced motion holds the pose and camera still.
 - The game opens on its main menu. Title, description, Open Graph, and VideoGame/WebApplication JSON-LD stay in the document head, with no separate landing page.
 - AI bot fill, ready checks, stale-player seat cleanup, and authoritative round/match scoring.
 - Multiplayer server payload validation, WebSocket origin checks, a 200-frame/second client cap, and loopback adversarial tests for malformed traffic and disconnect cleanup.
