@@ -28,7 +28,7 @@
     "@types/three": "^0.179.0",
     "qrcode": "^1.5.4",
     "three": "^0.179.1",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vite": "^7.3.7"
   },
   "overrides": {
