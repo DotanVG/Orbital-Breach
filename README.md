@@ -251,6 +251,8 @@ rebuild after a major refactor.
 
 Shipped and implemented:
 
+- Projectile damage uses exact body/helmet triangle first contact. Conservative bone-derived actor/patch AABBs reject distant segments before skinning; reached patches reuse skinned vertices within a frame and invalidate on pose changes. The online server validates reported zones and plausibility without loading or skinning meshes.
+
 - Browser-playable zero-G FPS with solo bot matches and Colyseus-backed online multiplayer.
 - Quick match, room browser, private/public room creation, invite URLs, native share, and QR joins.
 - Transport failures before a match trigger up to eight reconnect attempts with jittered exponential backoff (30 second cap). Mid-match drops get one attempt with a five-second deadline. Connection lost offers Retry and Back to menu; server/join rejections fail fast, successful retries clear invite URLs, and the status chip leaves space for phone HUD/menu controls. Rejoins target the same room with no seat reservation.

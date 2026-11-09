@@ -1,6 +1,6 @@
+import type { HitSurfaceQuery } from '../player/hitSurface';
 import * as THREE from "three";
 import { lazyHitSurfaces } from '../player/hitSurface';
-import type { HitSurface } from '../../../shared/projectileCollider';
 import type { OnlineActorSnapshot } from "../../../shared/multiplayer";
 import { quaternionFromYawPitchRoll, orientationFromSnapshot } from "../../../shared/hitZoneColliders";
 import type { PlayerPhase } from "../../../shared/schema";
@@ -13,7 +13,7 @@ import { SimulatedPlayerAvatar } from "./simulatedPlayerAvatar";
 
 export interface OnlineProjectileTarget {
   id: string;
-  getSurfaces: () => readonly HitSurface[];
+  getSurfaces: HitSurfaceQuery;
   team: 0 | 1;
   active: boolean;
 }

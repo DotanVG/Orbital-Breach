@@ -1,8 +1,41 @@
-import { describe, expect, it } from 'vitest';
-import { hitZoneForBone, indexHitSurface, segmentHitSurface, type HitSurface } from '../shared/projectileCollider';
+import { describe, expect, it, vi } from 'vitest';
+import { Vector3 } from 'three';
+import { ProjectileSystem } from '../client/src/game/projectileSystem';
+import { hitZoneForBone, indexHitSurface, segmentHitSurface, segmentIntersectsBounds, type HitSurface } from '../shared/projectileCollider';
 const triangle=(z:number,zone:HitSurface['zones'][number]='body'):HitSurface=>({positions:new Float64Array([-1,-1,z,1,-1,z,0,1,z]),indices:new Uint32Array([0,1,2]),zones:[zone]});
 const start={x:0,y:0,z:-2},end={x:0,y:0,z:2};
 describe('first contact with damage surfaces',()=>{
+  it('releases the stable pose snapshot even if a projectile update throws',()=>{
+    const getSurfaces=Object.assign(()=>[],{beginFrame:vi.fn(),endFrame:vi.fn()});
+    const system=Object.create(ProjectileSystem.prototype);
+    system.currentFxMode=()=> 'normal';system.currentTrailMode=()=> 'full';
+    system.projectiles=[{dead:false,setTrailMode:()=>{},update:()=>{throw Error('callback failure')}}];
+    expect(()=>system.update(.05,[],[],[{getSurfaces}],()=>{},()=>{})).toThrow('callback failure');
+    expect(getSurfaces.beginFrame).toHaveBeenCalledOnce();expect(getSurfaces.endFrame).toHaveBeenCalledOnce();
+  });
+  it('projectile proximity rejection skips getSurfaces outside but reaches it just inside',()=>{
+    const min={x:-.6,y:-.6,z:-.6},max={x:.6,y:.6,z:.6};
+    const getSurfaces=Object.assign(vi.fn(()=>[triangle(0)]),{
+      mayIntersect:(a:Vector3,b:Vector3)=>segmentIntersectsBounds(a,b,min,max),
+    });
+    // Exercise the production collision loop without constructing scene/FX objects.
+    const system=Object.create(ProjectileSystem.prototype);
+    system.obstacleGrid=null;
+    const projectile={getTeam:()=>0,getOwnerId:()=> 'shooter'};
+    const targets=[{active:true,id:'enemy',team:1,getSurfaces}];
+    system.findNearestHit(projectile,new Vector3(.599999,0,-2),new Vector3(.599999,0,2),[],[],targets);
+    expect(getSurfaces).toHaveBeenCalledTimes(1);
+    for(const x of [.600001,30]) system.findNearestHit(projectile,new Vector3(x,0,-2),new Vector3(x,0,2),[],[],targets);
+    expect(getSurfaces).toHaveBeenCalledTimes(1);
+  });
+  it('rejects outside the proximity margin but admits grazing, inside and endpoint segments',()=>{
+    const min={x:-.6,y:-.6,z:-.6},max={x:.6,y:.6,z:.6};
+    for(const x of [.599999,.6]) expect(segmentIntersectsBounds({...start,x},{...end,x},min,max)).toBe(true);
+    expect(segmentIntersectsBounds({...start,x:.600001},{...end,x:.600001},min,max)).toBe(false);
+    expect(segmentIntersectsBounds({x:0,y:0,z:0},end,min,max)).toBe(true);
+    expect(segmentIntersectsBounds(start,{x:0,y:0,z:-.6},min,max)).toBe(true);
+    expect(segmentIntersectsBounds({...start,x:NaN},end,min,max)).toBe(false);
+  });
   it('chooses the first triangle, not nearest zone or array order',()=>{
     expect(segmentHitSurface(start,end,[triangle(1,'head'),triangle(-1,'leftArm')])).toEqual({point:{x:0,y:0,z:-1},zone:'leftArm',t:.25});
   });

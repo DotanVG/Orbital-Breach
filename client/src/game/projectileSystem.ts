@@ -1,9 +1,10 @@
+import type { HitSurfaceQuery } from '../player/hitSurface';
 import * as THREE from "three";
 import { ARENA_SIZE } from "../../../shared/constants";
 import { Projectile, type ProjectileTrailMode } from "../projectile";
 import { bulletHitPoint } from "./bulletCollision";
 import { buildObstacleGrid, type ObstacleGrid } from "./obstacleGrid";
-import { segmentHitSurface, type HitSurface } from '../../../shared/projectileCollider';
+import { segmentHitSurface } from '../../../shared/projectileCollider';
 import type { HitZone } from '../../../shared/player-logic';
 
 const BULLET_RADIUS = 0.07;
@@ -41,7 +42,7 @@ interface SparkBurst {
 export interface ProjectileActorTarget {
   active: boolean;
   id: string;
-  getSurfaces: () => readonly HitSurface[];
+  getSurfaces: HitSurfaceQuery;
   team: 0 | 1;
 }
 
@@ -95,6 +96,8 @@ export class ProjectileSystem {
     onPortalHit: (pos: THREE.Vector3, color: number) => void,
     onActorHit: (hit: ProjectileActorHit) => void,
   ): void {
+    for (const actor of actorTargets) actor.getSurfaces.beginFrame?.();
+    try {
     if (!this.obstacleGrid && solidBoxes.length > 0) {
       this.obstacleGrid = buildObstacleGrid(solidBoxes);
     }
@@ -170,6 +173,9 @@ export class ProjectileSystem {
     this.recycleDeadProjectiles();
     this.updateFlashes(dt);
     this.updateSparks(dt);
+    } finally {
+      for (const actor of actorTargets) actor.getSurfaces.endFrame?.();
+    }
   }
 
   public clear(): void {
@@ -291,7 +297,8 @@ export class ProjectileSystem {
       if (!actor.active) continue;
       if (actor.team === projectile.getTeam()) continue;
       if (actor.id === projectile.getOwnerId()) continue;
-      const hit = segmentHitSurface(oldPos, newPos, actor.getSurfaces());
+      if (actor.getSurfaces.mayIntersect && !actor.getSurfaces.mayIntersect(oldPos, newPos)) continue;
+      const hit = segmentHitSurface(oldPos, newPos, actor.getSurfaces(oldPos, newPos));
       if (!hit) continue;
       const point = new THREE.Vector3().copy(hit.point);
       const distance = point.distanceToSquared(oldPos);

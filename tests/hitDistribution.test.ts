@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Group, Vector3 } from 'three';
+import { Group, SkinnedMesh, Vector3 } from 'three';
 import { sampleAlienPose } from './helpers/alienPose';
 import { sampleHitSurfaces, lazyHitSurfaces } from '../client/src/player/hitSurface';
 import { segmentHitSurface } from '../shared/projectileCollider';
@@ -34,6 +34,13 @@ describe('current mesh damage geometry',()=>{
       const aim=center.clone().addScaledVector(u,disk*Math.cos(az)).addScaledVector(v,disk*Math.sin(az));
       const a=aim.clone().addScaledVector(direction,-2),b=aim.clone().addScaledVector(direction,2);
       const hit=segmentHitSurface(a,b,surfaces);counts[hit?.zone ?? 'miss']++;
+      expect(segmentHitSurface(a,b,lazy.mayIntersect!(a,b)?lazy(a,b):[])).toEqual(hit);
+      if(i<64 && hit) {
+        const point=new Vector3().copy(hit.point);
+        for(const [from,to] of [[point,b],[a,point],[point,point]]) {
+          expect(segmentHitSurface(from,to,lazy.mayIntersect!(from,to)?lazy(from,to):[])).toEqual(segmentHitSurface(from,to,surfaces));
+        }
+      }
       if(i<64) { expect(hit).toEqual(segmentHitSurface(a,b,raw));probes.push({a,b,hit}); }
     }
     // Accuracy is the invariant. The real helmet exceeds the 40% exposure
@@ -44,12 +51,37 @@ describe('current mesh damage geometry',()=>{
     }
     root.position.set(2,-3,4);root.rotation.set(.4,1.1,-.6,'YXZ');
     const rotated=sampleHitSurfaces(root);
+    const rotatedQuery=lazyHitSurfaces(root);
     for(const {a,b,hit} of probes) {
-      const result=segmentHitSurface(a.clone().applyMatrix4(root.matrixWorld),b.clone().applyMatrix4(root.matrixWorld),rotated);
+      const from=a.clone().applyMatrix4(root.matrixWorld),to=b.clone().applyMatrix4(root.matrixWorld);
+      const result=segmentHitSurface(from,to,rotated);
+      expect(segmentHitSurface(from,to,rotatedQuery.mayIntersect!(from,to)?rotatedQuery(from,to):[])).toEqual(result);
       expect(result?.zone).toBe(hit?.zone);
       // Skeleton boneMatrices are Float32: allow 2 micrometres along this
       // four-metre segment after reskinning under the translated parent.
       if(hit) expect(result?.t).toBeCloseTo(hit.t,6);
     }
+  });
+  it('never skins an early-out miss, reuses frame patches and invalidates on pose/frame changes',async()=>{
+    const pose=await sampleAlienPose('FLOATING',.08,'FLOATING',.4,true,true);
+    const root=new Group();root.add(pose.root,pose.helmetRoot);
+    const meshes: SkinnedMesh[]=[];root.traverse(n=>{if(n instanceof SkinnedMesh) meshes.push(n)});
+    const query=lazyHitSurfaces(root),a=new Vector3(30,30,-1),b=new Vector3(30,30,1);
+    const count=()=>query.skinnedVertexCount!;
+    expect(query.mayIntersect!(a,b)).toBe(false);expect(query(a,b)).toEqual([]);expect(count()).toBe(0);
+    const target=pose.headVertices[0];a.copy(target).addScalar(-.1);b.copy(target).addScalar(.1);
+    expect(query.mayIntersect!(a,b)).toBe(true);
+    const first=segmentHitSurface(a,b,query(a,b)),cold=count();expect(cold).toBeGreaterThan(0);
+    const raw=sampleHitSurfaces(root),nativePoints=new Set<string>();
+    const key=(p:Vector3)=>p.toArray().join(',');
+    for(const s of raw) for(let i=0;i<s.positions.length;i+=3) nativePoints.add(key(new Vector3().fromArray(s.positions,i)));
+    for(const s of query(a,b)) for(const i of s.indices) expect(nativePoints.has(key(new Vector3().fromArray(s.positions,i*3)))).toBe(true);
+    expect(segmentHitSurface(a,b,query(a,b))).toEqual(first);expect(count()).toBe(cold);
+    const next=lazyHitSurfaces(root);next(a,b);expect(next.skinnedVertexCount).toBeGreaterThan(0);
+    query.beginFrame!();query(a,b);const frameCount=count();query(a,b);expect(count()).toBe(frameCount);query.endFrame!();
+    query.beginFrame!();query(a,b);expect(count()).toBeGreaterThan(frameCount);query.endFrame!();
+    const before=count();meshes[0].skeleton.bones[0].position.x+=.01;
+    const changed=query(a,b);expect(count()).toBeGreaterThan(before);
+    expect(segmentHitSurface(a,b,changed)).toEqual(segmentHitSurface(a,b,sampleHitSurfaces(root)));
   });
 });

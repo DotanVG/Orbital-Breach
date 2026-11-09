@@ -11,6 +11,22 @@ export interface HitSurface {
 interface SurfacePatch { min?: Vec3; max?: Vec3; first: number; count: number }
 export interface SurfaceHit { point: Vec3; zone: HitZone; t: number }
 
+/** Reject-only slab test; inclusive for grazing and start-inside segments. */
+export function segmentIntersectsBounds(start: Vec3, end: Vec3, min: Vec3, max: Vec3): boolean {
+  let lo=0, hi=1;
+  for (const axis of ['x','y','z'] as const) {
+    const d=end[axis]-start[axis];
+    if (!Number.isFinite(start[axis]) || !Number.isFinite(d)) return false;
+    if (Math.abs(d)<1e-14) {
+      if (start[axis]<min[axis] || start[axis]>max[axis]) return false;
+    } else {
+      const a=(min[axis]-start[axis])/d, b=(max[axis]-start[axis])/d;
+      lo=Math.max(lo,Math.min(a,b)); hi=Math.min(hi,Math.max(a,b));
+    }
+  }
+  return lo<=hi;
+}
+
 /** Small surface patches only: each AABB fits a <=0.30 m sphere, below the
  * smallest staging enclosing sphere (BREACH 0.331906 m). There is no whole-
  * character broadphase. Patches reject work, never register a damage hit. */
