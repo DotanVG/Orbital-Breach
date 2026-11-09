@@ -1,6 +1,6 @@
 import { bodyWorldBounds, breachFloorAnchorY } from '../../../shared/bodyCollider';
 import { projectileBodyTarget } from '../../../shared/projectileCollider';
-import { BAR_GRIP_LOCAL } from '../player/playerGrabPose';
+import { BAR_GRIP_LOCAL, barHoldQuaternion } from '../player/playerGrabPose';
 import * as THREE from "three";
 import { ACTOR_COLLISION_RADIUS, GRAB_RADIUS, MATCH_POINT_TARGET, BAR_LAUNCH_CLEARANCE } from "../../../shared/constants";
 import { DEFAULT_PLAYER_NAME, getBotCallSign } from "../../../shared/callSigns";
@@ -115,6 +115,7 @@ interface BotState {
   damage: DamageState;
   deaths: number;
   grabbedBarPos: THREE.Vector3 | null;
+  grabbedBarDirection?: THREE.Vector3;
   id: string;
   isBot: true;
   kills: number;
@@ -775,6 +776,7 @@ export class LocalMatch {
       const nearest = query.getNearestBar(toVec3(bot.phys.pos), GRAB_RADIUS);
       if (nearest) {
         bot.grabbedBarPos = toThree(nearest.pos);
+        bot.grabbedBarDirection = nearest.normal ? toThree(nearest.normal) : new THREE.Vector3(1,0,0);
         bot.phase = "GRABBING";
       }
     }
@@ -803,6 +805,7 @@ export class LocalMatch {
       const nearest = query.getNearestBar(toVec3(bot.phys.pos), GRAB_RADIUS);
       if (nearest) {
         bot.grabbedBarPos = toThree(nearest.pos);
+        bot.grabbedBarDirection = nearest.normal ? toThree(nearest.normal) : new THREE.Vector3(1,0,0);
         bot.phase = "GRABBING";
       }
     }
@@ -1064,5 +1067,6 @@ function toThreeQuaternion(
 }
 
 function botOrientation(bot: BotState) {
-  return quaternionFromYawPitchRoll(bot.rot.yaw,bot.phase === 'BREACH' ? 0 : bot.rot.pitch);
+  const q = quaternionFromYawPitchRoll(bot.rot.yaw,bot.phase === 'BREACH' ? 0 : bot.rot.pitch);
+  return isAnchored(bot.phase) ? barHoldQuaternion(toThreeQuaternion(q),bot.grabbedBarDirection ?? new THREE.Vector3(1,0,0)) : q;
 }

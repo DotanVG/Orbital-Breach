@@ -37,6 +37,10 @@ export class BarObject {
     return this.worldPos.clone();
   }
 
+  public getDirection(target: THREE.Vector3): THREE.Vector3 {
+    return target.copy(this.direction);
+  }
+
   public getGrabPoint(target = new THREE.Vector3()): THREE.Vector3 {
     // Grab the exposed tip rather than the bar center so the hand reads as
     // holding the bar instead of intersecting it.

@@ -3,6 +3,8 @@ import * as THREE from 'three';
 export type HitZone = 'head' | 'body' | 'rightArm' | 'leftArm' | 'leftLeg' | 'rightLeg';
 
 export type PoseBoneName =
+  | `${'PinkyFinger' | 'MiddleFinger'}${1 | 2 | 3 | 4}${'L' | 'R'}`
+  | `Thumb${1 | 2 | 3}${'L' | 'R'}`
   | 'Hips'
   | 'Abdomen'
   | 'Torso'

@@ -10,8 +10,9 @@ export const STANDING_BODY: BodyCollider = { center: { x: 0, y: -0.3455, z: 0.26
 // enough asymmetric arm clearance to limit swinging fingertips to a 3 cm graze.
 // A symmetric motion envelope leaves the pistol side ~15 cm from a wall.
 export const FLOATING_BODY: BodyCollider = { center: { x: -0.0515, y: -0.56525, z: 0.14 }, half: { x: 0.2385, y: 0.17575, z: 0.30 } };
-// Settled two-palm pose: retain the hand support, trim the empty space behind it.
-export const HANGING_BODY: BodyCollider = { center: { x: 0, y: -0.3455, z: 0.3675 }, half: { x: 0.12, y: 0.2965, z: 0.1925 } };
+// Reclined surface hold: CPU-skinned body + all 9,920 helmet-asset vertices,
+// with 1 mm support padding on every face. Local +X follows the bar.
+export const HANGING_BODY: BodyCollider = {"center":{"x":0.00124,"y":-0.48042,"z":0.16239},"half":{"x":0.14853,"y":0.16127,"z":0.26891}};
 // Freeze crossfades can start upright, hanging or anywhere in the swim cycle.
 // Their union cannot fit each individual pose tightly; preserve non-penetration.
 export const FROZEN_BODY: BodyCollider = { center: { x: 0.0035, y: -0.414, z: 0.2015 }, half: { x: 0.3335, y: 0.359, z: 0.3605 } };

@@ -36,7 +36,8 @@ import {
   DEFAULT_LEFT_HAND_GRIP_LOCAL,
   applyBarHoldPose,
   measureLeftHandGripOffset,
-  measureBarGripOffset,
+  BAR_GRIP_LOCAL,
+  barHoldQuaternion,
 } from './playerGrabPose';
 import { PlayerDamageGlow } from './playerDamageGlow';
 import { applyVictoryDancePose, resetVictoryDancePose } from './playerVictoryDance';
@@ -88,6 +89,7 @@ export class LocalPlayer {
 
   public launchPower = 0;
   public grabbedBarPos: THREE.Vector3 | null = null;
+  private readonly grabbedBarDirection = new THREE.Vector3(1,0,0);
   public currentBreachTeam: 0 | 1 = 0;
 
   public onFullyFrozen: (() => void) | null = null;
@@ -282,7 +284,7 @@ export class LocalPlayer {
     }
 
     const grabInput = input.consumeGrab();
-    const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS, this.nearestBar);
+    const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS, this.nearestBar, this.grabbedBarDirection);
     if (nearBar && grabInput && this.canGrabBar()) {
       if (arena.isGoalDoorOpen(this.currentBreachTeam)) {
         this.grabBar(nearBar, cam);
@@ -318,7 +320,7 @@ export class LocalPlayer {
     }
 
     const grabInput = input.consumeGrab();
-    const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS, this.nearestBar);
+    const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS, this.nearestBar, this.grabbedBarDirection);
     if (nearBar && grabInput && this.canGrabBar()) {
       this.grabBar(nearBar, cam);
     }
@@ -525,9 +527,9 @@ export class LocalPlayer {
 
   private lockGrabPose(): void {
     this.animation.snapToAnimation(ANIM_STANDING);
+    this.animation.resetBreathing();
     applyBarHoldPose(this.animation.getRigs());
-    const bodyRoot = this.animation.getRigs()[0]?.root ?? null;
-    this.grabHandGripLocal = measureBarGripOffset(bodyRoot);
+    this.grabHandGripLocal = BAR_GRIP_LOCAL.clone();
     this.grabPoseLocked = true;
   }
 
@@ -576,6 +578,7 @@ export class LocalPlayer {
     );
     const alpha = 1 - Math.pow(GRAB_ROTATION_SMOOTHING, dt);
     this.visualQuaternion.slerp(target, alpha);
+    barHoldQuaternion(this.visualQuaternion, this.grabbedBarDirection, this.visualQuaternion);
     return this.visualQuaternion;
   }
 

@@ -124,8 +124,8 @@ export class SimulatedPlayerAvatar {
     }
 
     if (!shouldCelebrate && (phase === "GRABBING" || phase === "AIMING")) {
-      applyBarHoldPose(this.animation.getRigs());
       this.animation.resetBreathing();
+      applyBarHoldPose(this.animation.getRigs());
     } else if (shouldCelebrate) {
       this.animation.resetBreathing();
       this.victoryDanceElapsed += dt;

@@ -8,7 +8,7 @@ import { applyHit, classifyHitZone, type SharedPlayerState } from '../shared/pla
 import { bodyColliderForPhase } from '../shared/bodyCollider';
 import { projectileBodyTarget, projectileRadiusForPhase } from '../shared/projectileCollider';
 import { BAR_LAUNCH_CLEARANCE } from '../shared/constants';
-import { measureHandGripOffset, measureBarGripOffset, applyBarHoldPose } from '../client/src/player/playerGrabPose';
+import { measureHandGripOffset, BAR_GRIP_LOCAL, applyBarHoldPose } from '../client/src/player/playerGrabPose';
 import { integrateZeroG } from '../client/src/physics';
 import { classifiedWorldFrame, randomOrientation, seededRandom } from './helpers/hitboxOrientation';
 import { sampleAlienPose } from './helpers/alienPose';
@@ -81,15 +81,15 @@ describe('independent pose and 377-orientation guard',()=>{
     for(let i=0;i<=4;i++) samples.push(await sampleAlienPose('FROZEN',i/100));
     for(const pose of samples) for(const p of pose.vertices) for(const a of ['x','y','z'] as const) expect(Math.abs(p[a]-body.center[a])).toBeLessThanOrEqual(body.half[a]+0.01);
   });
-  it('both palm grips stay within 3 cm of every bar axis, including after 600 stable frames',()=>{
-    const pose=poses.get('GRABBING')!, midpoint=measureBarGripOffset(pose.root)!;
+  it('both palms stay outside the bar surface, including after 600 stable frames',()=>{
+    const pose=poses.get('GRABBING')!, midpoint=BAR_GRIP_LOCAL;
     const before=[...pose.bones].map(([n,p])=>[n,p.toArray()]);
     for(let i=0;i<600;i++) applyBarHoldPose([pose.rig]);
     for(const side of ['L','R'] as const) {
       const p=measureHandGripOffset(pose.root,side)!;
-      for(const axis of [new Vector3(1,0,0),new Vector3(0,1,0),new Vector3(0,0,1),new Vector3(1,2,3).normalize()]) {
-        const delta=p.clone().sub(midpoint); delta.addScaledVector(axis,-delta.dot(axis)); expect(delta.length()).toBeLessThanOrEqual(0.03);
-      }
+      const palm=pose.root.getObjectByName('Palm'+side)!.getWorldPosition(new Vector3());
+      expect(Math.hypot(palm.y-midpoint.y,palm.z-midpoint.z)).toBeGreaterThanOrEqual(0.1);
+      expect(Math.hypot(palm.y-midpoint.y,palm.z-midpoint.z)).toBeLessThanOrEqual(0.135);
       expect(p.distanceTo(new Vector3().copy(hitZoneCollidersForPhase('GRABBING').find(c=>c.id==='hand'+side)!.position))).toBeLessThan(0.06);
     }
     pose.root.updateMatrixWorld(true);

@@ -211,7 +211,7 @@ export class Arena {
     return this.breachRooms[team]?.openSign ?? (team === 0 ? 1 : -1);
   }
 
-  public getNearestBar(pos: THREE.Vector3, radius: number, target?: THREE.Vector3): THREE.Vector3 | null {
+  public getNearestBar(pos: THREE.Vector3, radius: number, target?: THREE.Vector3, directionTarget?: THREE.Vector3): THREE.Vector3 | null {
     let nearest: THREE.Vector3 | null = null;
     let best = radius * radius;
     for (const bar of this.barObjects) {
@@ -220,6 +220,7 @@ export class Arena {
       if (d2 < best) {
         best = d2;
         nearest = (nearest ?? target ?? new THREE.Vector3()).copy(grabPoint);
+        if (directionTarget) bar.getDirection(directionTarget);
       }
     }
     return nearest;
