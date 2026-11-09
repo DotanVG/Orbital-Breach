@@ -520,7 +520,7 @@ export class App {
         this.resyncLocalOnlineActorFromLatestSnapshot();
       }
     });
-    // iOS back/forward cache restore — context is suspended on bfcache restore
+    // iOS back/forward cache restore â€” context is suspended on bfcache restore
     window.addEventListener('pageshow', (e) => {
       if (e.persisted) this.sound.tryResumeMusic();
     });
@@ -528,7 +528,7 @@ export class App {
     requestAnimationFrame((timestamp) => this.loop(timestamp));
   }
 
-  // ── Main loop ───────────────────────────────────────────────────────────────
+  // â”€â”€ Main loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private loop(timestamp: number): void {
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.033);
@@ -576,7 +576,7 @@ export class App {
   }
 
 
-  // ── Online game lifecycle ───────────────────────────────────────────────────
+  // â”€â”€ Online game lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private beginOnlineRound(snapshot: MultiplayerRoomSnapshot): void {
     if (this.onlineMatchConcluding || this.debrief.isVisible()) {
@@ -653,7 +653,7 @@ export class App {
       }
     }
     // Pointer lock is acquired on the first canvas click (mousedown handler),
-    // not here — requestPointerLock() requires a direct user gesture.
+    // not here â€” requestPointerLock() requires a direct user gesture.
   }
 
   private endOnlineGame(): void {
@@ -685,7 +685,7 @@ export class App {
 
 
 
-  // ── Solo round lifecycle ────────────────────────────────────────────────────
+  // â”€â”€ Solo round lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private beginNewRound(): void {
     if (this.helpVisible) this.setHelpVisible(false);
@@ -795,7 +795,7 @@ export class App {
       playerTeam,
       secondaryActionLabel: "Main Menu",
       primaryActionLabel: "Play Again",
-      matchLabel: `${sizeLabelMap[teamSize] ?? "Solo"} · ${finalScore.team0} – ${finalScore.team1}`,
+      matchLabel: `${sizeLabelMap[teamSize] ?? "Solo"} Â· ${finalScore.team0} â€“ ${finalScore.team1}`,
     };
 
     this.showMatchDebrief(debriefData);
@@ -975,7 +975,7 @@ export class App {
     const inApiFullscreen = isFullscreen();
 
     if (!enabled && !inApiFullscreen && isApparentFullscreen()) {
-      // F11 fullscreen can't be exited via the Fullscreen API — revert the checkbox and hint the user.
+      // F11 fullscreen can't be exited via the Fullscreen API â€” revert the checkbox and hint the user.
       this.sessionMenu.syncFullscreenFromBrowser(false);
       showF11ExitHint();
       return;
@@ -1055,7 +1055,7 @@ export class App {
     };
   }
 
-  // ── Solo match start ────────────────────────────────────────────────────────
+  // â”€â”€ Solo match start â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private startTutorialMatch(selection: PlaySelection): void {
     this.tutorial.forceRestart();
@@ -1064,6 +1064,8 @@ export class App {
 
   private startSoloMatch(selection: PlaySelection): void {
     this.lastSoloSelection = selection;
+    // Defensive: solo entry can be invoked outside the menu fadeOut path (e.g. rematch / tests).
+    this.menu.hide();
     this.debrief.hide();
     this.clearCelebrationState();
     this.appMode = "solo";
@@ -1110,7 +1112,7 @@ export class App {
     this.beginNewRound();
   }
 
-  // ── Online lobby start ──────────────────────────────────────────────────────
+  // â”€â”€ Online lobby start â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private async startOnlineLobby(
     selection: PlaySelection,
@@ -1252,7 +1254,7 @@ export class App {
     window.history.replaceState({}, "", url);
   }
 
-  // ── Match debrief ───────────────────────────────────────────────────────────
+  // â”€â”€ Match debrief â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private showMatchDebrief(data: DebriefData): void {
     if (this.helpVisible) this.setHelpVisible(false);
@@ -1299,7 +1301,7 @@ export class App {
       playerTeam,
       secondaryActionLabel: "Main Menu",
       primaryActionLabel: "Return To Lobby",
-      matchLabel: `${sizeLabelMap[teamSize] ?? `${teamSize}v${teamSize}`} Online · ${finalScore.team0} – ${finalScore.team1}`,
+      matchLabel: `${sizeLabelMap[teamSize] ?? `${teamSize}v${teamSize}`} Online Â· ${finalScore.team0} â€“ ${finalScore.team1}`,
     };
   }
 
@@ -1361,6 +1363,8 @@ export class App {
 
 
   private setCelebratingTeam(team: 0 | 1): void {
+    // Ensure main menu cannot sit on top of the victory celebration stage.
+    this.menu.hide();
     this.victoryPresentation?.dispose();
     this.victoryPresentation = new VictoryPresentation(team);
     this.sound.stopCountdown();
@@ -1411,7 +1415,7 @@ export class App {
 
 
 
-  // ── Shared helpers ──────────────────────────────────────────────────────────
+  // â”€â”€ Shared helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private updateGunVisibility(isSelfie: boolean): void {
     const phase = this.round.getPhase();
