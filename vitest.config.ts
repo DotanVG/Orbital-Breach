@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       three: path.resolve(__dirname, 'client/node_modules/three/build/three.module.js'),
+      '@colyseus/sdk': path.resolve(__dirname, 'client/node_modules/@colyseus/sdk'),
     },
   },
 });

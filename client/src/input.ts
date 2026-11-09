@@ -1,5 +1,10 @@
 import { FIRE_RATE } from '../../shared/constants';
 import { applyMobileLookDelta, mergeWalkAxes, type MobileLookState } from './input/mobileInputLogic';
+import {
+  exitPointerLock as releasePointerLock,
+  isPointerLocked,
+  requestPointerLock as acquirePointerLock,
+} from './input/pointerLock';
 
 const MAX_MOUSE_EVENT_DELTA = 120;
 
@@ -19,6 +24,7 @@ export class InputManager {
   private helpPressed = false;
   private collisionVisTogglePressed = false;
   private colliderEditorTogglePressed = false;
+  private barGrabTipsTogglePressed = false;
   public onTabHoldChange: ((held: boolean) => void) | null = null;
   private removeGlobalListeners: (() => void) | null = null;
 
@@ -35,6 +41,12 @@ export class InputManager {
 
   public constructor() {
     const handleKeyDown = (e: KeyboardEvent): void => {
+      // Let the instructions dialog keep native focus navigation; only H/Esc close it.
+      if (this.uiBlocked) {
+        if (e.code === 'Escape' && !e.repeat) this.menuTogglePressed = true;
+        if (e.code === 'KeyH' && !e.repeat) this.helpPressed = true;
+        return;
+      }
       const tabWasHeld = this.keys.has('Tab');
       this.keys.add(e.code);
       if (e.code === 'Tab' && !tabWasHeld) this.onTabHoldChange?.(true);
@@ -46,6 +58,7 @@ export class InputManager {
       if (e.code === 'KeyH'        && !e.repeat) this.helpPressed = true;
       if (e.code === 'BracketLeft' && !e.repeat) this.collisionVisTogglePressed = true;
       if (e.code === 'BracketRight'&& !e.repeat) this.colliderEditorTogglePressed = true;
+      if (import.meta.env.DEV && e.code === 'Backslash' && !e.repeat) this.barGrabTipsTogglePressed = true;
       // Only intercept navigation/delete keys when focus is NOT in a text field,
       // so the Call Sign input and other fields retain normal keyboard behaviour.
       const tag = (document.activeElement as HTMLElement | null)?.tagName ?? '';
@@ -309,7 +322,7 @@ export class InputManager {
   public consumeHelpPressed(): boolean {
     const v = this.helpPressed;
     this.helpPressed = false;
-    return v && !this.uiBlocked;
+    return v;
   }
 
   /** Toggle collision visualizer — BracketLeft ([). */
@@ -323,6 +336,13 @@ export class InputManager {
   public consumeColliderEditorToggle(): boolean {
     const v = this.colliderEditorTogglePressed;
     this.colliderEditorTogglePressed = false;
+    return v;
+  }
+
+  /** DEV bar-grip close-up toggle — Backslash (\\). */
+  public consumeBarGrabTipsToggle(): boolean {
+    const v = this.barGrabTipsTogglePressed;
+    this.barGrabTipsTogglePressed = false;
     return v;
   }
 
@@ -411,17 +431,15 @@ export class InputManager {
   // ── Pointer lock ──────────────────────────────────────────────────
   public lockPointer(canvas: HTMLCanvasElement): void {
     if (this.uiBlocked) return;
-    void canvas.requestPointerLock();
+    acquirePointerLock(canvas);
   }
 
   public exitPointerLock(): void {
-    if (document.pointerLockElement) {
-      void document.exitPointerLock();
-    }
+    releasePointerLock(document);
   }
 
   public isLocked(): boolean {
-    return document.pointerLockElement != null;
+    return isPointerLocked(document);
   }
 
   public dispose(): void {
@@ -448,6 +466,7 @@ export class InputManager {
     this.menuTogglePressed = false;
     this.collisionVisTogglePressed = false;
     this.colliderEditorTogglePressed = false;
+    this.barGrabTipsTogglePressed = false;
     // mobileControlsActive is intentionally preserved across blur/visibility changes
     if (tabWasHeld) this.onTabHoldChange?.(false);
   }

@@ -1,76 +1,45 @@
-import { describe, expect, it } from "vitest";
-import * as THREE from "three";
-import { bounceAgainstBoxes } from "../client/src/arena/obstacleCollision";
-import type { PhysicsState } from "../client/src/physics";
-
-function makeState(pos: [number, number, number], vel: [number, number, number]): PhysicsState {
-  return {
-    pos: new THREE.Vector3(...pos),
-    vel: new THREE.Vector3(...vel),
-  };
-}
-
-function unitBoxAtOrigin(): THREE.Box3 {
-  return new THREE.Box3(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
-}
-
-describe("bounceAgainstBoxes", () => {
-  it("leaves a player outside every box untouched", () => {
-    const state = makeState([5, 5, 5], [1, 2, 3]);
-    bounceAgainstBoxes(state, [unitBoxAtOrigin()]);
-    expect(state.pos.toArray()).toEqual([5, 5, 5]);
-    expect(state.vel.toArray()).toEqual([1, 2, 3]);
+import { describe,expect,it } from 'vitest';
+import { Box3,Quaternion,Vector3 } from 'three';
+import { bounceAgainstBoxes } from '../client/src/arena/obstacleCollision';
+import { bodyWorldBounds,bodySubsteps } from '../shared/bodyCollider';
+import { stepActorWorld } from '../server/src/colyseus/onlineActorSimulation';
+const box=new Box3(new Vector3(-1,-1,-1),new Vector3(1,1,1));
+describe('body versus obstacle boxes',()=>{
+  for(const axis of ['x','y','z'] as const) for(const sign of [-1,1]) it(axis+' contact '+sign+' ends exactly on the obstacle face',()=>{
+    const q=new Quaternion().setFromAxisAngle(new Vector3(1,2,3).normalize(),0.7), zero=bodyWorldBounds({x:0,y:0,z:0},q,'FLOATING');
+    const center=new Vector3();center[axis]=sign*(1+zero.half[axis]-0.02);
+    const s={pos:center.sub(zero.center),vel:new Vector3(0.4,0.5,0.6)};s.vel[axis]=-sign*4;
+    const other=s.vel.clone();bounceAgainstBoxes(s,[box],q,'FLOATING');const b=bodyWorldBounds(s.pos,q,'FLOATING');
+    expect(b.center[axis]-sign*b.half[axis]).toBeCloseTo(sign,8);expect(s.vel[axis]).toBe(sign*2);
+    for(const a of ['x','y','z'] as const) if(a!==axis) expect(s.vel[a]).toBe(other[a]);
   });
-
-  it("pushes a penetrating player out along the shallowest axis and damps that velocity axis by -0.5", () => {
-    // Near +X face: X penetration is shallowest, so resolution must be on X only.
-    const state = makeState([0.9, 0.1, 0.2], [-4, 1, 1]);
-    bounceAgainstBoxes(state, [unitBoxAtOrigin()], 0.05);
-    expect(state.pos.x).toBeCloseTo(1.05, 5); // box max + padding
-    expect(state.pos.y).toBeCloseTo(0.1, 5);
-    expect(state.pos.z).toBeCloseTo(0.2, 5);
-    expect(state.vel.x).toBeCloseTo(2, 5); // -4 * -0.5
-    expect(state.vel.y).toBeCloseTo(1, 5);
-    expect(state.vel.z).toBeCloseTo(1, 5);
+  it('does not reflect already separating velocity or an exactly touching body',()=>{
+    const s={pos:new Vector3(1.14,0,0),vel:new Vector3(2,0,0)};bounceAgainstBoxes(s,[box]);expect(s.vel.x).toBe(2);
+    const before=s.pos.clone();bounceAgainstBoxes(s,[box]);expect(s.pos.distanceTo(before)).toBeLessThan(1e-10);
   });
-
-  it("resolves on Y when Y penetration is shallowest", () => {
-    const state = makeState([0.1, -0.9, 0.1], [0, 6, 0]);
-    bounceAgainstBoxes(state, [unitBoxAtOrigin()], 0.05);
-    expect(state.pos.y).toBeCloseTo(-1.05, 5); // pushed out the -Y face
-    expect(state.pos.x).toBeCloseTo(0.1, 5);
-    expect(state.pos.z).toBeCloseTo(0.1, 5);
-    expect(state.vel.y).toBeCloseTo(-3, 5); // 6 * -0.5
+  it('checks later boxes and resolves a centre/tie overlap without a zero sign',()=>{
+    const s={pos:new Vector3(0,0.3455,-0.28),vel:new Vector3(2,0,0)};
+    bounceAgainstBoxes(s,[new Box3(new Vector3(9,9,9),new Vector3(10,10,10)),box]);
+    const b=bodyWorldBounds(s.pos);expect(Math.abs(b.center.x)-b.half.x).toBeCloseTo(1,8);
   });
-
-  it("resolves on Z when Z penetration is shallowest", () => {
-    const state = makeState([0.1, 0.1, 0.95], [0, 0, -2]);
-    bounceAgainstBoxes(state, [unitBoxAtOrigin()], 0.05);
-    expect(state.pos.z).toBeCloseTo(1.05, 5);
-    expect(state.vel.z).toBeCloseTo(1, 5); // -2 * -0.5
-  });
-
-  it("respects the padding parameter when deciding containment", () => {
-    // 0.1 outside the raw box face: only collides once padding >= 0.1.
-    const grazing = makeState([1.1, 0, 0], [-1, 0, 0]);
-    bounceAgainstBoxes(grazing, [unitBoxAtOrigin()], 0.05);
-    expect(grazing.pos.x).toBeCloseTo(1.1, 5);
-    expect(grazing.vel.x).toBeCloseTo(-1, 5);
-
-    const padded = makeState([1.1, 0, 0], [-1, 0, 0]);
-    bounceAgainstBoxes(padded, [unitBoxAtOrigin()], 0.2);
-    expect(padded.pos.x).toBeCloseTo(1.2, 5); // box max + padding
-    expect(padded.vel.x).toBeCloseTo(0.5, 5);
-  });
-
-  it("checks every box in the list, not just the first", () => {
-    const farBox = new THREE.Box3(
-      new THREE.Vector3(9, -1, -1),
-      new THREE.Vector3(11, 1, 1),
-    );
-    const state = makeState([10.9, 0, 0], [-1, 0, 0]);
-    bounceAgainstBoxes(state, [unitBoxAtOrigin(), farBox], 0.05);
-    expect(state.pos.x).toBeCloseTo(11.05, 5);
-    expect(state.vel.x).toBeCloseTo(0.5, 5);
+  it('thin walls stay solid at maximum speed and large frames; authoritative and predicted stepping agree',()=>{
+    for(const phase of ['FLOATING','FROZEN']) for(const axis of ['x','y','z'] as const) for(const sign of [-1,1]) {
+      for(const q of [new Quaternion(),new Quaternion().setFromAxisAngle(new Vector3(1,2,3).normalize(),0.7)]) {
+        const thin=new Box3(new Vector3(-4,-4,-4),new Vector3(4,4,4));
+        thin.min[axis]=-0.005; thin.max[axis]=0.005;
+        const s={pos:new Vector3(),vel:new Vector3()};s.pos[axis]=sign*2;s.vel[axis]=-sign*20;
+        const actor={phase,yaw:0,frozen:phase==='FROZEN',isBot:false,team:0 as const,posX:s.pos.x,posY:s.pos.y,posZ:s.pos.z,velX:s.vel.x,velY:s.vel.y,velZ:s.vel.z,orientX:q.x,orientY:q.y,orientZ:q.z,orientW:q.w};
+        const count=bodySubsteps(s.vel,0.25,phase);
+        for(let i=0;i<count;i++) {
+          s.pos.addScaledVector(s.vel,0.25/count);bounceAgainstBoxes(s,[thin],q,phase);
+          const b=bodyWorldBounds(s.pos,q,phase);
+          expect(sign*b.center[axis]-b.half[axis]).toBeGreaterThanOrEqual(0.005-1e-8);
+        }
+        stepActorWorld(actor,0.25,'z',[thin]);
+        expect(s.vel[axis]).toBe(sign*10);
+        expect([actor.posX,actor.posY,actor.posZ]).toEqual(s.pos.toArray());
+        expect([actor.velX,actor.velY,actor.velZ]).toEqual(s.vel.toArray());
+      }
+    }
   });
 });

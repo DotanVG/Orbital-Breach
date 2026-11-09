@@ -8,6 +8,7 @@ import {
   computeNearBar,
   tickCameraLook,
   updateMobileHudControls,
+  updateOnboarding,
   type GameTickContext,
 } from "./tickContext";
 import { buildShotFromCamera } from "./weaponFire";
@@ -95,14 +96,8 @@ function updateSoloHud(ctx: GameTickContext, dt: number): void {
     tabHeld: ctx.input.isTabHeld(),
     ownTeam: rosters.ownTeam,
     enemyTeam: rosters.enemyTeam,
-    tutorialPrompt: ctx.tutorial.update({
-      currentBreachTeam: ctx.player.currentBreachTeam,
-      frozen: ctx.player.damage.frozen,
-      inRound: ctx.round.getPhase() === "COUNTDOWN" || ctx.round.getPhase() === "PLAYING",
-      mobile: ctx.mobile,
-      phase: ctx.player.phase,
-      team: ctx.player.team,
-    }),
+    tutorialPrompt: updateOnboarding(ctx, ctx.round.getPhase() === "COUNTDOWN" || ctx.round.getPhase() === "PLAYING", dt),
+    introVisible: ctx.tutorial.isIntroVisible(),
     helpVisible: ctx.helpVisible,
     dt,
     team: ctx.player.team,

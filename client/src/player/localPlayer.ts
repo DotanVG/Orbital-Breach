@@ -5,7 +5,7 @@ import {
   LAUNCH_AIM_SENSITIVITY,
   MAX_LAUNCH_SPEED,
   ONE_LEG_HIT_LAUNCH_FACTOR,
-  PLAYER_RADIUS,
+  BAR_LAUNCH_CLEARANCE,
 } from '../../../shared/constants';
 import { clamp } from '../util/math';
 import type { OnlineActorSnapshot } from '../../../shared/multiplayer';
@@ -14,10 +14,8 @@ import { CameraController } from '../camera';
 import { InputManager } from '../input';
 import {
   type PhysicsState,
-  integrateZeroG,
   integrateBreachRoom,
   clampBreachRoom,
-  bounceArena,
 } from '../physics';
 import { Arena } from '../arena/arena';
 import type { HitZone } from './playerTypes';
@@ -38,6 +36,8 @@ import {
   DEFAULT_LEFT_HAND_GRIP_LOCAL,
   applyBarHoldPose,
   measureLeftHandGripOffset,
+  BAR_GRIP_LOCAL,
+  barHoldQuaternion,
 } from './playerGrabPose';
 import { PlayerDamageGlow } from './playerDamageGlow';
 import { applyVictoryDancePose, resetVictoryDancePose } from './playerVictoryDance';
@@ -66,6 +66,7 @@ const FLOAT_ARM_FINE_TUNING_STEP = Math.PI / 900;
 const BREACH_ENTRY_CARRY_TIME = 0.55;
 const BREACH_ENTRY_CARRY_DAMPING_PER_60HZ = 0.9;
 const ZERO_CARRY = new THREE.Vector3();
+const MODEL_FORWARD = new THREE.Vector3(0, 0, -1);
 
 export class LocalPlayer {
   public phys: PhysicsState = {
@@ -88,6 +89,7 @@ export class LocalPlayer {
 
   public launchPower = 0;
   public grabbedBarPos: THREE.Vector3 | null = null;
+  private readonly grabbedBarDirection = new THREE.Vector3(1,0,0);
   public currentBreachTeam: 0 | 1 = 0;
 
   public onFullyFrozen: (() => void) | null = null;
@@ -110,6 +112,15 @@ export class LocalPlayer {
   private damageGlow = new PlayerDamageGlow(this.team);
   private gun = new ThirdPersonGun();
   private visualQuaternion = new THREE.Quaternion();
+  // Per-player scratch: never retained by callers or shared with camera scratch.
+  private readonly facingForward = new THREE.Vector3();
+  private readonly flatFacingForward = new THREE.Vector3();
+  private readonly facingTarget = new THREE.Quaternion();
+  private readonly handOffset = new THREE.Vector3();
+  private readonly movementForward = new THREE.Vector3();
+  private readonly movementRight = new THREE.Vector3();
+  private readonly breachCenter = new THREE.Vector3();
+  private readonly nearestBar = new THREE.Vector3();
   // Tracks the previous frame's animation name so we can detect transitions.
   private lastKnownAnimation = ANIM_IDLE_HOLD;
   // Counts down after leaving ANIM_JUMP to cover the crossfade window.
@@ -178,6 +189,7 @@ export class LocalPlayer {
     arena: Arena,
     dt: number,
   ): void {
+    if (this.phase !== 'GRABBING' && this.phase !== 'AIMING') this.computeVisualQuaternion(cam, dt);
     const celebrating = this.victoryDanceActive && !this.damage.frozen;
     switch (this.phase) {
       case 'FROZEN':
@@ -193,7 +205,7 @@ export class LocalPlayer {
         this.updateGrabbing(input);
         break;
       case 'AIMING':
-        this.updateAiming(input, cam);
+        this.updateAiming(input, cam, arena);
         break;
       case 'RESPAWNING':
         this.updateRespawning(arena, dt);
@@ -204,6 +216,14 @@ export class LocalPlayer {
     const visualQuat = this.computeVisualQuaternion(cam, dt);
     if (!celebrating && (this.phase === 'GRABBING' || this.phase === 'AIMING')) {
       this.lockGripToBar(visualQuat);
+      const x=this.phys.pos.x, y=this.phys.pos.y, z=this.phys.pos.z;
+      arena.advancePlayer(this.phys,0,visualQuat,this.phase);
+      // An obstructed hold cannot satisfy both the bar constraint and solid world.
+      // Release it rather than leave the body inside a wall or move hands off-bar.
+      if (Math.hypot(this.phys.pos.x-x,this.phys.pos.y-y,this.phys.pos.z-z)>1e-6) {
+        this.grabbedBarPos=null; this.grabHandGripLocal=null; this.grabPoseLocked=false;
+        this.phase='FLOATING';
+      }
     }
     this.mesh.position.copy(this.phys.pos);
     this.mesh.quaternion.copy(visualQuat);
@@ -215,9 +235,7 @@ export class LocalPlayer {
     // Frozen bodies bounce off every arena wall — fully-frozen players cannot
     // breach. Limb-damaged (but not frozen) allies unfreeze their limbs by
     // drifting home via the FLOATING branch of updateFloating.
-    integrateZeroG(this.phys, dt);
-    bounceArena(this.phys);
-    arena.bounceObstacles(this.phys);
+    arena.advancePlayer(this.phys,dt,this.visualQuaternion,this.phase);
   }
 
   private updateBreach(
@@ -226,7 +244,7 @@ export class LocalPlayer {
     arena: Arena,
     dt: number,
   ): void {
-    const center = arena.getBreachRoomCenter(this.currentBreachTeam);
+    const center = arena.getBreachRoomCenter(this.currentBreachTeam, this.breachCenter);
     const openAxis = arena.getBreachOpenAxis(this.currentBreachTeam);
     const openSign = arena.getBreachOpenSign(this.currentBreachTeam);
 
@@ -238,15 +256,15 @@ export class LocalPlayer {
     integrateBreachRoom(
       this.phys,
       input.getWalkAxes(),
-      cam.getYawForward(),
-      cam.getYawRight(),
+      cam.getYawForward(this.movementForward),
+      cam.getYawRight(this.movementRight),
       input.isJumping(),
       this.onGround,
       this.breachEntryCarryTimer > 0 ? this.breachEntryCarry : ZERO_CARRY,
       dt,
     );
 
-    clampBreachRoom(this.phys, center, openAxis, openSign, arena.isGoalDoorOpen(this.currentBreachTeam));
+    clampBreachRoom(this.phys, center, openAxis, openSign, arena.isGoalDoorOpen(this.currentBreachTeam), this.visualQuaternion, this.phase);
     this.onGround = this.phys.pos.y <= floorY + 0.02;
     if (this.onGround) {
       this.breachEntryCarry.set(0, 0, 0);
@@ -266,7 +284,7 @@ export class LocalPlayer {
     }
 
     const grabInput = input.consumeGrab();
-    const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS);
+    const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS, this.nearestBar, this.grabbedBarDirection);
     if (nearBar && grabInput && this.canGrabBar()) {
       if (arena.isGoalDoorOpen(this.currentBreachTeam)) {
         this.grabBar(nearBar, cam);
@@ -279,7 +297,7 @@ export class LocalPlayer {
       const MIN_EXIT_SPEED = 2;
       const xzSpeed = Math.sqrt(this.phys.vel.x ** 2 + this.phys.vel.z ** 2);
       if (xzSpeed < MIN_EXIT_SPEED) {
-        const fwd = cam.getYawForward();
+        const fwd = cam.getYawForward(this.movementForward);
         this.phys.vel.x = fwd.x * MIN_EXIT_SPEED;
         this.phys.vel.z = fwd.z * MIN_EXIT_SPEED;
       }
@@ -293,18 +311,7 @@ export class LocalPlayer {
     dt: number,
   ): void {
     this.breachJumpAnimationActive = false;
-    const goalAxis = arena.getBreachOpenAxis(this.team);
-    const perpAxis: 'x' | 'z' = goalAxis === 'z' ? 'x' : 'z';
-    const team0FaceSign = (-arena.getBreachOpenSign(0)) as 1 | -1;
-    const team1FaceSign = (-arena.getBreachOpenSign(1)) as 1 | -1;
-    const portalFacesOpen = {
-      positive: (team0FaceSign === 1 && arena.isGoalDoorOpen(0)) || (team1FaceSign === 1 && arena.isGoalDoorOpen(1)),
-      negative: (team0FaceSign === -1 && arena.isGoalDoorOpen(0)) || (team1FaceSign === -1 && arena.isGoalDoorOpen(1)),
-    };
-
-    integrateZeroG(this.phys, dt);
-    bounceArena(this.phys, goalAxis, perpAxis, portalFacesOpen);
-    arena.bounceObstacles(this.phys);
+    arena.advancePlayer(this.phys,dt,this.visualQuaternion,this.phase);
 
     const breachTeam = this.getEnteredBreachTeam(arena);
     if (breachTeam !== null) {
@@ -313,7 +320,7 @@ export class LocalPlayer {
     }
 
     const grabInput = input.consumeGrab();
-    const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS);
+    const nearBar = arena.getNearestBar(this.phys.pos, GRAB_RADIUS, this.nearestBar, this.grabbedBarDirection);
     if (nearBar && grabInput && this.canGrabBar()) {
       this.grabBar(nearBar, cam);
     }
@@ -338,7 +345,7 @@ export class LocalPlayer {
     }
   }
 
-  private updateAiming(input: InputManager, cam: CameraController): void {
+  private updateAiming(input: InputManager, cam: CameraController, arena: Arena): void {
     this.breachJumpAnimationActive = false;
     if (!this.grabbedBarPos) {
       this.phase = 'FLOATING';
@@ -347,12 +354,13 @@ export class LocalPlayer {
 
     this.phys.vel.set(0, 0, 0);
 
+    input.consumeGrab(); // A second tap while charging is still an attach request, never a deferred grab.
     const { dy } = input.consumeAimDelta();
     this.launchPower += dy * LAUNCH_AIM_SENSITIVITY;
     this.launchPower = clamp(this.launchPower, 0, this.maxLaunchPower());
 
     if (!input.isAiming()) {
-      this.launch(cam);
+      this.launch(cam, arena);
     }
   }
 
@@ -381,10 +389,13 @@ export class LocalPlayer {
     this.lockGripToBar(visualQuat);
   }
 
-  private launch(cam: CameraController): void {
-    const fwd = cam.getForward();
-    this.phys.pos.addScaledVector(fwd, PLAYER_RADIUS + 0.8);
-    this.phys.vel.copy(fwd).multiplyScalar(this.launchPower);
+  private launch(cam: CameraController, arena: Arena): void {
+    const fwd = cam.getForward(this.movementForward);
+    this.phase = 'FLOATING';
+    const orientation = this.computeVisualQuaternion(cam, 0);
+    this.phys.vel.copy(fwd).multiplyScalar(BAR_LAUNCH_CLEARANCE);
+    arena.advancePlayer(this.phys,1,orientation,'FLOATING');
+    this.phys.vel.multiplyScalar(this.launchPower/BAR_LAUNCH_CLEARANCE);
     this.launchPower = 0;
     this.grabbedBarPos = null;
     this.grabHandGripLocal = null;
@@ -517,9 +528,9 @@ export class LocalPlayer {
 
   private lockGrabPose(): void {
     this.animation.snapToAnimation(ANIM_STANDING);
+    this.animation.resetBreathing();
     applyBarHoldPose(this.animation.getRigs());
-    const bodyRoot = this.animation.getRigs()[0]?.root ?? null;
-    this.grabHandGripLocal = measureLeftHandGripOffset(bodyRoot);
+    this.grabHandGripLocal = BAR_GRIP_LOCAL.clone();
     this.grabPoseLocked = true;
   }
 
@@ -538,14 +549,14 @@ export class LocalPlayer {
     this.victoryDanceFacingLocked = false;
 
     if (this.phase === 'BREACH' || this.phase === 'RESPAWNING') {
-      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraQuat);
-      const flatForward = new THREE.Vector3(forward.x, 0, forward.z);
+      const forward = this.facingForward.copy(MODEL_FORWARD).applyQuaternion(cameraQuat);
+      const flatForward = this.flatFacingForward.set(forward.x, 0, forward.z);
       if (flatForward.lengthSq() < 1e-5) {
         flatForward.set(0, 0, -1);
       } else {
         flatForward.normalize();
       }
-      this.visualQuaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), flatForward);
+      this.visualQuaternion.setFromUnitVectors(MODEL_FORWARD, flatForward);
       return this.visualQuaternion;
     }
 
@@ -554,27 +565,28 @@ export class LocalPlayer {
       return this.visualQuaternion;
     }
 
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraQuat);
-    const flatForward = new THREE.Vector3(forward.x, 0, forward.z);
+    const forward = this.facingForward.copy(MODEL_FORWARD).applyQuaternion(cameraQuat);
+    const flatForward = this.flatFacingForward.set(forward.x, 0, forward.z);
     if (flatForward.lengthSq() < 1e-5) {
       flatForward.set(0, 0, -1);
     } else {
       flatForward.normalize();
     }
 
-    const target = new THREE.Quaternion().setFromUnitVectors(
-      new THREE.Vector3(0, 0, -1),
+    const target = this.facingTarget.setFromUnitVectors(
+      MODEL_FORWARD,
       flatForward,
     );
     const alpha = 1 - Math.pow(GRAB_ROTATION_SMOOTHING, dt);
     this.visualQuaternion.slerp(target, alpha);
+    barHoldQuaternion(this.visualQuaternion, this.grabbedBarDirection, this.visualQuaternion);
     return this.visualQuaternion;
   }
 
   private lockGripToBar(visualQuat: THREE.Quaternion): void {
     if (!this.grabbedBarPos) return;
     const gripLocal = this.grabHandGripLocal ?? this.leftHandGripLocal;
-    const handOffset = gripLocal.clone().applyQuaternion(visualQuat);
+    const handOffset = this.handOffset.copy(gripLocal).applyQuaternion(visualQuat);
     this.phys.pos.copy(this.grabbedBarPos).sub(handOffset);
   }
 
@@ -632,11 +644,12 @@ export class LocalPlayer {
   public static classifyHitZone(
     impactPoint: THREE.Vector3,
     playerPos: THREE.Vector3,
-    playerFacing: THREE.Vector3,
+    playerFacing: THREE.Vector3 | THREE.Quaternion,
     hitOffsetY = 0,
     hitRadius?: number,
+    phase = 'BREACH',
   ): HitZone {
-    return classifyHitZone(impactPoint, playerPos, playerFacing, hitOffsetY, hitRadius);
+    return classifyHitZone(impactPoint, playerPos, playerFacing, hitOffsetY, hitRadius, phase);
   }
 
   public resetForNewRound(arena: Arena, spawnOverride?: { x: number; y: number; z: number }): void {
@@ -718,6 +731,13 @@ export class LocalPlayer {
 
   public getPosition(): THREE.Vector3 {
     return this.phys.pos;
+  }
+
+  /** Live visual orientation of the alien mesh. Callers must not mutate it. */
+  public syncWorldPosition(): void { this.mesh.position.copy(this.phys.pos); }
+
+  public getVisualQuaternion(): THREE.Quaternion {
+    return this.mesh.quaternion;
   }
 
   public getMesh(): THREE.Group {

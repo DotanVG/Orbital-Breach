@@ -181,14 +181,23 @@ Before the final commit for any change intended to ship, update `meta[name="date
 - <short progress note with timestamp>
 ```
 
-## Knowledge graph (graphify)
+## Knowledge graph policy
 
-`graphify-out/` — local-only, gitignored. Contains a clustered knowledge graph of the codebase.
+When `graphify-out/graph.json` exists:
 
-**Claude/Codex uses it automatically** via `.claude/skills/graphify/SKILL.md` — no manual steps needed for AI-assisted work.
+1. For unfamiliar, architectural, debugging, cross-cutting or likely multi-file tasks, query Graphify before performing broad repository exploration.
+2. Use the graph to identify likely files, symbols, dependencies and execution paths.
+3. Open and verify the authoritative source files before editing.
+4. Never trust stale graph data over current source.
+5. For a clearly isolated edit, skip Graphify.
+6. After material structural changes, perform an incremental graph update when practical.
+7. After a major refactor, perform a full rebuild.
+8. Never commit `graphify-out/`.
+9. Do not block ordinary work only because the optional local graph is absent.
 
-**Regenerate after major refactors:**
-```bash
-graphify extract . --backend ollama --model llama3
-graphify cluster-only .
-```
+Symphony receives this policy directly from `WORKFLOW.md`. In a worktree where
+the optional graph exists, use `node scripts/graphify.mjs status` before relying
+on it and `node scripts/graphify.mjs query "<question>"` for a bounded query.
+Do not build or update the graph in `after_create`, `before_run`, normal
+development, tests or packaging. Fresh temporary worktrees normally have no
+graph, and that must not interrupt the ticket.

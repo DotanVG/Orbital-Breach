@@ -224,11 +224,11 @@ describe("OrbitalLobbyRoom fill_bots", () => {
     addMember(room, "bot-0", { name: buildBotName(0, 0), team: 0, isBot: true });
 
     const handleFillBotsMessage = (room as unknown as {
-      handleFillBotsMessage(message: { fill: boolean }): void;
+      handleFillBotsMessage(client: { sessionId: string }, message: { fill: boolean }): void;
     }).handleFillBotsMessage.bind(room);
 
-    handleFillBotsMessage({ fill: false });
-    handleFillBotsMessage({ fill: true });
+    handleFillBotsMessage({ sessionId: "human-1" }, { fill: false });
+    handleFillBotsMessage({ sessionId: "human-1" }, { fill: true });
 
     expect(Array.from(room.state.members.keys())).toEqual(["human-1", "human-2", "bot-0"]);
     expect(room.setMetadata).not.toHaveBeenCalled();

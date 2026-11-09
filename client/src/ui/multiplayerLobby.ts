@@ -1181,7 +1181,7 @@ export class MultiplayerLobby {
 
 function buildMarkup(): string {
   return `
-    <div class="ob-mp-shell">
+    <div class="ob-mp-shell" data-testid="multiplayer-panel">
       <div class="ob-mp-header">
         <div>
           <div class="ob-mp-kicker">Online queue</div>

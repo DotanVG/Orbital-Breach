@@ -659,6 +659,7 @@ export class SessionMenu {
     this.launcher = document.createElement("button");
     this.launcher.type = "button";
     this.launcher.className = "ob-session-launcher";
+    this.launcher.dataset.testid = "session-launcher";
     this.launcher.setAttribute("aria-label", "Settings");
     this.launcher.innerHTML = SESSION_MENU_GEAR_ICON;
     const handleLauncherClick = (): void => this.onLauncherRequest?.();
@@ -749,7 +750,7 @@ export class SessionMenu {
                   <span id="session-menu-collisionvis-value" class="ob-session-value"></span>
                 </div>
                 <label class="ob-session-toggle">
-                  <span class="ob-session-toggle-copy">Overlay wireframe collision volumes — player sphere, obstacle AABBs, grab bars, breach room bounds. Press [ in-game to toggle.</span>
+                  <span class="ob-session-toggle-copy">Overlay wireframe collision volumes — body box, pose hit zones, yellow grab reach, obstacle AABBs and breach bounds. Press [ in-game to toggle.</span>
                   <input id="session-menu-collisionvis" class="ob-session-checkbox" type="checkbox" />
                 </label>
               </div>

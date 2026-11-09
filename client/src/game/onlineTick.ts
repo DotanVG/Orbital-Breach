@@ -1,4 +1,4 @@
-import { HITBOX_OFFSET_Y, HITBOX_RADIUS } from "../../../shared/constants";
+import { projectileBodyTarget } from "../../../shared/projectileCollider";
 import { FEATURE_FLAGS } from "../featureFlags";
 import type { ProjectileHitEvent } from "../match/localMatch";
 import {
@@ -6,6 +6,7 @@ import {
   computeNearBar,
   tickCameraLook,
   updateMobileHudControls,
+  updateOnboarding,
   type GameTickContext,
 } from "./tickContext";
 import { buildShotFromCamera } from "./weaponFire";
@@ -25,13 +26,13 @@ export function tickOnlineGame(ctx: GameTickContext, dt: number): void {
   tickOnlineWeaponFire(ctx);
 
   const localActorId = ctx.getOnlineLocalActorId();
-  const localCentre = ctx.player.getPosition().clone();
-  localCentre.y += HITBOX_OFFSET_Y;
+  const body = projectileBodyTarget(ctx.player.getPosition(), ctx.player.getVisualQuaternion(), ctx.player.phase);
+  const localCentre = ctx.player.getPosition().clone().copy(body.center);
   const localTarget = {
     active: ctx.player.phase !== "RESPAWNING" && ctx.player.phase !== "BREACH" && !ctx.player.damage.frozen,
     id: localActorId,
     pos: localCentre,
-    radius: HITBOX_RADIUS,
+    radius: body.radius,
     team: ctx.player.team,
   };
   const allTargets = [localTarget, ...ctx.onlineMatch.getProjectileTargets()];
@@ -46,7 +47,7 @@ export function tickOnlineGame(ctx: GameTickContext, dt: number): void {
   );
 
   checkOnlineBreachScore(ctx);
-  ctx.debugOverlays.tickCollisionVis(ctx.input, () => ctx.match.getMatchStatsActors(ctx.player));
+  ctx.debugOverlays.tickCollisionVis(ctx.input, () => [{position:ctx.player.getPosition(),orientation:ctx.player.getVisualQuaternion(),phase:ctx.player.phase},...ctx.onlineMatch.getDebugActors()]);
 
   ctx.playerUpdateTimer -= dt;
   if (ctx.playerUpdateTimer <= 0) {
@@ -139,6 +140,7 @@ function checkOnlineBreachScore(ctx: GameTickContext): void {
 function sendOnlinePlayerUpdate(ctx: GameTickContext): void {
   const pos = ctx.player.getPosition();
   const vel = ctx.player.phys.vel;
+  const orientation = ctx.player.getVisualQuaternion();
   ctx.net.sendPlayerUpdate({
     posX: pos.x,
     posY: pos.y,
@@ -147,6 +149,10 @@ function sendOnlinePlayerUpdate(ctx: GameTickContext): void {
     velY: vel.y,
     velZ: vel.z,
     yaw: ctx.cam.getYaw(),
+    orientX: orientation.x,
+    orientY: orientation.y,
+    orientZ: orientation.z,
+    orientW: orientation.w,
     phase: ctx.player.phase,
     frozen: ctx.player.damage.frozen,
     leftArm: ctx.player.damage.leftArm,
@@ -191,14 +197,8 @@ function updateOnlineHud(ctx: GameTickContext, dt: number): void {
     tabHeld: ctx.input.isTabHeld(),
     ownTeam: rosters.ownTeam,
     enemyTeam: rosters.enemyTeam,
-    tutorialPrompt: ctx.tutorial.update({
-      currentBreachTeam: ctx.player.currentBreachTeam,
-      frozen: ctx.player.damage.frozen,
-      inRound: snap.phase === "COUNTDOWN" || snap.phase === "PLAYING",
-      mobile: ctx.mobile,
-      phase: ctx.player.phase,
-      team: ctx.player.team,
-    }),
+    tutorialPrompt: updateOnboarding(ctx, snap.phase === "COUNTDOWN" || snap.phase === "PLAYING", dt),
+    introVisible: ctx.tutorial.isIntroVisible(),
     helpVisible: ctx.helpVisible,
     dt,
     team: ctx.player.team,

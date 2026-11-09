@@ -3,6 +3,8 @@ import * as THREE from 'three';
 export type HitZone = 'head' | 'body' | 'rightArm' | 'leftArm' | 'leftLeg' | 'rightLeg';
 
 export type PoseBoneName =
+  | `${'PinkyFinger' | 'MiddleFinger'}${1 | 2 | 3 | 4}${'L' | 'R'}`
+  | `Thumb${1 | 2 | 3}${'L' | 'R'}`
   | 'Hips'
   | 'Abdomen'
   | 'Torso'
@@ -31,6 +33,7 @@ export interface AnimatedRig {
   mixer: THREE.AnimationMixer;
   actions: Map<string, THREE.AnimationAction>;
   bones: Partial<Record<PoseBoneName, THREE.Bone>>;
+  standingReferencePose: Partial<Record<PoseBoneName, THREE.Quaternion>>;
   breathingBasePositions: Partial<Record<BreathingBoneName, THREE.Vector3>>;
   frozenJumpRightArmPose: Partial<Record<RightArmPoseBoneName, THREE.Quaternion>>;
   floatReferenceRightArmPose: Partial<Record<RightArmPoseBoneName, THREE.Quaternion>>;

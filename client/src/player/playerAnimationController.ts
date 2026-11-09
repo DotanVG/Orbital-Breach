@@ -16,6 +16,10 @@ const BREACH_BREATH_TORSO_Y = 0.008;
 const BREACH_BREATH_NECK_Y = 0.004;
 
 const POSE_BONE_NAMES: PoseBoneName[] = [
+  ...(['L', 'R'] as const).flatMap(side => [
+    ...[1,2,3,4].flatMap(i => [`PinkyFinger${i}${side}`, `MiddleFinger${i}${side}`]),
+    ...[1,2,3].map(i => `Thumb${i}${side}`),
+  ] as PoseBoneName[]),
   'Hips',
   'Abdomen',
   'Torso',
@@ -69,11 +73,25 @@ export class PlayerAnimationController {
       mixer,
       actions,
       bones: collectPoseBones(root),
+      standingReferencePose: {},
       breathingBasePositions: captureBreathingBasePositions(root),
       frozenJumpRightArmPose: {},
       floatReferenceRightArmPose: {},
     };
     this.rigs.push(rig);
+
+    // Sample the standing clip before procedural poses or crossfades can
+    // modify it. Constant animation tracks may skip later bone writes.
+    const standingAction = actions.get(ANIM_STANDING);
+    if (standingAction) {
+      standingAction.reset().play();
+      mixer.update(0);
+    }
+    for (const name of POSE_BONE_NAMES) {
+      const bone = rig.bones[name];
+      if (bone) rig.standingReferencePose[name] = bone.quaternion.clone();
+    }
+    standingAction?.stop();
 
     const idleHoldAction = actions.get(ANIM_IDLE_HOLD);
     if (idleHoldAction) {
@@ -127,10 +145,11 @@ export class PlayerAnimationController {
    * locking the grab pose).
    */
   public snapToAnimation(name: string): void {
-    if (this.currentAnimation !== name) {
-      this.setTargetAnimation(name);
-    }
+    this.currentAnimation = name;
     for (const rig of this.rigs) {
+      for (const action of rig.actions.values()) action.stop();
+      const action = rig.actions.get(name) ?? rig.actions.get(ANIM_IDLE_HOLD);
+      action?.reset().setEffectiveWeight(1).play();
       rig.mixer.setTime(0);
     }
   }

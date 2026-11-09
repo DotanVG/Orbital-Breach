@@ -4,13 +4,13 @@
     <script defer src="/analytics.js"></script>
     <meta name="google-site-verification" content="fc4RYsO0VwwNCjlPSo_Lev-1lY9r2phQK_Fa64YpjrQ" />
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Orbital Breach is a zero-g multiplayer browser shooter with 1v1 to 20v20 team modes. Freeze rivals or breach portals in rounds; first to 5 points wins." />
     <meta name="author" content="Dotan Veretzky" />
-    <meta name="date" content="2026-08-19T02:56:31+03:00" />
+    <meta name="date" content="2026-10-28T07:23:16+02:00" />
     <meta name="keywords" content="Orbital Breach, zero-gravity shooter, multiplayer FPS, browser game, Three.js, Vibe Jam 2026" />
     <meta name="theme-color" content="#080c14" />
-    <meta property="og:title" content="Orbital Breach" />
+    <meta property="og:title" content="Orbital Breach – Zero-G Multiplayer Shooter" />
     <meta property="og:description" content="Orbital Breach is a zero-g multiplayer browser shooter with 1v1 to 20v20 team modes. Freeze rivals or breach portals in rounds; first to 5 points wins." />
     <meta property="og:url" content="https://orbital-breach.vercel.app/" />
     <meta property="og:site_name" content="Orbital Breach" />
@@ -21,12 +21,11 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Orbital Breach" />
+    <meta name="twitter:title" content="Orbital Breach – Zero-G Multiplayer Shooter" />
     <meta name="twitter:description" content="Orbital Breach is a zero-g multiplayer browser shooter with 1v1 to 20v20 team modes. Freeze rivals or breach portals in rounds; first to 5 points wins." />
     <meta name="twitter:image" content="https://orbital-breach.vercel.app/assets/marketing/og-image.jpg" />
     <meta name="twitter:image:alt" content="Two astronauts fire cyan and magenta weapons across the Orbital Breach title." />
     <link rel="canonical" href="https://orbital-breach.vercel.app/" />
-    <link rel="preload" as="image" href="/orbital-breach-art.webp" imagesrcset="/orbital-breach-art.webp 1x" type="image/webp" fetchpriority="high" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
@@ -35,7 +34,10 @@
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "VideoGame",
+        "@type": ["VideoGame", "WebApplication"],
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript, HTML5 canvas and WebGL.",
         "name": "Orbital Breach",
         "description": "Orbital Breach is a zero-g multiplayer browser shooter with 1v1 to 20v20 team modes. Freeze rivals or breach portals in rounds; first to 5 points wins.",
         "author": {
@@ -67,28 +69,27 @@
         }
       }
     </script>
-    <title>Orbital Breach</title>
+    <title>Orbital Breach – Zero-G Multiplayer Shooter</title>
     <style>
       html, body {
         width: 100%;
-        height: 100%;
+        min-height: 100%;
         margin: 0;
+        background: #080c14;
       }
 
       #app {
         display: none;
       }
 
-      html, body {
+      html:has(body.game-active), body.game-active {
         overflow: hidden;
         overscroll-behavior: none;
-        background: #080c14;
       }
 
-      body {
+      body.game-active {
         position: fixed;
         inset: 0;
-        touch-action: none;
         -webkit-user-select: none;
         user-select: none;
       }
@@ -98,9 +99,15 @@
         -webkit-user-select: none;
         user-select: none;
       }
+
+      body:not(.game-active) > canvas { display: none !important; }
+      body.game-active > canvas { touch-action: none; }
+      body.boot-cover > canvas,
+      body.boot-cover > .ob-hud-root { display: none !important; }
+      body.boot-cover:not(:has(#menu-root, .wc-root)) .gc-cursor { display: none !important; }
     </style>
   </head>
-  <body>
+  <body class="boot-cover">
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
     <script async src="https://vibej.am/2026/widget.js"></script>

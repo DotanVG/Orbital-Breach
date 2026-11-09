@@ -12,7 +12,7 @@ import {
 } from "../player/playerAnimationController";
 import { PlayerDamageGlow } from "../player/playerDamageGlow";
 import { applyBarHoldPose } from "../player/playerGrabPose";
-import { applyArmRecoil, RECOIL_DURATION } from "../player/playerAimPose";
+import { applyFloatArmTilt, applyArmRecoil, RECOIL_DURATION } from "../player/playerAimPose";
 import { applyVictoryDancePose, resetVictoryDancePose } from "../player/playerVictoryDance";
 import { ThirdPersonGun } from "../player/playerThirdPersonGun";
 import { PlayerNameTag } from "../render/playerNameTag";
@@ -27,10 +27,11 @@ export class SimulatedPlayerAvatar {
   private readonly nameTag: PlayerNameTag;
   private recoilTimer = 0;
   private ready = false;
+  private heldPoseLocked = false;
   private readonly root = new THREE.Group();
   private victoryDanceElapsed = 0;
 
-  public constructor(scene: THREE.Scene, team: 0 | 1, name = "") {
+  public constructor(scene: THREE.Scene, team: 0 | 1, name = "", private readonly presentationOnly = false) {
     this.damageGlow = new PlayerDamageGlow(team);
     this.nameTag = new PlayerNameTag(name, team);
     this.root.add(this.nameTag.getObject());
@@ -38,15 +39,27 @@ export class SimulatedPlayerAvatar {
 
     void loadAlienRenderClone({ team, variant: "bot" })
       .then(({ body, bodyAnimations, helmet, helmetAnimations }) => {
-        if (this.disposed) return;
+        if (this.disposed) {
+          // A rematch/exit may dispose the victory stage before its clone arrives.
+          // Geometry is shared with the cached prototype; only materials are owned.
+          for (const rig of [body, helmet]) {
+            rig.traverse((object) => {
+              if (!(object instanceof THREE.Mesh)) return;
+              for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+                material.dispose();
+              }
+            });
+          }
+          return;
+        }
 
         this.root.add(body);
         this.root.add(helmet);
         this.animation.registerRig(body, bodyAnimations);
         this.animation.registerRig(helmet, helmetAnimations);
         this.damageGlow.attachTo(body);
-        this.gun.attachTo(body);
-        this.gun.setVisible(true);
+        if (!this.presentationOnly) this.gun.attachTo(body);
+        this.gun.setVisible(!this.presentationOnly);
         this.collectMaterials();
         this.ready = true;
       })
@@ -59,26 +72,34 @@ export class SimulatedPlayerAvatar {
     pos: THREE.Vector3,
     damage: DamageState,
     phase: PlayerPhase,
-    yaw: number,
+    orientation: THREE.Quaternion,
     dt: number,
     moveSpeed: number,
     celebrating = false,
   ): void {
     this.root.position.copy(pos);
-    this.root.rotation.set(0, yaw, 0);
+    this.root.quaternion.copy(orientation);
     const visible = phase !== "RESPAWNING";
     this.root.visible = visible;
-    this.gun.setVisible(visible);
-    this.nameTag.setVisible(visible);
+    this.gun.setVisible(visible && !this.presentationOnly);
+    this.nameTag.setVisible(visible && !this.presentationOnly);
     this.damageGlow.update(damage, phase, dt);
 
     if (!this.ready) return;
 
     const shouldCelebrate = celebrating && !damage.frozen;
+    const holding = !shouldCelebrate && (phase === 'GRABBING' || phase === 'AIMING');
+    if (holding && this.heldPoseLocked) {
+      this.recoilTimer=0;
+      this.applyPhaseVisuals(phase);
+      return;
+    }
+    this.heldPoseLocked=holding;
     const animation = shouldCelebrate
       ? ANIM_STANDING
       : selectAnimation(phase, moveSpeed);
-    this.animation.setTargetAnimation(animation);
+    if (phase === 'GRABBING' || phase === 'AIMING') this.animation.snapToAnimation(ANIM_STANDING);
+    else this.animation.setTargetAnimation(animation);
 
     // Hold the frozen pose: once the crossfade into ANIM_DEATH settles, tick
     // the mixer with dt=0 so the alien doesn't keep flailing through the
@@ -91,7 +112,11 @@ export class SimulatedPlayerAvatar {
     const animationDt = phase === "FROZEN" && this.frozenHoldTimer > ANIM_FADE_SECONDS
       ? 0
       : dt;
-    this.animation.tickMixers(animationDt);
+    this.animation.tickMixers(holding ? 0 : animationDt);
+    if (phase === 'FLOATING') {
+      this.animation.restoreFloatRightArmPose();
+      applyFloatArmTilt(this.animation.getRigs());
+    }
 
     if (!shouldCelebrate) {
       this.victoryDanceElapsed = 0;
@@ -99,8 +124,8 @@ export class SimulatedPlayerAvatar {
     }
 
     if (!shouldCelebrate && (phase === "GRABBING" || phase === "AIMING")) {
-      applyBarHoldPose(this.animation.getRigs());
       this.animation.resetBreathing();
+      applyBarHoldPose(this.animation.getRigs());
     } else if (shouldCelebrate) {
       this.animation.resetBreathing();
       this.victoryDanceElapsed += dt;
@@ -112,7 +137,7 @@ export class SimulatedPlayerAvatar {
     }
 
     this.recoilTimer = Math.max(0, this.recoilTimer - dt);
-    if (this.recoilTimer > 0) {
+    if (this.recoilTimer > 0 && phase !== 'GRABBING' && phase !== 'AIMING') {
       applyArmRecoil(this.animation.getRigs(), this.recoilTimer / RECOIL_DURATION);
     }
 
