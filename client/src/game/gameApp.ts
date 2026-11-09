@@ -26,11 +26,12 @@ import { isEmbedMode } from "../embed";
 import { KillFeed } from "../ui/kill-feed";
 import { initGlobalCursor, type GlobalCursor } from "../ui/globalCursor";
 import { revealBootCoverNow } from "../ui/bootCover";
-import { armMenuEntryGesture, shouldRequestFullscreenOnMenuGesture } from "../ui/entryGesture";
+import { armMenuEntryGesture } from "../ui/entryGesture";
 import { isApparentFullscreen, isFullscreen, leaveFullscreen, requestFullscreen } from "../ui/fullscreen";
 import { MainMenu } from "../ui/menu";
 import { MobileControls } from "../ui/mobileControls";
 import { RoomBrowser } from "../ui/roomBrowser";
+import { WelcomeScreen } from "../ui/welcome";
 import { SessionMenu, type SessionSettings } from "../ui/sessionMenu";
 import { SoundEngine } from "../audio/SoundEngine";
 import {
@@ -105,6 +106,7 @@ export class App {
   private lastTime = 0;
   private match: LocalMatch;
   private menu: MainMenu;
+  private welcome: WelcomeScreen;
   private readonly matchStats = new MatchStatsTracker();
   private roomBrowser = new RoomBrowser();
   private debrief = new DebriefScreen();
@@ -152,6 +154,7 @@ export class App {
     this.hud.onIntroDismiss = () => this.tutorial.dismissIntro();
     this.menu = new MainMenu();
     this.cursor = cursor;
+    this.welcome = new WelcomeScreen(this.cursor);
     this.projectiles = new ProjectileSystem(this.sceneMgr.getScene());
     this.match = new LocalMatch(this.sceneMgr.getScene());
     this.onlineMatch = new OnlineMatch(this.sceneMgr.getScene());
@@ -493,7 +496,9 @@ export class App {
       this.cleanEmbedUrl();
       this.menu.show();
     } else {
-      this.menu.show();
+      this.welcome.onBreach = () => { this.menu.show(); };
+      this.welcome.fullscreenOnClick = this.fullscreenPreference;
+      this.welcome.show();
     }
 
     const unlockAudio = (): Promise<void> => this.sound.unlock().then(() => {
@@ -503,11 +508,8 @@ export class App {
       throw err;
     });
     armMenuEntryGesture({
-      requestFullscreenOnGesture: shouldRequestFullscreenOnMenuGesture({
-        embedMode: this.embedMode,
-        portalArrival: this.portalArrivalPending,
-        fullscreenPreference: this.fullscreenPreference,
-      }),
+      // The welcome button owns fullscreen; all routes still unlock audio on a gesture.
+      requestFullscreenOnGesture: false,
       isMenuVisible: () => this.menu.isVisible(),
       unlockAudio,
       requestFullscreen: () => requestFullscreen(),

@@ -260,7 +260,7 @@ Shipped and implemented:
 - Closing Instructions blurs its controls; Space cannot activate the launcher (use `H`, pointer, or Enter). H is ignored in menus, lobbies, match-end celebrations, and debriefs without changing input state.
 - Post-match debrief stats, awards, credits, analytics, and Speed Insights instrumentation.
 - A local victory stage keeps the winning team's dance and camera running beneath interactive statistics without ticking combat. WINS sits 27.5% from the top; reduced motion holds the pose and camera still.
-- The game opens on its main menu. Title, description, Open Graph, and VideoGame/WebApplication JSON-LD stay in the document head, with no separate landing page.
+- Normal visits open on the original full-screen art and **Click to BREACH** button before the main menu; embed and portal visits skip it. Audio unlocks on a user gesture, and automatic fullscreen entry is limited to the welcome click when enabled. Title, description, Open Graph, and VideoGame/WebApplication JSON-LD stay in the document head, with no SEO body text or separate landing page.
 - AI bot fill, ready checks, stale-player seat cleanup, and authoritative round/match scoring.
 - Multiplayer server payload validation, WebSocket origin checks, a 200-frame/second client cap, and loopback adversarial tests for malformed traffic and disconnect cleanup.
 - GitHub Actions typechecks the client and server and runs the Vitest suite on push and pull request. Lobby messages and `/matchmake` are rate-limited; the enforced content security policy frames the game for this origin and itch embedders.

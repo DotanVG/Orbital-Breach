@@ -7,7 +7,7 @@ const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/)?.[1] ?? '';
 const schema = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)![1]);
 const description = 'Orbital Breach is a zero-g multiplayer browser shooter with 1v1 to 20v20 team modes. Freeze rivals or breach portals in rounds; first to 5 points wins.';
 
-describe('metadata-only direct entry', () => {
+describe('metadata-only welcome shell', () => {
   it('keeps title, description, Open Graph and JSON-LD in the document head', () => {
     expect(html).toContain('<title>Orbital Breach – Zero-G Multiplayer Shooter</title>');
     expect(head).toContain(`<meta name="description" content="${description}" />`);
@@ -29,7 +29,7 @@ describe('metadata-only direct entry', () => {
     expect(html).toContain('<body class="boot-cover">');
     expect(html).toMatch(/body\.boot-cover > canvas[\s\S]*display:\s*none/);
     expect(html).toMatch(/body\.boot-cover > \.ob-hud-root[\s\S]*display:\s*none/);
-    expect(html).toMatch(/body\.boot-cover:not\(:has\(#menu-root\)\) \.gc-cursor[\s\S]*display:\s*none/);
+    expect(html).toMatch(/body\.boot-cover:not\(:has\(#menu-root, \.wc-root\)\) \.gc-cursor[\s\S]*display:\s*none/);
     expect(body).toContain('<div id="app"></div>');
     expect(body).toContain('<script type="module" src="/src/main.ts"></script>');
     expect(body).not.toMatch(/<(?:main|h1|h2|p|ul|li|noscript|details|img)\b/i);
