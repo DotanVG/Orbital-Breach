@@ -44,8 +44,8 @@ const AXES = ['x','y','z'] as const;
 export interface PortalFaces { positive: boolean; negative: boolean }
 
 /** Same support margins on client and server, with clearance for the entire body. */
-export function bounceBodyArena(state: BodyPhysicsState, q: QuaternionLike = IDENTITY_QUATERNION, phase = 'BREACH', portalAxis?: 'x'|'y'|'z', perpAxis?: 'x'|'z', faces?: PortalFaces): void {
-  const b = bodyWorldBounds(state.pos,q,phase), edge = ARENA_SIZE/2;
+export function bounceBodyArena(state: BodyPhysicsState, q: QuaternionLike = IDENTITY_QUATERNION, phase = 'BREACH', portalAxis?: 'x'|'y'|'z', perpAxis?: 'x'|'z', faces?: PortalFaces, b = bodyWorldBounds(state.pos,q,phase)): void {
+  const edge = ARENA_SIZE/2;
   for (const ax of AXES) {
     const inPortal = ax === portalAxis && perpAxis !== undefined
       && Math.abs(b.center[perpAxis])+b.half[perpAxis] <= BREACH_ROOM_W/2
@@ -53,17 +53,20 @@ export function bounceBodyArena(state: BodyPhysicsState, q: QuaternionLike = IDE
     const lo = -edge+b.half[ax], hi = edge-b.half[ax];
     if (b.center[ax] > hi && !(inPortal && faces?.positive)) {
       state.pos[ax] += hi-b.center[ax]; if (state.vel[ax] > 0) state.vel[ax] *= -1;
+      b.center[ax] = hi;
     }
     if (b.center[ax] < lo && !(inPortal && faces?.negative)) {
       state.pos[ax] += lo-b.center[ax]; if (state.vel[ax] < 0) state.vel[ax] *= -1;
+      b.center[ax] = lo;
     }
   }
   if (portalAxis && perpAxis) {
-    const after = bodyWorldBounds(state.pos,q,phase);
+    const after = b;
     if (Math.abs(after.center[portalAxis]) > edge) {
       const sign = after.center[portalAxis] > 0 ? 1 : -1;
       const center = { x: 0, y: 0, z: 0 }; center[portalAxis] = sign*(edge+BREACH_ROOM_D/2);
       clampBodyBreach(state,center,portalAxis,sign === 1 ? -1 : 1,true,q,phase);
+      b.center = bodyWorldBounds(state.pos,q,phase).center;
     }
   }
 }
@@ -99,18 +102,7 @@ export function bodyClearsDiamond(pos: Vec3, q: QuaternionLike, phase: string, d
   });
 }
 
-/** Compound OBB vs AABB using separating axes. For each world axis, find
- * forbidden translation intervals, then leave their connected union once.
- * Resolving each limb separately can push two overlapping limbs back and forth.
- * World-axis response preserves the existing restitution and sliding behavior. */
-export function bounceBodyBoxes(state: BodyPhysicsState, boxes: readonly CollisionBox[], q: QuaternionLike = IDENTITY_QUATERNION, phase = 'BREACH', padding = 0): void {
-  if (!boxes.length) return;
-  const bounds = bodyWorldBounds(state.pos,q,phase);
-  // Reject empty space before building the six parts' SAT axes/supports.
-  // Keep the full ordered box scan after contact: a correction can enter a
-  // previously disjoint box, so filtering candidates up front is unsafe.
-  if (!boxes.some(box => AXES.every(a => bounds.center[a]+bounds.half[a]+padding > box.min[a]
-    && bounds.center[a]-bounds.half[a]-padding < box.max[a]))) return;
+function bodyBoxGeometry(q: QuaternionLike, phase: string) {
   const rotation = normalizeQuaternion(q);
   const basis = AXES.map(a => ({ x: 0, y: 0, z: 0, [a]: 1 }));
   const localAxes = basis.map(axis => rotateByQuaternion(rotation, axis));
@@ -119,6 +111,21 @@ export function bounceBodyBoxes(state: BodyPhysicsState, boxes: readonly Collisi
     center: rotateByQuaternion(rotation, part.center),
     supports: normals.map(n => localAxes.reduce((sum, axis, i) => sum + Math.abs(v3.dot(n,axis)) * part.half[AXES[i]], 0)),
   }));
+  return { normals, parts };
+}
+
+/** Compound OBB vs AABB using separating axes. For each world axis, find
+ * forbidden translation intervals, then leave their connected union once.
+ * Resolving each limb separately can push two overlapping limbs back and forth.
+ * World-axis response preserves the existing restitution and sliding behavior. */
+export function bounceBodyBoxes(state: BodyPhysicsState, boxes: readonly CollisionBox[], q: QuaternionLike = IDENTITY_QUATERNION, phase = 'BREACH', padding = 0, bounds = bodyWorldBounds(state.pos,q,phase), geometry?: ReturnType<typeof bodyBoxGeometry>): void {
+  if (!boxes.length) return;
+  // Reject empty space before building the six parts' SAT axes/supports.
+  // Keep the full ordered box scan after contact: a correction can enter a
+  // previously disjoint box, so filtering candidates up front is unsafe.
+  if (!boxes.some(box => AXES.every(a => bounds.center[a]+bounds.half[a]+padding > box.min[a]
+    && bounds.center[a]-bounds.half[a]-padding < box.max[a]))) return;
+  const { normals, parts } = geometry ?? bodyBoxGeometry(q,phase);
   for (const box of boxes) {
     if (AXES.some(a => bounds.center[a]+bounds.half[a]+padding <= box.min[a]
       || bounds.center[a]-bounds.half[a]-padding >= box.max[a])) continue;
@@ -167,14 +174,58 @@ export function bodySubsteps(velocity: Vec3, dt: number, phase = 'BREACH'): numb
   return Math.max(1, Math.ceil(Math.hypot(velocity.x,velocity.y,velocity.z)*Math.max(0,dt)/(smallest*0.5)));
 }
 
+/** Fraction of a translation clear of walls/boxes, using the swept OBB union.
+ * This is only a conservative advance bound; contacts still use all six OBBs. */
+export function bodySweepFraction(bounds: BodyCollider, velocity: Vec3, dt: number, boxes: readonly CollisionBox[]): number {
+  let fraction = 1;
+  for (const a of AXES) {
+    const travel = velocity[a] * dt;
+    const min = bounds.center[a] - bounds.half[a], max = bounds.center[a] + bounds.half[a];
+    // Outside the arena may mean an open portal/breach room; retain fine steps.
+    if (min < -ARENA_SIZE/2 || max > ARENA_SIZE/2) return 0;
+    if (travel > 0) fraction = Math.min(fraction, (ARENA_SIZE/2-max)/travel);
+    if (travel < 0) fraction = Math.min(fraction, (-ARENA_SIZE/2-min)/travel);
+  }
+  for (const box of boxes) {
+    let enter = 0, exit = fraction;
+    for (const a of AXES) {
+      const travel = velocity[a]*dt;
+      const min = box.min[a]-bounds.half[a]-bounds.center[a];
+      const max = box.max[a]+bounds.half[a]-bounds.center[a];
+      if (travel === 0) {
+        if (min > 0 || max < 0) { exit = -1; break; }
+      } else {
+        const t1 = min/travel, t2 = max/travel;
+        enter = Math.max(enter, Math.min(t1,t2));
+        exit = Math.min(exit, Math.max(t1,t2));
+      }
+    }
+    if (enter <= exit) fraction = Math.min(fraction,enter);
+  }
+  return fraction;
+}
+
 /** Shared bounded-displacement integration, including the launch clearance step. */
 export function advanceBodyWorld(state: BodyPhysicsState, dt: number, q: QuaternionLike, phase: string, boxes: readonly CollisionBox[], portalAxis?: 'x'|'y'|'z', faces?: PortalFaces): void {
   const speed=Math.hypot(state.vel.x,state.vel.y,state.vel.z);
   if(speed>MAX_LAUNCH_SPEED) for(const a of AXES) state.vel[a]*=MAX_LAUNCH_SPEED/speed;
-  const steps=bodySubsteps(state.vel,dt,phase);
-  for(let i=0;i<steps;i++) {
-    for(const a of AXES) state.pos[a]+=state.vel[a]*dt/steps;
-    bounceBodyArena(state,q,phase,portalAxis,portalAxis === 'x' ? 'z' : 'x',faces);
-    bounceBodyBoxes(state,boxes,q,phase);
+  // Orientation/pose are fixed throughout this call: translate the same bounds.
+  const bounds=bodyWorldBounds(state.pos,q,phase);
+  const fraction=bodySweepFraction(bounds,state.vel,dt,boxes);
+  const steps=fraction === 1 ? 1 : bodySubsteps(state.vel,dt,phase);
+  const geometry=steps > 1 && boxes.length ? bodyBoxGeometry(q,phase) : undefined;
+  for(let i=0;i<steps;) {
+    // Skip only complete fine-grid intervals before possible AABB contact.
+    // Recompute after each response, since a bounce changes the swept path.
+    const clear=i === 0 ? fraction : bodySweepFraction(bounds,state.vel,dt*(steps-i)/steps,boxes);
+    const stride=Math.max(1,Math.floor(clear*(steps-i)));
+    for(const a of AXES) {
+      const travel=state.vel[a]*dt*stride/steps;
+      state.pos[a]+=travel;
+      bounds.center[a]+=travel;
+    }
+    bounceBodyArena(state,q,phase,portalAxis,portalAxis === 'x' ? 'z' : 'x',faces,bounds);
+    bounceBodyBoxes(state,boxes,q,phase,0,bounds,geometry);
+    i+=stride;
   }
 }
