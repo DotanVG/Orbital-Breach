@@ -320,6 +320,49 @@ const CSS = `
     .ob-debrief-actions { margin-top: 8px; }
     .ob-debrief-btn { padding: 10px 14px; font-size: 9px; }
   }
+  /* Keep the local victory stage visible while statistics remain interactive. */
+  .ob-debrief-root.ob-debrief-celebration {
+    background: none; pointer-events: none; justify-content: flex-end; padding: 16px;
+  }
+  .ob-debrief-celebration::before, .ob-debrief-celebration::after { display: none; }
+  .ob-debrief-celebration .ob-debrief-wrap {
+    pointer-events: auto; width: 46vw; max-height: calc(100dvh - 32px);
+    padding: 18px; gap: 14px; background: rgba(4, 8, 18, 0.9);
+    border: 1px solid var(--ob-debrief-accent-border);
+  }
+  .ob-debrief-celebration .ob-debrief-head { grid-template-columns: 1fr auto 1fr; gap: 8px; padding-bottom: 12px; }
+  .ob-debrief-celebration .ob-ds-num { font-size: 44px; }
+  .ob-debrief-celebration .ob-ds-name { font-size: 9px; letter-spacing: 2px; }
+  .ob-debrief-celebration .ob-debrief-verdict { font-size: 22px; white-space: normal; }
+  .ob-debrief-celebration .ob-dv-sub { font-size: 8px; letter-spacing: 1px; }
+  .ob-debrief-celebration .ob-debrief-grid { display: flex; flex-direction: column; gap: 12px; }
+  .ob-debrief-celebration .ob-debrief-side { display: contents; }
+  .ob-debrief-celebration .ob-debrief-actions {
+    order: -1; position: sticky; top: 0; z-index: 2; margin: 0; width: 100%;
+    background: #080c14;
+  }
+  .ob-debrief-celebration .ob-debrief-btn { padding: 14px 10px; letter-spacing: 2px; min-height: 44px; }
+  .ob-debrief-celebration .ob-awards { order: 1; width: 100%; }
+  .ob-debrief-celebration .ob-debrief-panel { width: 100%; padding: 12px; overflow-x: auto; }
+  @media (orientation: portrait) {
+    .ob-debrief-root.ob-debrief-celebration { align-items: flex-end; padding: 10px; }
+    .ob-debrief-celebration .ob-debrief-wrap {
+      width: 100%; max-height: 36dvh; padding: 12px;
+      margin-bottom: env(safe-area-inset-bottom, 0px);
+    }
+  }
+  @media (max-height: 500px) and (orientation: landscape) {
+    .ob-debrief-root.ob-debrief-celebration { padding: 8px max(10px, env(safe-area-inset-right, 0px)); }
+    .ob-debrief-celebration .ob-debrief-wrap { max-height: calc(100dvh - 16px); padding: 12px; }
+    .ob-debrief-celebration .ob-debrief-head { gap: 6px; }
+    .ob-debrief-celebration .ob-ds-num { font-size: 32px; }
+    .ob-debrief-celebration .ob-debrief-verdict { font-size: 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ob-debrief-root { transition: none; }
+    .ob-debrief-btn { transition: none; }
+    .ob-debrief-btn:hover { transform: none; }
+  }
 `;
 
 let styleInjected = false;
@@ -356,6 +399,7 @@ export class DebriefScreen {
   private readonly root: HTMLDivElement;
   private actionListenerAbort: AbortController | null = null;
   private disposeActionListeners: (() => void) | null = null;
+  private focusHandle: number | null = null;
   public onMainMenu: (() => void) | null = null;
   public onPlayAgain: (() => void) | null = null;
 
@@ -371,12 +415,14 @@ export class DebriefScreen {
     return this.root.classList.contains("ob-debrief-visible");
   }
 
-  public show(data: DebriefData): void {
+  public show(data: DebriefData, celebrating = false): void {
+    if (this.focusHandle !== null) cancelAnimationFrame(this.focusHandle);
     this.actionListenerAbort?.abort();
     this.actionListenerAbort = null;
     this.disposeActionListeners?.();
     this.disposeActionListeners = null;
     this.root.innerHTML = this.buildHtml(data);
+    this.root.classList.toggle("ob-debrief-celebration", celebrating);
     this.root.classList.toggle("ob-debrief-theme--cyan", getDebriefThemeTeam(data.playerTeam) === 0);
     this.root.classList.toggle("ob-debrief-theme--magenta", getDebriefThemeTeam(data.playerTeam) === 1);
     this.root.classList.add("ob-debrief-visible");
@@ -411,12 +457,15 @@ export class DebriefScreen {
     };
 
     const focusTarget = primaryActionButton ?? mainMenuButton;
-    requestAnimationFrame(() => {
+    this.focusHandle = requestAnimationFrame(() => {
+      this.focusHandle = null;
       focusTarget?.focus({ preventScroll: true });
     });
   }
 
   public hide(): void {
+    if (this.focusHandle !== null) cancelAnimationFrame(this.focusHandle);
+    this.focusHandle = null;
     this.actionListenerAbort?.abort();
     this.actionListenerAbort = null;
     this.disposeActionListeners?.();
@@ -425,10 +474,7 @@ export class DebriefScreen {
   }
 
   public dispose(): void {
-    this.actionListenerAbort?.abort();
-    this.actionListenerAbort = null;
-    this.disposeActionListeners?.();
-    this.disposeActionListeners = null;
+    this.hide();
     this.root.remove();
   }
 
