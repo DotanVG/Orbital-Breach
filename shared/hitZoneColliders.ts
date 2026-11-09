@@ -27,63 +27,40 @@ export const IDENTITY_QUATERNION: QuaternionLike = {
   w: 1,
 };
 
-/**
- * Normalized symmetric alien colliders from the issue #137 editor export.
- * Left/right limbs mirror across x. Head and body stay on the centerline.
- * After ALIEN_ROTATION_Y (PI), model left (UpperArmL/UpperLegL) is -X,
- * model right is +X. These offsets are player-local, with the model's asset
- * transform already accounted for; rotate them by the visual quaternion once.
+/** CPU-sampled Alien.glb runtime poses (asset transform included once).
+ * Boxes are half-extents; joint means locate limb centres, never the physics anchor.
+ * Model left is -X after ALIEN_ROTATION_Y=PI (F1).
  */
 export const defaultHitZoneColliders: HitZoneCollider[] = [
-  {
-    id: "col_1",
-    zone: "head",
-    shape: "sphere",
-    position: { x: 0, y: -0.16, z: 0 },
-    size: { x: 0.15, y: 0.15, z: 0.15 },
-    rotation: { x: 0, y: 0, z: 0 },
-  },
-  {
-    id: "col_2",
-    zone: "body",
-    shape: "box",
-    position: { x: 0, y: -0.45, z: 0 },
-    size: { x: 0.11, y: 0.114, z: 0.088 },
-    rotation: { x: 0, y: 0, z: 0 },
-  },
-  {
-    id: "col_3",
-    zone: "leftArm",
-    shape: "box",
-    position: { x: -0.1375, y: -0.4, z: 0.0175 },
-    size: { x: 0.051, y: 0.115, z: 0.093 },
-    rotation: { x: 0, y: 0, z: 0 },
-  },
-  {
-    id: "col_4",
-    zone: "rightArm",
-    shape: "box",
-    position: { x: 0.1375, y: -0.4, z: 0.0175 },
-    size: { x: 0.051, y: 0.115, z: 0.093 },
-    rotation: { x: 0, y: 0, z: 0 },
-  },
-  {
-    id: "col_5",
-    zone: "leftLeg",
-    shape: "box",
-    position: { x: -0.0975, y: -0.64, z: -0.01 },
-    size: { x: 0.033, y: 0.104, z: 0.035 },
-    rotation: { x: 0, y: 0, z: 0 },
-  },
-  {
-    id: "col_6",
-    zone: "rightLeg",
-    shape: "box",
-    position: { x: 0.0975, y: -0.64, z: -0.01 },
-    size: { x: 0.033, y: 0.104, z: 0.035 },
-    rotation: { x: 0, y: 0, z: 0 },
-  },
+  {"id":"head","zone":"head","shape":"sphere","position":{"x":-0.00037,"y":-0.18192,"z":0.24174},"size":{"x":0.16731,"y":0.16731,"z":0.16731},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"body","zone":"body","shape":"box","position":{"x":-0.00018,"y":-0.44016,"z":0.28132},"size":{"x":0.078,"y":0.14142,"z":0.055},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"leftArm","zone":"leftArm","shape":"box","position":{"x":-0.10286,"y":-0.39013,"z":0.28134},"size":{"x":0.02587,"y":0.07808,"z":0.02362},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"rightArm","zone":"rightArm","shape":"box","position":{"x":0.11281,"y":-0.35792,"z":0.23172},"size":{"x":0.036,"y":0.04577,"z":0.06926},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"leftLeg","zone":"leftLeg","shape":"box","position":{"x":-0.06964,"y":-0.56299,"z":0.2828},"size":{"x":0.025,"y":0.07856,"z":0.03},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"rightLeg","zone":"rightLeg","shape":"box","position":{"x":0.07514,"y":-0.56389,"z":0.28248},"size":{"x":0.025,"y":0.07766,"z":0.03},"rotation":{"x":0,"y":0,"z":0}}
 ];
+export const floatingHitZoneColliders: HitZoneCollider[] = [
+  {"id":"head","zone":"head","shape":"sphere","position":{"x":-0.00942,"y":-0.5594,"z":-0.03713},"size":{"x":0.16735,"y":0.16735,"z":0.16735},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"body","zone":"body","shape":"box","position":{"x":-0.00146,"y":-0.58464,"z":0.22576},"size":{"x":0.078,"y":0.03178,"z":0.14071},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"leftArm","zone":"leftArm","shape":"box","position":{"x":-0.13604,"y":-0.55084,"z":0.08598},"size":{"x":0.06273,"y":0.121,"z":0.125},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"rightArm","zone":"rightArm","shape":"box","position":{"x":0.11064,"y":-0.6092,"z":0.07477},"size":{"x":0.03666,"y":0.04977,"z":0.06687},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"leftLeg","zone":"leftLeg","shape":"box","position":{"x":-0.05399,"y":-0.59524,"z":0.35248},"size":{"x":0.025,"y":0.055,"z":0.08402},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"rightLeg","zone":"rightLeg","shape":"box","position":{"x":0.05211,"y":-0.59088,"z":0.35201},"size":{"x":0.03115,"y":0.06,"z":0.08551},"rotation":{"x":0,"y":0,"z":0}}
+];
+export const grabbingHitZoneColliders: HitZoneCollider[] = [
+  {"id":"head","zone":"head","shape":"sphere","position":{"x":0.00028,"y":-0.17601,"z":0.27165},"size":{"x":0.16724,"y":0.16724,"z":0.16724},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"body","zone":"body","shape":"box","position":{"x":-0.00023,"y":-0.43567,"z":0.30023},"size":{"x":0.078,"y":0.14128,"z":0.055},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"leftArm","zone":"leftArm","shape":"box","position":{"x":-0.03466,"y":-0.29318,"z":0.39981},"size":{"x":0.03324,"y":0.04415,"z":0.07295},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"rightArm","zone":"rightArm","shape":"box","position":{"x":0.03987,"y":-0.2892,"z":0.4021},"size":{"x":0.02576,"y":0.04701,"z":0.0732},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"leftLeg","zone":"leftLeg","shape":"box","position":{"x":-0.06837,"y":-0.54259,"z":0.27716},"size":{"x":0.025,"y":0.09896,"z":0.05211},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"rightLeg","zone":"rightLeg","shape":"box","position":{"x":0.07601,"y":-0.54356,"z":0.27912},"size":{"x":0.025,"y":0.09799,"z":0.05031},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"handL","zone":"leftArm","shape":"box","position":{"x":-0.02004,"y":-0.23559,"z":0.47238},"size":{"x":0.01351,"y":0.04345,"z":0.03415},"rotation":{"x":0,"y":0,"z":0}},
+  {"id":"handR","zone":"rightArm","shape":"box","position":{"x":0.028,"y":-0.23242,"z":0.47332},"size":{"x":0.02142,"y":0.03978,"z":0.03258},"rotation":{"x":0,"y":0,"z":0}}
+];
+export function hitZoneCollidersForPhase(phase = 'BREACH'): readonly HitZoneCollider[] {
+  return phase === 'GRABBING' || phase === 'AIMING' ? grabbingHitZoneColliders
+    : phase === 'FLOATING' || phase === 'FROZEN' ? floatingHitZoneColliders : defaultHitZoneColliders;
+}
 
 export function cloneColliders(src: HitZoneCollider[]): HitZoneCollider[] {
   return src.map((collider) => ({
@@ -270,7 +247,7 @@ function multiplyQuaternions(a: QuaternionLike, b: QuaternionLike): QuaternionLi
   };
 }
 
-function rotateByQuaternion(q: QuaternionLike, point: Vec3): Vec3 {
+export function rotateByQuaternion(q: QuaternionLike, point: Vec3): Vec3 {
   // v' = v + 2w(u × v) + 2(u × (u × v)), where u = q.xyz.
   // The 2w factor is required — without it the rotation under-rotates and
   // shrinks the vector for any angle other than 0 or 180 degrees (where w = 0),

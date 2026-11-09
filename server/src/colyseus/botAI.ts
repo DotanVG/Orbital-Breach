@@ -1,3 +1,4 @@
+import type { CollisionBox } from '../../../shared/bodyCollider';
 import {
   BREACH_ROOM_D,
   BREACH_ROOM_H,
@@ -6,9 +7,8 @@ import {
 import type { ShotEventMessage } from "../../../shared/multiplayer";
 import { quaternionFromYawPitchRoll } from "../../../shared/hitZoneColliders";
 import {
-  bounceActorInArena,
   breachRoomCenter,
-  integrateZeroGActor,
+  stepActorWorld,
   isActorInEnemyBreachRoom,
   type ServerSimulatedOnlineActor,
 } from "./onlineActorSimulation";
@@ -152,6 +152,7 @@ export class BotController<TActor extends BotActor> {
     goalAxis: "x" | "z",
     goalSigns: { team0: 1 | -1; team1: 1 | -1 },
     hooks: BotCombatHooks<TActor>,
+    boxes: readonly CollisionBox[] = [],
   ): void {
     const allActors = Array.from(actors);
 
@@ -186,8 +187,7 @@ export class BotController<TActor extends BotActor> {
       }
 
       if (actor.phase === "FLOATING") {
-        integrateZeroGActor(actor, dt);
-        bounceActorInArena(actor, goalAxis);
+        stepActorWorld(actor, dt, goalAxis, boxes);
 
         const horizSpeed = Math.hypot(actor.velX, actor.velZ);
         if (horizSpeed > 0.5) {

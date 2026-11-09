@@ -1,15 +1,18 @@
+import { bounceBodyArena, advanceBodyWorld, type CollisionBox, type PortalFaces } from '../../../shared/bodyCollider';
+import { orientationFromSnapshot, quaternionFromYawPitchRoll } from '../../../shared/hitZoneColliders';
 import {
   ARENA_SIZE,
   BREACH_ROOM_D,
   BREACH_ROOM_H,
   BREACH_ROOM_W,
   MAX_LAUNCH_SPEED,
-  PLAYER_RADIUS,
 } from "../../../shared/constants";
 
 export const PLAYER_UPDATE_STALE_MS = 250;
 
 export interface ServerSimulatedOnlineActor {
+  yaw?: number;
+  orientX?: number; orientY?: number; orientZ?: number; orientW?: number;
   frozen: boolean;
   isBot: boolean;
   phase: string;
@@ -46,89 +49,20 @@ export function integrateZeroGActor(actor: ServerSimulatedOnlineActor, dt: numbe
   actor.posZ += actor.velZ * dt;
 }
 
-export function bounceActorInArena(
-  actor: ServerSimulatedOnlineActor,
-  goalAxis: "x" | "z",
-): void {
-  const half = ARENA_SIZE / 2 - PLAYER_RADIUS;
-  const perpAxis: "x" | "z" = goalAxis === "x" ? "z" : "x";
-
-  if (actor.posY < -half) {
-    actor.posY = -half;
-    actor.velY = Math.abs(actor.velY);
-  } else if (actor.posY > half) {
-    actor.posY = half;
-    actor.velY = -Math.abs(actor.velY);
-  }
-
-  if (perpAxis === "x") {
-    if (actor.posX < -half) {
-      actor.posX = -half;
-      actor.velX = Math.abs(actor.velX);
-    } else if (actor.posX > half) {
-      actor.posX = half;
-      actor.velX = -Math.abs(actor.velX);
-    }
-  } else {
-    if (actor.posZ < -half) {
-      actor.posZ = -half;
-      actor.velZ = Math.abs(actor.velZ);
-    } else if (actor.posZ > half) {
-      actor.posZ = half;
-      actor.velZ = -Math.abs(actor.velZ);
-    }
-  }
-
-  const perpPos = perpAxis === "x" ? actor.posX : actor.posZ;
-  const inPortal = Math.abs(actor.posY) < BREACH_ROOM_H / 2 - PLAYER_RADIUS
-    && Math.abs(perpPos) < BREACH_ROOM_W / 2 - PLAYER_RADIUS;
-  const maxDepth = ARENA_SIZE / 2 + BREACH_ROOM_D - PLAYER_RADIUS;
-
-  if (goalAxis === "x") {
-    if (actor.posX < -half) {
-      if (inPortal) {
-        if (actor.posX < -maxDepth) {
-          actor.posX = -maxDepth;
-          actor.velX = Math.abs(actor.velX);
-        }
-      } else {
-        actor.posX = -half;
-        actor.velX = Math.abs(actor.velX);
-      }
-    } else if (actor.posX > half) {
-      if (inPortal) {
-        if (actor.posX > maxDepth) {
-          actor.posX = maxDepth;
-          actor.velX = -Math.abs(actor.velX);
-        }
-      } else {
-        actor.posX = half;
-        actor.velX = -Math.abs(actor.velX);
-      }
-    }
-  } else {
-    if (actor.posZ < -half) {
-      if (inPortal) {
-        if (actor.posZ < -maxDepth) {
-          actor.posZ = -maxDepth;
-          actor.velZ = Math.abs(actor.velZ);
-        }
-      } else {
-        actor.posZ = -half;
-        actor.velZ = Math.abs(actor.velZ);
-      }
-    } else if (actor.posZ > half) {
-      if (inPortal) {
-        if (actor.posZ > maxDepth) {
-          actor.posZ = maxDepth;
-          actor.velZ = -Math.abs(actor.velZ);
-        }
-      } else {
-        actor.posZ = half;
-        actor.velZ = -Math.abs(actor.velZ);
-      }
-    }
-  }
+export function bounceActorInArena(actor: ServerSimulatedOnlineActor, goalAxis: 'x'|'z', faces: PortalFaces = { positive: true, negative: true }): void {
+  const state = { pos: { x: actor.posX, y: actor.posY, z: actor.posZ }, vel: { x: actor.velX, y: actor.velY, z: actor.velZ } };
+  const q = actor.phase === 'BREACH' ? quaternionFromYawPitchRoll(actor.yaw ?? 0) : orientationFromSnapshot({ ...actor, yaw: actor.yaw ?? 0 });
+  bounceBodyArena(state, q, actor.phase, goalAxis, goalAxis === 'x' ? 'z' : 'x', actor.frozen ? undefined : faces);
+  actor.posX=state.pos.x; actor.posY=state.pos.y; actor.posZ=state.pos.z;
+  actor.velX=state.vel.x; actor.velY=state.vel.y; actor.velZ=state.vel.z;
+}
+/** Substep authoritative bots/stale humans against the same inset boxes as prediction. */
+export function stepActorWorld(actor: ServerSimulatedOnlineActor, dt: number, goalAxis: 'x'|'z', boxes: readonly CollisionBox[] = [], faces?: PortalFaces): void {
+  const state={pos:{x:actor.posX,y:actor.posY,z:actor.posZ},vel:{x:actor.velX,y:actor.velY,z:actor.velZ}};
+  const q=actor.phase === 'BREACH' ? quaternionFromYawPitchRoll(actor.yaw ?? 0) : orientationFromSnapshot({...actor,yaw:actor.yaw ?? 0});
+  advanceBodyWorld(state,dt,q,actor.phase,boxes,actor.frozen?undefined:goalAxis,faces??{positive:true,negative:true});
+  actor.posX=state.pos.x; actor.posY=state.pos.y; actor.posZ=state.pos.z;
+  actor.velX=state.vel.x; actor.velY=state.vel.y; actor.velZ=state.vel.z;
 }
 
 export function breachRoomCenter(

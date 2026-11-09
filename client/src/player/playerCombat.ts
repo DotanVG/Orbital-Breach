@@ -1,4 +1,4 @@
-import { PLAYER_RADIUS } from '../../../shared/constants';
+import { LEGACY_HIT_RADIUS } from '../../../shared/constants';
 import type { QuaternionLike } from '../../../shared/hitZoneColliders';
 import {
   classifyHitZone as classifySharedHitZone,
@@ -24,7 +24,8 @@ export function classifyHitZone(
   playerPos: Vec3Like,
   playerFacing: Vec3Like | QuaternionLike,
   hitOffsetY = 0,
-  hitRadius = PLAYER_RADIUS,
+  hitRadius = LEGACY_HIT_RADIUS,
+  phase = 'BREACH',
 ): HitZone {
   return classifySharedHitZone(
     impactPoint,
@@ -32,5 +33,6 @@ export function classifyHitZone(
     playerFacing,
     hitOffsetY,
     hitRadius,
+    phase,
   );
 }

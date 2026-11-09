@@ -12,7 +12,7 @@ import {
 } from "../player/playerAnimationController";
 import { PlayerDamageGlow } from "../player/playerDamageGlow";
 import { applyBarHoldPose } from "../player/playerGrabPose";
-import { applyArmRecoil, RECOIL_DURATION } from "../player/playerAimPose";
+import { applyFloatArmTilt, applyArmRecoil, RECOIL_DURATION } from "../player/playerAimPose";
 import { applyVictoryDancePose, resetVictoryDancePose } from "../player/playerVictoryDance";
 import { ThirdPersonGun } from "../player/playerThirdPersonGun";
 import { PlayerNameTag } from "../render/playerNameTag";
@@ -27,6 +27,7 @@ export class SimulatedPlayerAvatar {
   private readonly nameTag: PlayerNameTag;
   private recoilTimer = 0;
   private ready = false;
+  private heldPoseLocked = false;
   private readonly root = new THREE.Group();
   private victoryDanceElapsed = 0;
 
@@ -87,10 +88,18 @@ export class SimulatedPlayerAvatar {
     if (!this.ready) return;
 
     const shouldCelebrate = celebrating && !damage.frozen;
+    const holding = !shouldCelebrate && (phase === 'GRABBING' || phase === 'AIMING');
+    if (holding && this.heldPoseLocked) {
+      this.recoilTimer=0;
+      this.applyPhaseVisuals(phase);
+      return;
+    }
+    this.heldPoseLocked=holding;
     const animation = shouldCelebrate
       ? ANIM_STANDING
       : selectAnimation(phase, moveSpeed);
-    this.animation.setTargetAnimation(animation);
+    if (phase === 'GRABBING' || phase === 'AIMING') this.animation.snapToAnimation(ANIM_STANDING);
+    else this.animation.setTargetAnimation(animation);
 
     // Hold the frozen pose: once the crossfade into ANIM_DEATH settles, tick
     // the mixer with dt=0 so the alien doesn't keep flailing through the
@@ -103,7 +112,11 @@ export class SimulatedPlayerAvatar {
     const animationDt = phase === "FROZEN" && this.frozenHoldTimer > ANIM_FADE_SECONDS
       ? 0
       : dt;
-    this.animation.tickMixers(animationDt);
+    this.animation.tickMixers(holding ? 0 : animationDt);
+    if (phase === 'FLOATING') {
+      this.animation.restoreFloatRightArmPose();
+      applyFloatArmTilt(this.animation.getRigs());
+    }
 
     if (!shouldCelebrate) {
       this.victoryDanceElapsed = 0;
@@ -124,7 +137,7 @@ export class SimulatedPlayerAvatar {
     }
 
     this.recoilTimer = Math.max(0, this.recoilTimer - dt);
-    if (this.recoilTimer > 0) {
+    if (this.recoilTimer > 0 && phase !== 'GRABBING' && phase !== 'AIMING') {
       applyArmRecoil(this.animation.getRigs(), this.recoilTimer / RECOIL_DURATION);
     }
 

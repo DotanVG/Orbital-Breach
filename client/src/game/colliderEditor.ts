@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { hitZoneCollidersForPhase } from '../../../shared/hitZoneColliders';
 import type { HitZone } from '../player/playerTypes';
 import {
   type ColliderShape,
@@ -75,7 +76,7 @@ function makeCapsuleMesh(col: HitZoneCollider): THREE.Mesh {
   return new THREE.Mesh(geo, mat);
 }
 
-function buildMesh(col: HitZoneCollider): THREE.Mesh {
+export function buildMesh(col: HitZoneCollider): THREE.Mesh {
   if (col.shape === 'sphere')  return makeSphereMesh(col);
   if (col.shape === 'capsule') return makeCapsuleMesh(col);
   return makeBoxMesh(col);
@@ -94,6 +95,8 @@ export class ColliderEditor {
   private visible       = false;
   private colliders     : HitZoneCollider[] = cloneColliders(defaultHitZoneColliders);
   private selectedIndex = 0;
+  private poseSource = hitZoneCollidersForPhase();
+  private readonly poseEdits = new Map<readonly HitZoneCollider[], HitZoneCollider[]>();
 
   private group  = new THREE.Group();
   private meshes : THREE.Mesh[] = [];
@@ -145,8 +148,17 @@ export class ColliderEditor {
       resize:   { x: number; y: number; z: number };
       rotation: { x: number; y: number; z: number };
     },
+    phase = 'BREACH',
   ): void {
     if (!this.visible) return;
+    const source = hitZoneCollidersForPhase(phase);
+    if (source !== this.poseSource) {
+      this.poseEdits.set(this.poseSource, this.colliders);
+      this.colliders = this.poseEdits.get(source) ?? cloneColliders([...source]);
+      this.poseSource = source;
+      this.selectedIndex = Math.min(this.selectedIndex, this.colliders.length-1);
+      this.rebuildAllMeshes();
+    }
     this.applyAxes(axes);
     this.group.position.copy(playerPos);
     this.group.quaternion.copy(orientation);

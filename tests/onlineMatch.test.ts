@@ -129,7 +129,7 @@ function createActor(
     orientY: 0,
     orientZ: 0,
     orientW: 1,
-    phase: "BREACH",
+    phase: "FLOATING",
     frozen: false,
     leftArm: false,
     rightArm: false,

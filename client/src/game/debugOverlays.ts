@@ -10,6 +10,8 @@ import { GunTuneOverlay } from "./gunTuneOverlay";
 
 interface DebugActorSnapshot {
   position: { x: number; y: number; z: number };
+  orientation?: THREE.Quaternion | import("../../../shared/hitZoneColliders").QuaternionLike;
+  phase?: string;
 }
 
 /**
@@ -42,8 +44,7 @@ export class DebugOverlays {
     }
     if (!this.collisionVis.isVisible()) return;
 
-    const positions = getActors().map((a) => new THREE.Vector3(a.position.x, a.position.y, a.position.z));
-    this.collisionVis.updateActors(positions);
+    this.collisionVis.updateActors(getActors());
   }
 
   public tickColliderEditor(input: InputManager, player: LocalPlayer): void {
@@ -53,7 +54,7 @@ export class DebugOverlays {
     }
     if (!this.colliderEditor.isVisible()) return;
     const axes = input.getColliderEditorAxes();
-    this.colliderEditor.tick(player.getPosition(), player.getVisualQuaternion(), axes);
+    this.colliderEditor.tick(player.getPosition(), player.getVisualQuaternion(), axes, player.phase);
   }
 
   public tickGunTuning(input: InputManager, player: LocalPlayer): void {

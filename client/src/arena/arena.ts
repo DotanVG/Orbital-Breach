@@ -8,6 +8,8 @@ import {
   PLAYER_DIAMOND_AABB_INSET,
 } from '../../../shared/constants';
 import { type PhysicsState } from '../physics';
+import { advanceBodyWorld } from '../../../shared/bodyCollider';
+import type { QuaternionLike } from '../../../shared/hitZoneColliders';
 import { GoalPlane, type GoalDef } from './goal';
 import { BarObject } from './bar';
 import { type GeneratedLayout } from './states';
@@ -227,8 +229,15 @@ export class Arena {
     return this.barObjects.map((bar) => bar.getGrabPoint());
   }
 
-  public bounceObstacles(state: PhysicsState): void {
-    bounceAgainstBoxes(state, this.playerCollisionBoxes);
+  public advancePlayer(state: PhysicsState, dt: number, orientation: QuaternionLike, phase: string): void {
+    const axis=this.getBreachOpenAxis(0);
+    const positiveTeam=this.getBreachOpenSign(0) === -1 ? 0 : 1;
+    const faces={positive:this.isGoalDoorOpen(positiveTeam),negative:this.isGoalDoorOpen(positiveTeam === 0 ? 1 : 0)};
+    advanceBodyWorld(state,dt,orientation,phase,this.playerCollisionBoxes,phase === 'FROZEN' ? undefined : axis,faces);
+  }
+
+  public bounceObstacles(state: PhysicsState, orientation?: QuaternionLike, phase = 'BREACH'): void {
+    bounceAgainstBoxes(state, this.playerCollisionBoxes, orientation, phase);
   }
 
   /** Full AABBs — used for camera collision. */

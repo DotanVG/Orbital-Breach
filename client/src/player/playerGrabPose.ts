@@ -1,111 +1,72 @@
-import * as THREE from 'three';
-import type { AnimatedRig, PoseBoneName } from './playerTypes';
+﻿import * as THREE from 'three';
+import type { AnimatedRig } from './playerTypes';
 import { getFloatLimbRotation } from './playerAimPose';
 
-/**
- * Bar-hold bone offsets. Applied on top of the base Alien_Standing pose so
- * the player visually grips the bar with the left hand while the right
- * arm keeps the pistol raised. Numbers were tuned by eye — do not touch
- * unless re-tuning the grab pose.
- */
-const BAR_HOLD_HIPS_OFFSET = new THREE.Euler(-0.42, -0.02, -0.08);
-const BAR_HOLD_ABDOMEN_OFFSET = new THREE.Euler(0.56, 0.0, -0.18);
-const BAR_HOLD_TORSO_OFFSET = new THREE.Euler(0.44, 0.06, -0.26);
-const BAR_HOLD_NECK_OFFSET = new THREE.Euler(-0.12, -0.04, 0.08);
-const BAR_HOLD_SHOULDER_OFFSET = new THREE.Euler(-0.42, 0.2, -0.95);
-const BAR_HOLD_UPPER_ARM_OFFSET = new THREE.Euler(1.25, 0.18, 0.82);
-const BAR_HOLD_LOWER_ARM_OFFSET = new THREE.Euler(1.05, -0.28, 0.18);
-const BAR_HOLD_PALM_OFFSET = new THREE.Euler(0.34, 0.34, -0.12);
-const BAR_HOLD_UPPER_LEG_LEFT_OFFSET = new THREE.Euler(-0.92, 0.02, -0.26);
-const BAR_HOLD_LOWER_LEG_LEFT_OFFSET = new THREE.Euler(0.98, 0.0, 0.08);
-const BAR_HOLD_FOOT_LEFT_OFFSET = new THREE.Euler(0.3, 0.0, -0.06);
-const BAR_HOLD_UPPER_LEG_RIGHT_OFFSET = new THREE.Euler(-0.74, -0.05, 0.22);
-const BAR_HOLD_LOWER_LEG_RIGHT_OFFSET = new THREE.Euler(0.82, 0.0, -0.04);
-const BAR_HOLD_FOOT_RIGHT_OFFSET = new THREE.Euler(0.22, 0.0, 0.04);
-
-const LEFT_HAND_GRIP_FINGERTIP_BLEND = 0.64;
-const LEFT_HAND_GRIP_THUMB_PULL = 0.16;
-const LEFT_HAND_GRIP_FINGER_ADVANCE = 0.01;
-
 export const DEFAULT_LEFT_HAND_GRIP_LOCAL = new THREE.Vector3(-0.27, -0.322, 0.287);
+/** Player-local midpoint of the settled hold; not a second mesh shift. */
+export const BAR_GRIP_LOCAL = new THREE.Vector3(0, -0.20, 0.50);
+const HAND_SPACING = 0.036;
 
-const BAR_HOLD_BONES: PoseBoneName[] = [
-  'Hips', 'Abdomen', 'Torso', 'Neck',
-  'ShoulderL', 'UpperArmL', 'LowerArmL', 'PalmL',
-  'UpperLegL', 'LowerLegL', 'FootL', 'UpperLegR', 'LowerLegR', 'FootR',
-];
-
+/** Canonical standing rig + two short CCD chains. Never accumulate last frame's pose. */
 export function applyBarHoldPose(rigs: AnimatedRig[]): void {
-  const leftArmHangingOffset = getFloatLimbRotation('LeftArmHanging');
   for (const rig of rigs) {
-    // Apply once from the canonical pose, never on last frame's offsets.
-    // Three.js does not rewrite bones whose animation track stayed constant.
-    for (const name of BAR_HOLD_BONES) {
-      const bone = rig.bones[name];
-      const base = rig.standingReferencePose[name];
-      if (bone && base) bone.quaternion.copy(base);
+    for (const [name, base] of Object.entries(rig.standingReferencePose)) {
+      const bone = rig.bones[name as keyof typeof rig.bones];
+      if (bone) bone.quaternion.copy(base);
     }
-    applyPoseOffset(rig.bones.Hips, BAR_HOLD_HIPS_OFFSET);
-    applyPoseOffset(rig.bones.Abdomen, BAR_HOLD_ABDOMEN_OFFSET);
-    applyPoseOffset(rig.bones.Torso, BAR_HOLD_TORSO_OFFSET);
-    applyPoseOffset(rig.bones.Neck, BAR_HOLD_NECK_OFFSET);
-    applyPoseOffset(rig.bones.ShoulderL, BAR_HOLD_SHOULDER_OFFSET);
-    applyPoseOffset(rig.bones.UpperArmL, BAR_HOLD_UPPER_ARM_OFFSET);
-    applyPoseOffset(rig.bones.UpperArmL, leftArmHangingOffset);
-    applyPoseOffset(rig.bones.LowerArmL, BAR_HOLD_LOWER_ARM_OFFSET);
-    applyPoseOffset(rig.bones.PalmL, BAR_HOLD_PALM_OFFSET);
-    applyPoseOffset(rig.bones.UpperLegL, BAR_HOLD_UPPER_LEG_LEFT_OFFSET);
-    applyPoseOffset(rig.bones.LowerLegL, BAR_HOLD_LOWER_LEG_LEFT_OFFSET);
-    applyPoseOffset(rig.bones.FootL, BAR_HOLD_FOOT_LEFT_OFFSET);
-    applyPoseOffset(rig.bones.UpperLegR, BAR_HOLD_UPPER_LEG_RIGHT_OFFSET);
-    applyPoseOffset(rig.bones.LowerLegR, BAR_HOLD_LOWER_LEG_RIGHT_OFFSET);
-    applyPoseOffset(rig.bones.FootR, BAR_HOLD_FOOT_RIGHT_OFFSET);
+    rig.bones.UpperArmL?.quaternion.multiply(new THREE.Quaternion().setFromEuler(getFloatLimbRotation('LeftArmHanging')));
+    for (const side of ['L', 'R'] as const) {
+      const upper = rig.bones[`UpperArm${side}`];
+      const lower = rig.bones[`LowerArm${side}`];
+      if (!upper || !lower || !rig.bones[`Shoulder${side}`] || !rig.root) continue;
+      const target = BAR_GRIP_LOCAL.clone();
+      target.x = (side === 'L' ? -1 : 1) * HAND_SPACING / 2;
+      if (rig.root.parent) rig.root.parent.localToWorld(target);
+      // Both grips stay < 2 cm from the shared tip for any world bar axis.
+      for (let step = 0; step < 32; step++) {
+        for (const bone of [lower, upper, rig.bones[`Shoulder${side}`]!]) {
+          rig.root.updateWorldMatrix(true, true);
+          const grip = measureHandGripWorld(rig.root, side);
+          if (!grip) break;
+          const joint = bone.getWorldPosition(new THREE.Vector3());
+          const from = grip.sub(joint).normalize();
+          const to = target.clone().sub(joint).normalize();
+          const delta = new THREE.Quaternion().setFromUnitVectors(from, to);
+          const world = bone.getWorldQuaternion(new THREE.Quaternion());
+          const parent = bone.parent!.getWorldQuaternion(new THREE.Quaternion());
+          bone.quaternion.copy(parent.invert().multiply(delta).multiply(world));
+        }
+      }
+    }
   }
 }
 
-function applyPoseOffset(bone: THREE.Bone | undefined, offset: THREE.Euler): void {
-  if (!bone) return;
-  const offsetQuat = new THREE.Quaternion().setFromEuler(offset);
-  bone.quaternion.multiply(offsetQuat);
+function measureHandGripWorld(root: THREE.Group, side: 'L' | 'R'): THREE.Vector3 | null {
+  const palm = root.getObjectByName(`Palm${side}`);
+  const finger = root.getObjectByName(`MiddleFinger4${side}`);
+  if (!palm || !finger) return null;
+  const p = palm.getWorldPosition(new THREE.Vector3());
+  const f = finger.getWorldPosition(new THREE.Vector3());
+  const grip = p.clone().lerp(f, 0.64);
+  const thumb = root.getObjectByName(`Thumb3${side}`);
+  if (thumb) grip.lerp(thumb.getWorldPosition(new THREE.Vector3()), 0.16);
+  return grip.addScaledVector(f.sub(p).normalize(), 0.01);
 }
 
-/**
- * Locate the world-space position where the bar should sit inside the left
- * hand, then convert it back to the rig's local space so the player mesh
- * can be offset such that the grip aligns with the bar.
- *
- * The grip point is a blend across (palm, middle-fingertip, thumb-tip) —
- * tuned so the bar reads as being inside the closed palm rather than the
- * wrist or the fingertips.
- */
-export function measureLeftHandGripOffset(root: THREE.Group | null): THREE.Vector3 | null {
+export function measureHandGripOffset(root: THREE.Group | null, side: 'L' | 'R'): THREE.Vector3 | null {
   if (!root) return null;
+  root.updateWorldMatrix(true, true);
+  const grip = measureHandGripWorld(root, side);
+  if (!grip) return null;
+  return root.worldToLocal(grip).applyMatrix4(root.matrix);
+}
 
-  root.updateMatrixWorld(true);
+export function measureLeftHandGripOffset(root: THREE.Group | null): THREE.Vector3 | null {
+  return measureHandGripOffset(root, 'L');
+}
 
-  const palm = root.getObjectByName('PalmL');
-  const fingerTip = root.getObjectByName('MiddleFinger4L');
-  if (!palm || !fingerTip) return null;
-  const thumbTip = root.getObjectByName('Thumb3L');
-
-  const palmWorld = new THREE.Vector3();
-  const fingerTipWorld = new THREE.Vector3();
-  palm.getWorldPosition(palmWorld);
-  fingerTip.getWorldPosition(fingerTipWorld);
-
-  const gripWorld = new THREE.Vector3().lerpVectors(
-    palmWorld,
-    fingerTipWorld,
-    LEFT_HAND_GRIP_FINGERTIP_BLEND,
-  );
-  if (thumbTip) {
-    const thumbTipWorld = new THREE.Vector3();
-    thumbTip.getWorldPosition(thumbTipWorld);
-    gripWorld.lerp(thumbTipWorld, LEFT_HAND_GRIP_THUMB_PULL);
-  }
-
-  const fingerDir = fingerTipWorld.clone().sub(palmWorld).normalize();
-  gripWorld.addScaledVector(fingerDir, LEFT_HAND_GRIP_FINGER_ADVANCE);
-  const gripInRoot = root.worldToLocal(gripWorld.clone());
-  return gripInRoot.applyMatrix4(root.matrix);
+export function measureBarGripOffset(root: THREE.Group | null): THREE.Vector3 | null {
+  const left = measureHandGripOffset(root, 'L');
+  const right = measureHandGripOffset(root, 'R');
+  return left && right ? left.add(right).multiplyScalar(0.5) : left;
 }

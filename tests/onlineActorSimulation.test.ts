@@ -44,8 +44,8 @@ describe("onlineActorSimulation", () => {
     integrateZeroGActor(actor, 0.5);
     bounceActorInArena(actor, "x");
 
-    expect(actor.posX).toBeCloseTo(25.2, 5);
-    expect(actor.velX).toBeLessThan(0);
+    expect(actor.posX).toBeCloseTo(25.68, 5);
+    expect(actor.velX).toBe(0);
   });
 
   it("detects when a drifting actor reaches the enemy breach room", () => {

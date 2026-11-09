@@ -5,7 +5,7 @@ import {
   LAUNCH_AIM_SENSITIVITY,
   MAX_LAUNCH_SPEED,
   ONE_LEG_HIT_LAUNCH_FACTOR,
-  PLAYER_RADIUS,
+  BAR_LAUNCH_CLEARANCE,
 } from '../../../shared/constants';
 import { clamp } from '../util/math';
 import type { OnlineActorSnapshot } from '../../../shared/multiplayer';
@@ -14,10 +14,8 @@ import { CameraController } from '../camera';
 import { InputManager } from '../input';
 import {
   type PhysicsState,
-  integrateZeroG,
   integrateBreachRoom,
   clampBreachRoom,
-  bounceArena,
 } from '../physics';
 import { Arena } from '../arena/arena';
 import type { HitZone } from './playerTypes';
@@ -38,6 +36,7 @@ import {
   DEFAULT_LEFT_HAND_GRIP_LOCAL,
   applyBarHoldPose,
   measureLeftHandGripOffset,
+  measureBarGripOffset,
 } from './playerGrabPose';
 import { PlayerDamageGlow } from './playerDamageGlow';
 import { applyVictoryDancePose, resetVictoryDancePose } from './playerVictoryDance';
@@ -188,6 +187,7 @@ export class LocalPlayer {
     arena: Arena,
     dt: number,
   ): void {
+    if (this.phase !== 'GRABBING' && this.phase !== 'AIMING') this.computeVisualQuaternion(cam, dt);
     const celebrating = this.victoryDanceActive && !this.damage.frozen;
     switch (this.phase) {
       case 'FROZEN':
@@ -203,7 +203,7 @@ export class LocalPlayer {
         this.updateGrabbing(input);
         break;
       case 'AIMING':
-        this.updateAiming(input, cam);
+        this.updateAiming(input, cam, arena);
         break;
       case 'RESPAWNING':
         this.updateRespawning(arena, dt);
@@ -214,6 +214,14 @@ export class LocalPlayer {
     const visualQuat = this.computeVisualQuaternion(cam, dt);
     if (!celebrating && (this.phase === 'GRABBING' || this.phase === 'AIMING')) {
       this.lockGripToBar(visualQuat);
+      const x=this.phys.pos.x, y=this.phys.pos.y, z=this.phys.pos.z;
+      arena.advancePlayer(this.phys,0,visualQuat,this.phase);
+      // An obstructed hold cannot satisfy both the bar constraint and solid world.
+      // Release it rather than leave the body inside a wall or move hands off-bar.
+      if (Math.hypot(this.phys.pos.x-x,this.phys.pos.y-y,this.phys.pos.z-z)>1e-6) {
+        this.grabbedBarPos=null; this.grabHandGripLocal=null; this.grabPoseLocked=false;
+        this.phase='FLOATING';
+      }
     }
     this.mesh.position.copy(this.phys.pos);
     this.mesh.quaternion.copy(visualQuat);
@@ -225,9 +233,7 @@ export class LocalPlayer {
     // Frozen bodies bounce off every arena wall — fully-frozen players cannot
     // breach. Limb-damaged (but not frozen) allies unfreeze their limbs by
     // drifting home via the FLOATING branch of updateFloating.
-    integrateZeroG(this.phys, dt);
-    bounceArena(this.phys);
-    arena.bounceObstacles(this.phys);
+    arena.advancePlayer(this.phys,dt,this.visualQuaternion,this.phase);
   }
 
   private updateBreach(
@@ -256,7 +262,7 @@ export class LocalPlayer {
       dt,
     );
 
-    clampBreachRoom(this.phys, center, openAxis, openSign, arena.isGoalDoorOpen(this.currentBreachTeam));
+    clampBreachRoom(this.phys, center, openAxis, openSign, arena.isGoalDoorOpen(this.currentBreachTeam), this.visualQuaternion, this.phase);
     this.onGround = this.phys.pos.y <= floorY + 0.02;
     if (this.onGround) {
       this.breachEntryCarry.set(0, 0, 0);
@@ -303,18 +309,7 @@ export class LocalPlayer {
     dt: number,
   ): void {
     this.breachJumpAnimationActive = false;
-    const goalAxis = arena.getBreachOpenAxis(this.team);
-    const perpAxis: 'x' | 'z' = goalAxis === 'z' ? 'x' : 'z';
-    const team0FaceSign = (-arena.getBreachOpenSign(0)) as 1 | -1;
-    const team1FaceSign = (-arena.getBreachOpenSign(1)) as 1 | -1;
-    const portalFacesOpen = {
-      positive: (team0FaceSign === 1 && arena.isGoalDoorOpen(0)) || (team1FaceSign === 1 && arena.isGoalDoorOpen(1)),
-      negative: (team0FaceSign === -1 && arena.isGoalDoorOpen(0)) || (team1FaceSign === -1 && arena.isGoalDoorOpen(1)),
-    };
-
-    integrateZeroG(this.phys, dt);
-    bounceArena(this.phys, goalAxis, perpAxis, portalFacesOpen);
-    arena.bounceObstacles(this.phys);
+    arena.advancePlayer(this.phys,dt,this.visualQuaternion,this.phase);
 
     const breachTeam = this.getEnteredBreachTeam(arena);
     if (breachTeam !== null) {
@@ -348,7 +343,7 @@ export class LocalPlayer {
     }
   }
 
-  private updateAiming(input: InputManager, cam: CameraController): void {
+  private updateAiming(input: InputManager, cam: CameraController, arena: Arena): void {
     this.breachJumpAnimationActive = false;
     if (!this.grabbedBarPos) {
       this.phase = 'FLOATING';
@@ -362,7 +357,7 @@ export class LocalPlayer {
     this.launchPower = clamp(this.launchPower, 0, this.maxLaunchPower());
 
     if (!input.isAiming()) {
-      this.launch(cam);
+      this.launch(cam, arena);
     }
   }
 
@@ -391,10 +386,13 @@ export class LocalPlayer {
     this.lockGripToBar(visualQuat);
   }
 
-  private launch(cam: CameraController): void {
+  private launch(cam: CameraController, arena: Arena): void {
     const fwd = cam.getForward(this.movementForward);
-    this.phys.pos.addScaledVector(fwd, PLAYER_RADIUS + 0.8);
-    this.phys.vel.copy(fwd).multiplyScalar(this.launchPower);
+    this.phase = 'FLOATING';
+    const orientation = this.computeVisualQuaternion(cam, 0);
+    this.phys.vel.copy(fwd).multiplyScalar(BAR_LAUNCH_CLEARANCE);
+    arena.advancePlayer(this.phys,1,orientation,'FLOATING');
+    this.phys.vel.multiplyScalar(this.launchPower/BAR_LAUNCH_CLEARANCE);
     this.launchPower = 0;
     this.grabbedBarPos = null;
     this.grabHandGripLocal = null;
@@ -529,7 +527,7 @@ export class LocalPlayer {
     this.animation.snapToAnimation(ANIM_STANDING);
     applyBarHoldPose(this.animation.getRigs());
     const bodyRoot = this.animation.getRigs()[0]?.root ?? null;
-    this.grabHandGripLocal = measureLeftHandGripOffset(bodyRoot);
+    this.grabHandGripLocal = measureBarGripOffset(bodyRoot);
     this.grabPoseLocked = true;
   }
 
@@ -645,8 +643,9 @@ export class LocalPlayer {
     playerFacing: THREE.Vector3 | THREE.Quaternion,
     hitOffsetY = 0,
     hitRadius?: number,
+    phase = 'BREACH',
   ): HitZone {
-    return classifyHitZone(impactPoint, playerPos, playerFacing, hitOffsetY, hitRadius);
+    return classifyHitZone(impactPoint, playerPos, playerFacing, hitOffsetY, hitRadius, phase);
   }
 
   public resetForNewRound(arena: Arena, spawnOverride?: { x: number; y: number; z: number }): void {
@@ -731,6 +730,8 @@ export class LocalPlayer {
   }
 
   /** Live visual orientation of the alien mesh. Callers must not mutate it. */
+  public syncWorldPosition(): void { this.mesh.position.copy(this.phys.pos); }
+
   public getVisualQuaternion(): THREE.Quaternion {
     return this.mesh.quaternion;
   }

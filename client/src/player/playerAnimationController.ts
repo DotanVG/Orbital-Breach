@@ -141,10 +141,11 @@ export class PlayerAnimationController {
    * locking the grab pose).
    */
   public snapToAnimation(name: string): void {
-    if (this.currentAnimation !== name) {
-      this.setTargetAnimation(name);
-    }
+    this.currentAnimation = name;
     for (const rig of this.rigs) {
+      for (const action of rig.actions.values()) action.stop();
+      const action = rig.actions.get(name) ?? rig.actions.get(ANIM_IDLE_HOLD);
+      action?.reset().setEffectiveWeight(1).play();
       rig.mixer.setTime(0);
     }
   }

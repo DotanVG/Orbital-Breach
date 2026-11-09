@@ -29,27 +29,13 @@ function toPlainQuat(q: THREE.Quaternion): QuaternionLike {
 
 // Representative local-space points, one per zone, taken from the
 // defaultHitZoneColliders layout (after the asset rotation, model left is -X).
-const localZonePoints: Array<{ zone: string; point: Vec3 }> = [
-  { zone: "head", point: { x: 0, y: -0.16, z: 0 } },
-  { zone: "body", point: { x: 0, y: -0.45, z: 0 } },
-  { zone: "leftArm", point: { x: -0.17, y: -0.4, z: 0.0175 } },
-  { zone: "rightArm", point: { x: 0.17, y: -0.4, z: 0.0175 } },
-  { zone: "leftLeg", point: { x: -0.0975, y: -0.66, z: -0.01 } },
-  { zone: "rightLeg", point: { x: 0.0975, y: -0.66, z: -0.01 } },
-];
+const localZonePoints = defaultHitZoneColliders.map(c=>({zone:c.zone,point:c.position}));
 
-describe("defaultHitZoneColliders", () => {
-  it("mirrors every left/right hitbox and keeps centerline zones on x = 0", () => {
-    for (const collider of defaultHitZoneColliders) {
-      const partner = defaultHitZoneColliders.find((other) => other.zone === MIRROR_ZONE[collider.zone]);
-      expect(partner, collider.zone).toBeDefined();
-      expect(partner!.position.x).toBeCloseTo(-collider.position.x, 6);
-      expect(partner!.position.y).toBeCloseTo(collider.position.y, 6);
-      expect(partner!.position.z).toBeCloseTo(collider.position.z, 6);
-      expect(partner!.size).toEqual(collider.size);
-      expect(partner!.shape).toBe(collider.shape);
-      expect(partner!.rotation).toEqual(collider.rotation);
-    }
+describe('defaultHitZoneColliders',()=>{
+  it('keeps model left negative and model right positive without mirroring the pistol pose',()=>{
+    expect(defaultHitZoneColliders.find(c=>c.zone==='leftArm')!.position.x).toBeLessThan(0);
+    expect(defaultHitZoneColliders.find(c=>c.zone==='rightArm')!.position.x).toBeGreaterThan(0);
+    expect(defaultHitZoneColliders.find(c=>c.zone==='body')!.position.z).toBeGreaterThan(0.25);
   });
 });
 
@@ -59,11 +45,12 @@ describe("cloneColliders", () => {
     expect(clones).toEqual(defaultHitZoneColliders);
     expect(clones[0]).not.toBe(defaultHitZoneColliders[0]);
 
+    const original=structuredClone(defaultHitZoneColliders[0]);
     clones[0].position.x = 99;
     clones[0].size.y = 99;
     clones[0].rotation.z = 99;
-    expect(defaultHitZoneColliders[0].position.x).toBe(0);
-    expect(defaultHitZoneColliders[0].size.y).toBe(0.15);
+    expect(defaultHitZoneColliders[0].position.x).toBe(original.position.x);
+    expect(defaultHitZoneColliders[0].size.y).toBe(original.size.y);
     expect(defaultHitZoneColliders[0].rotation.z).toBe(0);
   });
 });

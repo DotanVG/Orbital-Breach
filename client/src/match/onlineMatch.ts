@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { HITBOX_OFFSET_Y, HITBOX_RADIUS } from "../../../shared/constants";
+import { projectileBodyTarget } from "../../../shared/projectileCollider";
 import type { OnlineActorSnapshot } from "../../../shared/multiplayer";
-import { orientationFromSnapshot } from "../../../shared/hitZoneColliders";
+import { quaternionFromYawPitchRoll, orientationFromSnapshot } from "../../../shared/hitZoneColliders";
 import { classifyHitZone, type HitZone } from "../../../shared/player-logic";
 import type { PlayerPhase } from "../../../shared/schema";
 import {
@@ -159,20 +159,21 @@ export class OnlineMatch {
         z: track.renderOrientation.z,
         w: track.renderOrientation.w,
       },
+      undefined, undefined, track.snapshot.phase,
     );
+  }
+
+  public getDebugActors() {
+    return [...this.tracks.values()].map(t=>({position:t.renderPos,orientation:t.renderOrientation,phase:t.snapshot.phase}));
   }
 
   public getProjectileTargets(): OnlineProjectileTarget[] {
     return Array.from(this.tracks.values()).map((track) => ({
       id: track.snapshot.id,
-      pos: new THREE.Vector3(
-        track.renderPos.x,
-        track.renderPos.y + HITBOX_OFFSET_Y,
-        track.renderPos.z,
-      ),
+      pos: new THREE.Vector3().copy(projectileBodyTarget(track.renderPos,track.renderOrientation,track.snapshot.phase).center),
       team: track.snapshot.team,
       active: !track.snapshot.frozen && track.snapshot.phase !== "RESPAWNING" && track.snapshot.phase !== "BREACH",
-      radius: HITBOX_RADIUS,
+      radius: projectileBodyTarget(track.renderPos,track.renderOrientation,track.snapshot.phase).radius,
     }));
   }
 
@@ -227,9 +228,9 @@ function cloneSnapshot(actor: OnlineActorSnapshot): OnlineActorSnapshot {
 }
 
 export function snapshotOrientation(
-  actor: Pick<OnlineActorSnapshot, "yaw"> & Partial<Pick<OnlineActorSnapshot, "orientX" | "orientY" | "orientZ" | "orientW">>,
+  actor: Pick<OnlineActorSnapshot, "yaw"> & Partial<Pick<OnlineActorSnapshot, "orientX" | "orientY" | "orientZ" | "orientW" | "phase">>,
   out: THREE.Quaternion = new THREE.Quaternion(),
 ): THREE.Quaternion {
-  const q = orientationFromSnapshot(actor);
+  const q = actor.phase === "BREACH" ? quaternionFromYawPitchRoll(actor.yaw) : orientationFromSnapshot(actor);
   return out.set(q.x, q.y, q.z, q.w);
 }

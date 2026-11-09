@@ -1,4 +1,4 @@
-import { HITBOX_OFFSET_Y, HITBOX_RADIUS } from "../../../shared/constants";
+import { projectileBodyTarget } from "../../../shared/projectileCollider";
 import { FEATURE_FLAGS } from "../featureFlags";
 import type { ProjectileHitEvent } from "../match/localMatch";
 import {
@@ -26,13 +26,13 @@ export function tickOnlineGame(ctx: GameTickContext, dt: number): void {
   tickOnlineWeaponFire(ctx);
 
   const localActorId = ctx.getOnlineLocalActorId();
-  const localCentre = ctx.player.getPosition().clone();
-  localCentre.y += HITBOX_OFFSET_Y;
+  const body = projectileBodyTarget(ctx.player.getPosition(), ctx.player.getVisualQuaternion(), ctx.player.phase);
+  const localCentre = ctx.player.getPosition().clone().copy(body.center);
   const localTarget = {
     active: ctx.player.phase !== "RESPAWNING" && ctx.player.phase !== "BREACH" && !ctx.player.damage.frozen,
     id: localActorId,
     pos: localCentre,
-    radius: HITBOX_RADIUS,
+    radius: body.radius,
     team: ctx.player.team,
   };
   const allTargets = [localTarget, ...ctx.onlineMatch.getProjectileTargets()];
@@ -47,7 +47,7 @@ export function tickOnlineGame(ctx: GameTickContext, dt: number): void {
   );
 
   checkOnlineBreachScore(ctx);
-  ctx.debugOverlays.tickCollisionVis(ctx.input, () => ctx.match.getMatchStatsActors(ctx.player));
+  ctx.debugOverlays.tickCollisionVis(ctx.input, () => [{position:ctx.player.getPosition(),orientation:ctx.player.getVisualQuaternion(),phase:ctx.player.phase},...ctx.onlineMatch.getDebugActors()]);
 
   ctx.playerUpdateTimer -= dt;
   if (ctx.playerUpdateTimer <= 0) {

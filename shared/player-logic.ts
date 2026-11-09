@@ -1,3 +1,4 @@
+import { STANDING_BODY, breachFloorAnchorY } from './bodyCollider';
 import type { DamageState, PlayerPhase } from "./schema";
 import {
   BOTH_LEGS_HIT_LAUNCH_FACTOR,
@@ -6,10 +7,11 @@ import {
   BREACH_ROOM_W,
   MAX_LAUNCH_SPEED,
   ONE_LEG_HIT_LAUNCH_FACTOR,
-  PLAYER_RADIUS,
+  LEGACY_HIT_RADIUS,
 } from "./constants";
 import {
   classifyHitZoneByColliders,
+  hitZoneCollidersForPhase,
   isQuaternionLike,
   type QuaternionLike,
 } from "./hitZoneColliders";
@@ -53,6 +55,7 @@ export interface CollisionBody {
   anchored?: boolean;
   pos: Vec3;
   radius: number;
+  offset?: Vec3;
   // Optional velocity. When supplied, resolveActorCollisions cancels the
   // component of relative velocity pointing INTO the collision (preserving
   // the tangential / momentum-carrying component) so colliders slide past
@@ -75,10 +78,11 @@ export function classifyHitZone(
   playerPos: Vec3,
   playerFacing: Vec3 | QuaternionLike,
   hitOffsetY = 0,
-  hitRadius = PLAYER_RADIUS,
+  hitRadius = LEGACY_HIT_RADIUS,
+  phase = 'BREACH',
 ): HitZone {
   if (isQuaternionLike(playerFacing)) {
-    return classifyHitZoneByColliders(impactPoint, playerPos, playerFacing);
+    return classifyHitZoneByColliders(impactPoint, playerPos, playerFacing, hitZoneCollidersForPhase(phase));
   }
 
   return classifyHitZoneFromFacing(
@@ -95,7 +99,7 @@ function classifyHitZoneFromFacing(
   playerPos: Vec3,
   playerFacing: Vec3,
   hitOffsetY = 0,
-  hitRadius = PLAYER_RADIUS,
+  hitRadius = LEGACY_HIT_RADIUS,
 ): HitZone {
   const local = v3.sub(impactPoint, playerPos);
   // Shift so the hit sphere's centre is y=0, not the physics anchor,
@@ -180,8 +184,8 @@ export function spawnPosition(
   const center = arena.getBreachRoomCenter(team);
   const openAxis = arena.getBreachOpenAxis(team);
   const openSign = arena.getBreachOpenSign(team);
-  const floorY = center.y - BREACH_ROOM_H / 2 + PLAYER_RADIUS + 0.1;
-  const backOffset = BREACH_ROOM_D / 2 - PLAYER_RADIUS - 0.5;
+  const floorY = breachFloorAnchorY(center.y);
+  const backOffset = BREACH_ROOM_D / 2 - STANDING_BODY.half.z - Math.abs(STANDING_BODY.center.z) - 0.5;
   const pos = { x: center.x, y: floorY, z: center.z };
   pos[openAxis] -= openSign * backOffset;
   return pos;
@@ -202,13 +206,13 @@ export function generateSpawnPositions(
   const rng = createSeededRandom(seed || team + 1);
 
   const widthAxis: "x" | "z" = openAxis === "x" ? "z" : "x";
-  const usableWidth = BREACH_ROOM_W - PLAYER_RADIUS * 2 - 0.04;
-  const usableDepth = BREACH_ROOM_D - PLAYER_RADIUS * 2 - 0.08;
+  const usableWidth = BREACH_ROOM_W - (STANDING_BODY.half.z + Math.abs(STANDING_BODY.center.z)) * 2 - 0.04;
+  const usableDepth = BREACH_ROOM_D - (STANDING_BODY.half.z + Math.abs(STANDING_BODY.center.z)) * 2 - 0.08;
   const widthHalf = usableWidth / 2;
   const depthHalf = usableDepth / 2;
-  const minSpacing = PLAYER_RADIUS * 2 + 0.04;
-  const floorY = center.y - BREACH_ROOM_H / 2 + PLAYER_RADIUS + 0.08;
-  const ceilingY = center.y + BREACH_ROOM_H / 2 - PLAYER_RADIUS - 0.08;
+  const minSpacing = 1.64; // Keep the established spawn crowd spacing, independently of body margins.
+  const floorY = breachFloorAnchorY(center.y);
+  const ceilingY = center.y + BREACH_ROOM_H / 2 - STANDING_BODY.center.y - STANDING_BODY.half.y;
   const slots: Vec3[] = [];
 
   let attempts = 0;
@@ -277,7 +281,7 @@ export function resolveActorCollisions(
         const other = actors[j];
         if (other.active === false) continue;
 
-        const delta = v3.sub(other.pos, actor.pos);
+        const delta = v3.sub(v3.add(other.pos,other.offset??v3.zero()),v3.add(actor.pos,actor.offset??v3.zero()));
         const minDistance = actor.radius + other.radius;
         const distSq = v3.lengthSq(delta);
         if (distSq >= minDistance * minDistance) continue;
