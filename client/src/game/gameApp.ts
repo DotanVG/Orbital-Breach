@@ -520,7 +520,7 @@ export class App {
         this.resyncLocalOnlineActorFromLatestSnapshot();
       }
     });
-    // iOS back/forward cache restore â€” context is suspended on bfcache restore
+    // iOS back/forward cache restore — context is suspended on bfcache restore
     window.addEventListener('pageshow', (e) => {
       if (e.persisted) this.sound.tryResumeMusic();
     });
@@ -653,7 +653,7 @@ export class App {
       }
     }
     // Pointer lock is acquired on the first canvas click (mousedown handler),
-    // not here â€” requestPointerLock() requires a direct user gesture.
+    // not here — requestPointerLock() requires a direct user gesture.
   }
 
   private endOnlineGame(): void {
@@ -795,7 +795,7 @@ export class App {
       playerTeam,
       secondaryActionLabel: "Main Menu",
       primaryActionLabel: "Play Again",
-      matchLabel: `${sizeLabelMap[teamSize] ?? "Solo"} Â· ${finalScore.team0} â€“ ${finalScore.team1}`,
+      matchLabel: `${sizeLabelMap[teamSize] ?? "Solo"} · ${finalScore.team0} – ${finalScore.team1}`,
     };
 
     this.showMatchDebrief(debriefData);
@@ -975,7 +975,7 @@ export class App {
     const inApiFullscreen = isFullscreen();
 
     if (!enabled && !inApiFullscreen && isApparentFullscreen()) {
-      // F11 fullscreen can't be exited via the Fullscreen API â€” revert the checkbox and hint the user.
+      // F11 fullscreen can't be exited via the Fullscreen API — revert the checkbox and hint the user.
       this.sessionMenu.syncFullscreenFromBrowser(false);
       showF11ExitHint();
       return;
@@ -1301,7 +1301,7 @@ export class App {
       playerTeam,
       secondaryActionLabel: "Main Menu",
       primaryActionLabel: "Return To Lobby",
-      matchLabel: `${sizeLabelMap[teamSize] ?? `${teamSize}v${teamSize}`} Online Â· ${finalScore.team0} â€“ ${finalScore.team1}`,
+      matchLabel: `${sizeLabelMap[teamSize] ?? `${teamSize}v${teamSize}`} Online · ${finalScore.team0} – ${finalScore.team1}`,
     };
   }
 
