@@ -23,11 +23,23 @@ describe('body versus obstacle boxes',()=>{
     const b=bodyWorldBounds(s.pos);expect(Math.abs(b.center.x)-b.half.x).toBeCloseTo(1,8);
   });
   it('thin walls stay solid at maximum speed and large frames; authoritative and predicted stepping agree',()=>{
-    const thin=new Box3(new Vector3(-0.005,-4,-4),new Vector3(0.005,4,4));
-    const s={pos:new Vector3(-2,0,0),vel:new Vector3(20,0,0)}, actor={phase:'FLOATING',yaw:0,frozen:false,isBot:false,team:0 as const,posX:-2,posY:0,posZ:0,velX:20,velY:0,velZ:0};
-    const count=bodySubsteps(s.vel,0.25,'FLOATING');
-    for(let i=0;i<count;i++){s.pos.addScaledVector(s.vel,0.25/count);bounceAgainstBoxes(s,[thin],new Quaternion(),'FLOATING');}
-    stepActorWorld(actor,0.25,'z',[thin]);
-    expect(s.pos.x).toBeLessThan(-0.28);expect(s.vel.x).toBe(-10);expect(actor.posX).toBeCloseTo(s.pos.x,8);expect(actor.velX).toBe(-10);
+    for(const phase of ['FLOATING','FROZEN']) for(const axis of ['x','y','z'] as const) for(const sign of [-1,1]) {
+      for(const q of [new Quaternion(),new Quaternion().setFromAxisAngle(new Vector3(1,2,3).normalize(),0.7)]) {
+        const thin=new Box3(new Vector3(-4,-4,-4),new Vector3(4,4,4));
+        thin.min[axis]=-0.005; thin.max[axis]=0.005;
+        const s={pos:new Vector3(),vel:new Vector3()};s.pos[axis]=sign*2;s.vel[axis]=-sign*20;
+        const actor={phase,yaw:0,frozen:phase==='FROZEN',isBot:false,team:0 as const,posX:s.pos.x,posY:s.pos.y,posZ:s.pos.z,velX:s.vel.x,velY:s.vel.y,velZ:s.vel.z,orientX:q.x,orientY:q.y,orientZ:q.z,orientW:q.w};
+        const count=bodySubsteps(s.vel,0.25,phase);
+        for(let i=0;i<count;i++) {
+          s.pos.addScaledVector(s.vel,0.25/count);bounceAgainstBoxes(s,[thin],q,phase);
+          const b=bodyWorldBounds(s.pos,q,phase);
+          expect(sign*b.center[axis]-b.half[axis]).toBeGreaterThanOrEqual(0.005-1e-8);
+        }
+        stepActorWorld(actor,0.25,'z',[thin]);
+        expect(s.vel[axis]).toBe(sign*10);
+        expect([actor.posX,actor.posY,actor.posZ]).toEqual(s.pos.toArray());
+        expect([actor.velX,actor.velY,actor.velZ]).toEqual(s.vel.toArray());
+      }
+    }
   });
 });

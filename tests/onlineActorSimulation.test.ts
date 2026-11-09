@@ -44,7 +44,8 @@ describe("onlineActorSimulation", () => {
     integrateZeroGActor(actor, 0.5);
     bounceActorInArena(actor, "x");
 
-    expect(actor.posX).toBeCloseTo(25.68, 5);
+    // Back wall is x=26; the fitted swim body's +X support is 0.187 m.
+    expect(actor.posX).toBeCloseTo(25.813, 5);
     expect(actor.velX).toBe(0);
   });
 

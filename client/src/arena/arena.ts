@@ -229,6 +229,11 @@ export class Arena {
     return this.barObjects.map((bar) => bar.getGrabPoint());
   }
 
+  public setBarGrabTipsVisible(visible: boolean): void {
+    if (!import.meta.env.DEV) return;
+    for (const bar of this.barObjects) bar.setGrabTipVisible(visible);
+  }
+
   public advancePlayer(state: PhysicsState, dt: number, orientation: QuaternionLike, phase: string): void {
     const axis=this.getBreachOpenAxis(0);
     const positiveTeam=this.getBreachOpenSign(0) === -1 ? 0 : 1;

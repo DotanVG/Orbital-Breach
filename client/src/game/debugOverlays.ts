@@ -24,6 +24,8 @@ export class DebugOverlays {
   private readonly collisionVis: CollisionVisualizer;
   private readonly floatArmTuneOverlay = new FloatArmTuneOverlay();
   private readonly gunTuneOverlay = new GunTuneOverlay();
+  private arena: Arena | null = null;
+  private barGrabTipsVisible = true;
 
   public constructor(scene: THREE.Scene) {
     this.collisionVis = new CollisionVisualizer(scene);
@@ -36,9 +38,23 @@ export class DebugOverlays {
 
   public onLayoutLoaded(arena: Arena): void {
     this.collisionVis.onLayoutLoaded(arena);
+    if (import.meta.env.DEV) {
+      this.arena = arena;
+      arena.setBarGrabTipsVisible(this.barGrabTipsVisible);
+    }
+  }
+
+  /** QA hook; production calls are inert. Collision and grip points stay fixed. */
+  public setBarGrabTipsVisible(visible: boolean): void {
+    if (!import.meta.env.DEV) return;
+    this.barGrabTipsVisible = visible;
+    this.arena?.setBarGrabTipsVisible(visible);
   }
 
   public tickCollisionVis(input: InputManager, getActors: () => DebugActorSnapshot[]): void {
+    if (import.meta.env.DEV && input.consumeBarGrabTipsToggle()) {
+      this.setBarGrabTipsVisible(!this.barGrabTipsVisible);
+    }
     if (import.meta.env.DEV && input.consumeCollisionVisToggle()) {
       this.collisionVis.toggle();
     }

@@ -6,10 +6,15 @@ export interface BodyCollider { center: Vec3; half: Vec3 }
 // CPU-skinned Alien_IdleHold envelope with helmet clearance, metres in player-local space.
 // Includes the pistol-holding arms, never the T-pose arm span.
 export const STANDING_BODY: BodyCollider = { center: { x: 0, y: -0.3455, z: 0.26 }, half: { x: 0.15, y: 0.2965, z: 0.17 } };
-export const FLOATING_BODY: BodyCollider = { center: { x: 0, y: -0.535, z: 0.21 }, half: { x: 0.32, y: 0.235, z: 0.37 } };
-export const HANGING_BODY: BodyCollider = { center: { x: 0, y: -0.3455, z: 0.33 }, half: { x: 0.12, y: 0.2965, z: 0.23 } };
-// Freeze crossfades can start upright or swimming: enclose both body poses.
-export const FROZEN_BODY: BodyCollider = { center: {x:0,y:-0.4,z:0.2}, half: {x:0.32,y:0.4,z:0.38} };
+// CPU-skinned swim supports: fit the head/torso/legs first, then retain only
+// enough asymmetric arm clearance to limit swinging fingertips to a 3 cm graze.
+// A symmetric motion envelope leaves the pistol side ~15 cm from a wall.
+export const FLOATING_BODY: BodyCollider = { center: { x: -0.0515, y: -0.56525, z: 0.14 }, half: { x: 0.2385, y: 0.17575, z: 0.30 } };
+// Settled two-palm pose: retain the hand support, trim the empty space behind it.
+export const HANGING_BODY: BodyCollider = { center: { x: 0, y: -0.3455, z: 0.3675 }, half: { x: 0.12, y: 0.2965, z: 0.1925 } };
+// Freeze crossfades can start upright, hanging or anywhere in the swim cycle.
+// Their union cannot fit each individual pose tightly; preserve non-penetration.
+export const FROZEN_BODY: BodyCollider = { center: { x: 0.0035, y: -0.414, z: 0.2015 }, half: { x: 0.3335, y: 0.359, z: 0.3605 } };
 export function bodyColliderForPhase(phase = 'BREACH'): BodyCollider {
   if (phase === 'FROZEN') return FROZEN_BODY;
   return phase === 'GRABBING' || phase === 'AIMING' ? HANGING_BODY

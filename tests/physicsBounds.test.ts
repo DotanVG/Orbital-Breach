@@ -44,13 +44,13 @@ describe('body world bounds',()=>{
   });
   it('server and client arena contacts match over random full orientations, phases, axes and door states',()=>{
     const rng=seededRandom(215);
-    for(let i=0;i<100;i++) for(const phase of ['FLOATING','GRABBING','BREACH']) for(const axis of ['x','z'] as const){
+    for(let i=0;i<100;i++) for(const phase of ['FLOATING','FROZEN','GRABBING','BREACH']) for(const axis of ['x','z'] as const){
       const q=phase==='BREACH'?new Quaternion().setFromAxisAngle(new Vector3(0,1,0),rng()*6):randomOrientation(rng);
-      const s=state([(rng()-.5)*54,(rng()-.5)*46,(rng()-.5)*54],[2,-3,4]), actor={phase,yaw:0,frozen:false,isBot:false,team:0 as const,posX:s.pos.x,posY:s.pos.y,posZ:s.pos.z,velX:2,velY:-3,velZ:4,orientX:q.x,orientY:q.y,orientZ:q.z,orientW:q.w};
+      const s=state([(rng()-.5)*54,(rng()-.5)*46,(rng()-.5)*54],[2,-3,4]), actor={phase,yaw:0,frozen:phase==='FROZEN',isBot:false,team:0 as const,posX:s.pos.x,posY:s.pos.y,posZ:s.pos.z,velX:2,velY:-3,velZ:4,orientX:q.x,orientY:q.y,orientZ:q.z,orientW:q.w};
       // BREACH uses yaw on both sides, discarding any pitch/roll in stale snapshots.
       if(phase==='BREACH') actor.yaw=2*Math.atan2(q.y,q.w);
       const faces={positive:i%2===0,negative:i%3===0};
-      bounceArena(s,axis,axis==='x'?'z':'x',faces,q,phase);bounceActorInArena(actor,axis,faces);
+      bounceArena(s,axis,axis==='x'?'z':'x',actor.frozen?undefined:faces,q,phase);bounceActorInArena(actor,axis,faces);
       expect(new Vector3(actor.posX,actor.posY,actor.posZ).distanceTo(s.pos)).toBeLessThan(1e-10);expect([actor.velX,actor.velY,actor.velZ]).toEqual(s.vel.toArray());
     }
   });

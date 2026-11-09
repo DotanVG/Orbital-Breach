@@ -24,6 +24,7 @@ export class InputManager {
   private helpPressed = false;
   private collisionVisTogglePressed = false;
   private colliderEditorTogglePressed = false;
+  private barGrabTipsTogglePressed = false;
   public onTabHoldChange: ((held: boolean) => void) | null = null;
   private removeGlobalListeners: (() => void) | null = null;
 
@@ -57,6 +58,7 @@ export class InputManager {
       if (e.code === 'KeyH'        && !e.repeat) this.helpPressed = true;
       if (e.code === 'BracketLeft' && !e.repeat) this.collisionVisTogglePressed = true;
       if (e.code === 'BracketRight'&& !e.repeat) this.colliderEditorTogglePressed = true;
+      if (import.meta.env.DEV && e.code === 'Backslash' && !e.repeat) this.barGrabTipsTogglePressed = true;
       // Only intercept navigation/delete keys when focus is NOT in a text field,
       // so the Call Sign input and other fields retain normal keyboard behaviour.
       const tag = (document.activeElement as HTMLElement | null)?.tagName ?? '';
@@ -337,6 +339,13 @@ export class InputManager {
     return v;
   }
 
+  /** DEV bar-grip close-up toggle — Backslash (\\). */
+  public consumeBarGrabTipsToggle(): boolean {
+    const v = this.barGrabTipsTogglePressed;
+    this.barGrabTipsTogglePressed = false;
+    return v;
+  }
+
   /**
    * Axes for the collider editor (same keys as gun tuner).
    * No-Shift: move position. Shift: resize.
@@ -457,6 +466,7 @@ export class InputManager {
     this.menuTogglePressed = false;
     this.collisionVisTogglePressed = false;
     this.colliderEditorTogglePressed = false;
+    this.barGrabTipsTogglePressed = false;
     // mobileControlsActive is intentionally preserved across blur/visibility changes
     if (tabWasHeld) this.onTabHoldChange?.(false);
   }

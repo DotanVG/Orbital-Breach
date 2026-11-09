@@ -44,6 +44,14 @@ export class BarObject {
     return target.copy(this.worldPos).addScaledVector(this.direction, tipOffset);
   }
 
+  /** DEV close-ups: retract the exposed 12 cm of this single-cylinder bar. */
+  public setGrabTipVisible(visible: boolean): void {
+    if (!import.meta.env.DEV) return;
+    const hiddenLength = visible ? 0 : 0.12;
+    this.mesh.scale.y = (BAR_LENGTH - hiddenLength) / BAR_LENGTH;
+    this.mesh.position.copy(this.worldPos).addScaledVector(this.direction, -hiddenLength / 2);
+  }
+
   /** Call once per frame to animate the pulsing emissive glow. */
   public update(dt: number): void {
     this.pulseTime += dt;

@@ -7,7 +7,7 @@ import { applyFloatArmTilt } from '../../client/src/player/playerAimPose';
 import { applyBarHoldPose } from '../../client/src/player/playerGrabPose';
 
 /** Real glTF channels + CPU skinning. No textures, browser, renderer or collider input. */
-export async function sampleAlienPose(phase = 'BREACH', time = 0) {
+export async function sampleAlienPose(phase = 'BREACH', time = 0, frozenFrom = 'BREACH', originTime = 0) {
   const bytes = readFileSync(new URL('../../client/public/models/Alien.glb', import.meta.url));
   const jsonLength = bytes.readUInt32LE(12);
   const gltf = JSON.parse(bytes.subarray(20, 20 + jsonLength).toString());
@@ -29,8 +29,19 @@ export async function sampleAlienPose(phase = 'BREACH', time = 0) {
     animation.resetBreathing();
     applyBarHoldPose([rig]);
   } else if (phase === 'FROZEN') {
+    if (frozenFrom === 'FLOATING') {
+      animation.setTargetAnimation(ANIM_FLOAT);
+      animation.tickMixers(1 + originTime);
+      animation.restoreFloatRightArmPose();
+      applyFloatArmTilt([rig]);
+    } else if (frozenFrom === 'GRABBING') {
+      animation.snapToAnimation(ANIM_STANDING);
+      animation.tickMixers(1);
+      animation.resetBreathing();
+      applyBarHoldPose([rig]);
+    }
     animation.setTargetAnimation(ANIM_DEATH);
-    animation.tickMixers(0.16 + time);
+    animation.tickMixers(time);
   } else if (phase === 'FLOATING') {
     animation.setTargetAnimation(ANIM_FLOAT);
     animation.tickMixers(1 + time);
@@ -44,17 +55,25 @@ export async function sampleAlienPose(phase = 'BREACH', time = 0) {
   root.traverse(node => { if (node.type === 'Bone') bones.set(node.name, node.getWorldPosition(new Vector3())); });
   const vertices: Vector3[] = [];
   const headVertices: Vector3[] = [];
+  const coreVertices: Vector3[] = [];
   root.traverse(node => {
     if (!(node instanceof SkinnedMesh)) return;
     node.skeleton.update();
+    const coreBones=node.skeleton.bones.map(b=>/^(Head|Neck|Torso|Abdomen|Hips|UpperLeg[LR]|LowerLeg[LR]|Foot[LR])$/.test(b.name));
+    const headBones=node.skeleton.bones.map(b=>b.name === 'Head');
     for (let i = 0; i < node.geometry.attributes.position.count; i++) {
       const vertex = node.getVertexPosition(i, new Vector3()).applyMatrix4(node.matrixWorld);
       vertices.push(vertex);
       const indices = node.geometry.attributes.skinIndex, weights = node.geometry.attributes.skinWeight;
-      let headWeight=0;
-      for(let k=0;k<4;k++) if(node.skeleton.bones[indices.getComponent(i,k)]?.name === 'Head') headWeight+=weights.getComponent(i,k);
+      let headWeight=0, coreWeight=0;
+      for(let k=0;k<4;k++) {
+        const index=indices.getComponent(i,k);
+        if(headBones[index]) headWeight+=weights.getComponent(i,k);
+        if(coreBones[index]) coreWeight+=weights.getComponent(i,k);
+      }
       if(headWeight>0.5) headVertices.push(vertex);
+      if(coreWeight>0.5) coreVertices.push(vertex);
     }
   });
-  return { root, rig, bones, vertices, headVertices, bounds: new Box3().setFromPoints(vertices), animation };
+  return { root, rig, bones, vertices, headVertices, coreVertices, bounds: new Box3().setFromPoints(vertices), animation };
 }
