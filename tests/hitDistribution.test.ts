@@ -62,7 +62,7 @@ describe('current mesh damage geometry',()=>{
       if(hit) expect(result?.t).toBeCloseTo(hit.t,6);
     }
   });
-  it('never skins an early-out miss, reuses frame patches and invalidates on pose/frame changes',async()=>{
+  it('never skins an early-out miss, reuses unchanged poses across target lists/frames and invalidates on pose changes',async()=>{
     const pose=await sampleAlienPose('FLOATING',.08,'FLOATING',.4,true,true);
     const root=new Group();root.add(pose.root,pose.helmetRoot);
     const meshes: SkinnedMesh[]=[];root.traverse(n=>{if(n instanceof SkinnedMesh) meshes.push(n)});
@@ -77,11 +77,35 @@ describe('current mesh damage geometry',()=>{
     for(const s of raw) for(let i=0;i<s.positions.length;i+=3) nativePoints.add(key(new Vector3().fromArray(s.positions,i)));
     for(const s of query(a,b)) for(const i of s.indices) expect(nativePoints.has(key(new Vector3().fromArray(s.positions,i*3)))).toBe(true);
     expect(segmentHitSurface(a,b,query(a,b))).toEqual(first);expect(count()).toBe(cold);
-    const next=lazyHitSurfaces(root);next(a,b);expect(next.skinnedVertexCount).toBeGreaterThan(0);
+    const next=lazyHitSurfaces(root);expect(next).toBe(query);next(a,b);expect(count()).toBe(cold);
     query.beginFrame!();query(a,b);const frameCount=count();query(a,b);expect(count()).toBe(frameCount);query.endFrame!();
-    query.beginFrame!();query(a,b);expect(count()).toBeGreaterThan(frameCount);query.endFrame!();
+    query.beginFrame!();query(a,b);expect(count()).toBe(frameCount);query.endFrame!();
     const before=count();meshes[0].skeleton.bones[0].position.x+=.01;
     const changed=query(a,b);expect(count()).toBeGreaterThan(before);
     expect(segmentHitSurface(a,b,changed)).toEqual(segmentHitSurface(a,b,sampleHitSurfaces(root)));
+  });
+  it('refreshes a persistent query after ancestor matrix changes and overlapping-root queries',async()=>{
+    const pose=await sampleAlienPose('FLOATING',.08,'FLOATING',.4,true,true);
+    const root=new Group(),parent=new Group();root.add(pose.root,pose.helmetRoot);parent.add(root);
+    const query=lazyHitSurfaces(root),target=pose.headVertices[0];
+    const a=target.clone().addScalar(-.1),b=target.clone().addScalar(.1);
+    query.beginFrame!();query(a,b);query.endFrame!();
+    // Another root can own the same meshes (e.g. the full debug sampler).
+    lazyHitSurfaces(pose.root)(a,b);
+    const before=query.skinnedVertexCount!;
+    query.beginFrame!();
+    expect(segmentHitSurface(a,b,query(a,b))).toEqual(segmentHitSurface(a,b,sampleHitSurfaces(root)));
+    expect(query.skinnedVertexCount).toBeGreaterThan(before);query.endFrame!();
+    parent.matrixAutoUpdate=false;
+    for(const x of [2,-3]) {
+      parent.matrix.makeTranslation(x,0,0);
+      const from=a.clone().add(new Vector3(x,0,0)),to=b.clone().add(new Vector3(x,0,0));
+      const count=query.skinnedVertexCount!;
+      query.beginFrame!();
+      const hit=segmentHitSurface(from,to,query(from,to));
+      expect(hit).not.toBeNull();
+      expect(hit).toEqual(segmentHitSurface(from,to,sampleHitSurfaces(root)));
+      expect(query.skinnedVertexCount).toBeGreaterThan(count);query.endFrame!();
+    }
   });
 });

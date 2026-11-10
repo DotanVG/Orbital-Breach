@@ -251,7 +251,7 @@ rebuild after a major refactor.
 
 Shipped and implemented:
 
-- Projectile damage uses exact body/helmet triangle first contact. Conservative bone-derived actor/patch AABBs reject distant segments before skinning; reached patches reuse skinned vertices within a frame and invalidate on pose changes. The online server validates reported zones and plausibility without loading or skinning meshes.
+- Projectile damage uses exact body/helmet triangle first contact. Conservative bone-derived actor/patch AABBs reject distant segments before skinning; each actor reuses its query, patch bounds and skinned vertices across frames with an unchanged pose, invalidating on pose changes. The online server validates reported zones and plausibility without loading or skinning meshes.
 
 - Browser-playable zero-G FPS with solo bot matches and Colyseus-backed online multiplayer.
 - Quick match, room browser, private/public room creation, invite URLs, native share, and QR joins.
