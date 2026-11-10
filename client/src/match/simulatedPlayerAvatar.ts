@@ -148,6 +148,8 @@ export class SimulatedPlayerAvatar {
     this.recoilTimer = RECOIL_DURATION;
   }
 
+  public getMesh(): THREE.Group { return this.root; }
+
   public dispose(scene: THREE.Scene): void {
     this.disposed = true;
     this.damageGlow.dispose();

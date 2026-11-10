@@ -251,6 +251,8 @@ rebuild after a major refactor.
 
 Shipped and implemented:
 
+- Projectile damage uses exact body/helmet triangle first contact. Conservative bone-derived actor/patch AABBs reject distant segments before skinning; reached patches reuse skinned vertices within a frame and invalidate on pose changes. The online server validates reported zones and plausibility without loading or skinning meshes.
+
 - Browser-playable zero-G FPS with solo bot matches and Colyseus-backed online multiplayer.
 - Quick match, room browser, private/public room creation, invite URLs, native share, and QR joins.
 - Transport failures before a match trigger up to eight reconnect attempts with jittered exponential backoff (30 second cap). Mid-match drops get one attempt with a five-second deadline. Connection lost offers Retry and Back to menu; server/join rejections fail fast, successful retries clear invite URLs, and the status chip leaves space for phone HUD/menu controls. Rejoins target the same room with no seat reservation.
@@ -270,10 +272,11 @@ Shipped and implemented:
 - AI bot fill, ready checks, stale-player seat cleanup, and authoritative round/match scoring.
 - Multiplayer server payload validation, WebSocket origin checks, a 200-frame/second client cap, and loopback adversarial tests for malformed traffic and disconnect cleanup.
 - GitHub Actions typechecks the client and server and runs the Vitest suite on push and pull request. Lobby messages and `/matchmake` are rate-limited; the enforced content security policy frames the game for this origin and itch embedders.
-- World collision uses shared, rotated body boxes fitted to the alien instead of a 0.8 m anchor sphere. Client prediction, server bots and stale actors share wall/portal/obstacle contacts and bounded-displacement substeps, including launch clearance. Spawn feet rest on the breach floor.
+- Damage tests use first contact with the current CPU-skinned body and helmet triangles, classified by dominant bone and stable triangle seams. No enclosing sphere or nearest-part fallback can turn empty space into a hit. Existing freeze/limb effects remain; measured exposure shares prioritize mesh accuracy over balance targets.
+- World collision uses a shared six-part head/torso/limb compound fitted to CPU-skinned swim, hold and freeze poses. Oriented part tests leave empty envelope corners clear; wall/portal supports come from the compound. A swept compound AABB permits one step in clear space and skips complete fine intervals before possible contact; potential contacts retain smallest-part spacing, with bounds and SAT supports reused during translation. Per-part maximum-speed tests cover zero-thickness walls (arena clamp and SAT) and the thinnest real inset obstacle (2.8 m). The DEV collision overlay shows the physical parts separately from damage zones. Client prediction, server bots and stale actors share wall/portal/obstacle contacts and bounded-displacement substeps, including launch clearance. Spawn feet rest on the breach floor.
 - The swimming box uses asymmetric sampled supports to close the pistol-side wall gap, with at most 3 cm of swinging limb graze. CPU-skinned face-contact tests cover the full swim cycle and freeze transitions, exact obstacle separation, and thin-wall parity at maximum speed. The frozen box conservatively encloses upright, swimming and hanging crossfades.
-- Hit zones are fitted from CPU-sampled Alien.glb animation channels for idle hold, swimming and a deterministic left-hand bar pose. Projectile broadphase and actor separation follow the rotated body centre. F1 model laterality and L1 yaw fallback remain guarded.
-- DEV `[` shows the green body box, coloured pose zones and a faint yellow 3 m grab reach; `]` edits the selected phase's table; `\` hides exposed bar tips for palm inspection. The 377-orientation guard also checks independent GLB joint/mesh projections and grip alignment.
+- Damage surfaces follow live animation, recoil, helmet geometry and frozen transitions. Shared segment/triangle math is engine independent; online damage still uses the existing client-reported zone contract, with server validation and consequences unchanged. Actor separation follows the rotated body centre. F1 model laterality and L1 yaw fallback remain guarded.
+- DEV `[` shows the green compound world boxes, coloured current damage triangles and a faint yellow 3 m grab reach; `]` edits the legacy diagnostic pose table (not runtime damage geometry); `\` hides exposed bar tips for palm inspection. The 377-orientation guard also checks independent GLB joint/mesh projections and grip alignment.
 
 
 Pending or transitional:

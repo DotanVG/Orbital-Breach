@@ -5,7 +5,6 @@ import { Box3, Group, Line3, Quaternion, SkinnedMesh, Vector3 } from 'three';
 import { BAR_LENGTH, BAR_RADIUS } from '../shared/constants';
 import { bodyColliderForPhase } from '../shared/bodyCollider';
 import { hitZoneCollidersForPhase } from '../shared/hitZoneColliders';
-import { projectileRadiusForPhase } from '../shared/projectileCollider';
 import { applyBarHoldPose, BAR_GRIP_LOCAL, barHoldQuaternion } from '../client/src/player/playerGrabPose';
 import { sampleAlienPose } from './helpers/alienPose';
 
@@ -93,7 +92,7 @@ describe('real GLB hang clearance (A1–A3)',()=>{
           else for(const a of ['x','y','z'] as const) expect(Math.abs(bone[a]-c.position[a]),`${c.id} ${name} ${a}`).toBeLessThanOrEqual(c.size[a]);
         }
       }
-      measurements.push({phase,body:b,meshFaceGapsM:gaps,zones:hitZoneCollidersForPhase(phase),broadphaseRadiusM:projectileRadiusForPhase(phase)});
+      measurements.push({phase,body:b,meshFaceGapsM:gaps,zones:hitZoneCollidersForPhase(phase),damageBroadphase: null});
     }
     if(process.env.BAR_HANG_QA_DIR) {
       mkdirSync(process.env.BAR_HANG_QA_DIR,{recursive:true});

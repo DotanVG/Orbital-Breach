@@ -24,11 +24,11 @@ async function loadRig(asset: string) {
   return { root, animations };
 }
 
-export async function sampleAlienPose(phase = 'BREACH', time = 0, frozenFrom = 'BREACH', originTime = 0) {
+export async function sampleAlienPose(phase = 'BREACH', time = 0, frozenFrom = 'BREACH', originTime = 0, collectZones = false, includeHelmet = false) {
   const {root, animations} = await loadRig('Alien');
   // Only hold samples need the second asset; retaining it in hundreds of swim
   // envelope samples would duplicate the entire body mesh in memory.
-  const helmet = phase === 'GRABBING' || phase === 'AIMING' || (phase === 'FROZEN' && frozenFrom === 'GRABBING') ? await loadRig('Alien_Helmet') : null;
+  const helmet = includeHelmet || phase === 'GRABBING' || phase === 'AIMING' || (phase === 'FROZEN' && frozenFrom === 'GRABBING') ? await loadRig('Alien_Helmet') : null;
   const helmetRoot = helmet?.root ?? new Group();
   const animation = new PlayerAnimationController();
   const rig = animation.registerRig(root, animations);
@@ -43,7 +43,7 @@ export async function sampleAlienPose(phase = 'BREACH', time = 0, frozenFrom = '
       animation.setTargetAnimation(ANIM_FLOAT);
       animation.tickMixers(1 + originTime);
       animation.restoreFloatRightArmPose();
-      applyFloatArmTilt([rig]);
+      applyFloatArmTilt(animation.getRigs());
     } else if (frozenFrom === 'GRABBING') {
       animation.snapToAnimation(ANIM_STANDING);
       animation.tickMixers(0);
@@ -56,7 +56,7 @@ export async function sampleAlienPose(phase = 'BREACH', time = 0, frozenFrom = '
     animation.setTargetAnimation(ANIM_FLOAT);
     animation.tickMixers(1 + time);
     animation.restoreFloatRightArmPose();
-    applyFloatArmTilt([rig]);
+    applyFloatArmTilt(animation.getRigs());
   } else {
     animation.tickMixers(time);
   }
@@ -66,6 +66,7 @@ export async function sampleAlienPose(phase = 'BREACH', time = 0, frozenFrom = '
   const vertices: Vector3[] = [];
   const headVertices: Vector3[] = [];
   const coreVertices: Vector3[] = [];
+  const zoneVertices: Record<string, Vector3[]> = { head: [], body: [], leftArm: [], rightArm: [], leftLeg: [], rightLeg: [] };
   const handVertices = { L: [] as Vector3[], R: [] as Vector3[] };
   root.traverse(node => {
     if (!(node instanceof SkinnedMesh)) return;
@@ -84,6 +85,13 @@ export async function sampleAlienPose(phase = 'BREACH', time = 0, frozenFrom = '
         if(coreBones[index]) coreWeight+=weights.getComponent(i,k);
       }
       const dominantIndex=indices.getComponent(i,dominant);
+      if (collectZones) {
+      const name = node.skeleton.bones[dominantIndex].name;
+      const zone = name === 'Head' ? 'head' : /Arm|Shoulder|Palm|Finger|Thumb/.test(name)
+        ? (name.endsWith('L') ? 'leftArm' : 'rightArm') : /Leg|Foot|Toe/.test(name)
+          ? (name.endsWith('L') ? 'leftLeg' : 'rightLeg') : 'body';
+      zoneVertices[zone].push(vertex);
+      }
       if(node.skeleton.bones[dominantIndex].name === 'Head') headVertices.push(vertex);
       if(coreWeight>0.5) coreVertices.push(vertex);
       const side = handSides[dominantIndex];
@@ -105,5 +113,5 @@ export async function sampleAlienPose(phase = 'BREACH', time = 0, frozenFrom = '
       if (node.skeleton.bones[indices.getComponent(i, dominant)].name === 'Head') helmetHeadVertices.push(vertex);
     }
   });
-  return { root, rig, helmetRoot, helmetRig, bones, vertices, headVertices, coreVertices, handVertices, helmetVertices, helmetHeadVertices, bounds: new Box3().setFromPoints(phase === 'GRABBING' || phase === 'AIMING' ? [...vertices,...helmetVertices] : vertices), animation };
+  return { root, rig, helmetRoot, helmetRig, bones, vertices, zoneVertices, headVertices, coreVertices, handVertices, helmetVertices, helmetHeadVertices, bounds: new Box3().setFromPoints(phase === 'GRABBING' || phase === 'AIMING' ? [...vertices,...helmetVertices] : vertices), animation };
 }
