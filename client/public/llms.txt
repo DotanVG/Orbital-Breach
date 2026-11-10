@@ -6,6 +6,13 @@
 
 - [Play Orbital Breach](https://orbital-breach.vercel.app/): browser game with solo bot matches and online multiplayer.
 
+## About
+
+- [Dotan Veretzky](https://dotanv.vercel.app/): software engineer, game developer, web and AI developer. Author of Orbital Breach.
+- [LinkedIn](https://www.linkedin.com/in/dotan-v/)
+- [GitHub](https://github.com/DotanVG)
+- [Personal site](https://dotanv.vercel.app/)
+
 ## Source
 
 - [GitHub repository](https://github.com/DotanVG/Orbital-Breach): client, server, and shared gameplay code.
