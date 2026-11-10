@@ -142,11 +142,15 @@ export type HitSurfaceQuery = ((start?: Vec3, end?: Vec3) => readonly HitSurface
   readonly skinnedVertexCount?: number;
 };
 
-/** One query owns one frame. Callers create it after animation/pose updates.
- * Bone/world matrix changes also invalidate an existing query within that frame.
+const queries = new WeakMap<Object3D, HitSurfaceQuery>();
+
+/** Reuse the root's query across target lists and unchanged poses.
+ * Bone/world matrix changes invalidate cached bounds and skinned vertices.
  * Whole-actor and patch envelopes reject BEFORE any vertex skinning. */
 export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
-  let owner={};
+  const existing=queries.get(root);
+  if(existing) return existing;
+  const owner={};
   let stablePose=false,prepared=false;
   let skinnedVertexCount=0;
   let signature: number[] = [], meshes: SkinnedMesh[] = [], bounds: Box3[] = [];
@@ -235,8 +239,9 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
   query.mayIntersect=(start,end)=>{prepare();return bounds.some(b=>segmentIntersectsBounds(start,end,b.min,b.max));};
   // Avatar animation/pose updates precede this synchronous projectile pass.
   // No traversal/signature scan per distant projectile; unlock even on callback errors.
-  query.beginFrame=()=>{owner={};stablePose=true;prepared=false;};
+  query.beginFrame=()=>{stablePose=true;prepared=false;};
   query.endFrame=()=>{stablePose=false;prepared=false;};
   Object.defineProperty(query,'skinnedVertexCount',{get:()=>skinnedVertexCount});
+  queries.set(root,query);
   return query;
 }
