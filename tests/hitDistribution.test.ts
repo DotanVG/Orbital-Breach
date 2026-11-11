@@ -4,8 +4,36 @@ import { sampleAlienPose } from './helpers/alienPose';
 import { sampleHitSurfaces, lazyHitSurfaces } from '../client/src/player/hitSurface';
 import { segmentHitSurface } from '../shared/projectileCollider';
 import { seededRandom } from './helpers/hitboxOrientation';
+import { applyFloatArmTilt } from '../client/src/player/playerAimPose';
 
 describe('current mesh damage geometry',()=>{
+  it('preserves native first-contact zones through live FLOATING mixer ticks and moving parents',async()=>{
+    const pose=await sampleAlienPose('FLOATING',.08,'FLOATING',.4,true,true);
+    const root=new Group();root.add(pose.root,pose.helmetRoot);
+    const query=lazyHitSurfaces(root),random=seededRandom(0xd0129);
+    const counts: Record<string,number>={};
+    for(let frame=0;frame<12;frame++) {
+      pose.animation.tickMixers(1/60);
+      pose.animation.restoreFloatRightArmPose();
+      applyFloatArmTilt(pose.animation.getRigs());
+      root.position.set(frame*.11,Math.sin(frame)*.2,-frame*.07);
+      root.rotation.set(frame*.03,frame*.13,-frame*.02);
+      const native=sampleHitSurfaces(root);
+      const center=pose.bounds.getCenter(new Vector3()).applyMatrix4(root.matrixWorld);
+      query.beginFrame!();
+      for(let i=0;i<256;i++) {
+        const aim=center.clone().add(new Vector3(random()-.5,random()-.5,random()-.5));
+        const dir=new Vector3(random()-.5,random()-.5,random()-.5).normalize();
+        const from=aim.clone().addScaledVector(dir,-2),to=aim.clone().addScaledVector(dir,2);
+        const expected=segmentHitSurface(from,to,native);
+        const actual=segmentHitSurface(from,to,query.mayIntersect!(from,to)?query(from,to):[]);
+        expect(actual).toEqual(expected); // includes first-contact t, point AND zone
+        counts[expected?.zone ?? 'miss']=(counts[expected?.zone ?? 'miss'] ?? 0)+1;
+      }
+      query.endFrame!();
+    }
+    for(const zone of ['head','body','leftArm','rightArm','leftLeg','rightLeg','miss']) expect(counts[zone]).toBeGreaterThan(0);
+  });
   for(const phase of ['BREACH','FLOATING','GRABBING','FROZEN']) it(`${phase}: every head/helmet vertex belongs to the exact head surface`,async()=>{
     const pose=await sampleAlienPose(phase,.08,'FLOATING',.4,true,true);
     const root=new Group();root.add(pose.root,pose.helmetRoot);

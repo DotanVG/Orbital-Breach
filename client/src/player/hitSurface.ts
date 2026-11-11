@@ -2,6 +2,7 @@ import { Box3, Matrix4, SkinnedMesh, Vector3, type Object3D } from 'three';
 import { hitZoneForBone, indexHitSurface, segmentIntersectsBounds, type HitSurface } from '../../../shared/projectileCollider';
 import type { HitZone } from '../../../shared/player-logic';
 import type { Vec3 } from '../../../shared/vec3';
+import { boneTriangleLists } from './boneTriangleLists';
 
 const topology = new WeakMap<SkinnedMesh, Pick<HitSurface, 'indices' | 'zones'>>();
 
@@ -52,16 +53,19 @@ export function sampleHitSurfaces(root: Object3D): HitSurface[] {
 }
 
 interface BoneEnvelope { boxes: Map<number, Box3>; minSum: number; maxSum: number; safe: boolean }
-interface MeshEnvelope { whole: BoneEnvelope; chunks: BoneEnvelope[] }
+interface TrianglePatch { envelope: BoneEnvelope; triangles: Uint32Array }
+interface BoneTriangles { bone: number; envelope: BoneEnvelope; patches: TrianglePatch[] }
+interface MeshEnvelope { whole: BoneEnvelope; bones: BoneTriangles[] }
 const envelopes = new WeakMap<SkinnedMesh, MeshEnvelope>();
 interface FrameMesh {
   owner: object;
   positions: Float64Array;
   sampled: Uint8Array;
-  chunks: Map<number, HitSurface[]>;
-  ready: Set<number>;
-  bounds: Map<number, Box3>;
-  bounded: Set<number>;
+  bounds: Map<BoneEnvelope, Box3>;
+  bounded: Set<BoneEnvelope>;
+  candidates: Uint32Array;
+  indices: Uint32Array;
+  zones: HitZone[];
   whole: Box3;
   skinMatrices: Matrix4[];
   envelopeMatrices: Matrix4[];
@@ -182,16 +186,25 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
       if(!envelopes.has(mesh)) {
         const index=mesh.geometry.index;
         const indices=Uint32Array.from({length:index?.count ?? mesh.geometry.attributes.position.count},(_,i)=>index?index.getX(i):i);
-        const chunks: BoneEnvelope[]=[];
-        for(let i=0;i<indices.length;i+=192) chunks.push(boneEnvelope(mesh,indices.subarray(i,i+192)));
-        envelopes.set(mesh,{whole:boneEnvelope(mesh,indices),chunks});
+        const bones: BoneTriangles[]=[];
+        for(const [bone,triangles] of boneTriangleLists(indices,mesh.geometry.attributes.skinIndex,mesh.geometry.attributes.skinWeight)) {
+          const owned=new Uint32Array(triangles.length*3);
+          for(let i=0;i<triangles.length;i++) owned.set(indices.subarray(triangles[i]*3,triangles[i]*3+3),i*3);
+          const patches: TrianglePatch[]=[];
+          for(let i=0;i<owned.length;i+=192) patches.push({envelope:boneEnvelope(mesh,owned.subarray(i,i+192)),triangles:triangles.subarray(i/3,(i+192)/3)});
+          // Include ALL influences of ALL owned vertices, not just the owner:
+          // blended seams can leave the dominant bone's own transformed box.
+          bones.push({bone,envelope:boneEnvelope(mesh,owned),patches});
+        }
+        envelopes.set(mesh,{whole:boneEnvelope(mesh,indices),bones});
       }
       let state=frameMeshes.get(mesh);
       if(!state) {
-        state={owner,positions:new Float64Array(mesh.geometry.attributes.position.count*3),sampled:new Uint8Array(mesh.geometry.attributes.position.count),chunks:new Map(),ready:new Set(),bounds:new Map(),bounded:new Set(),whole:new Box3(),skinMatrices:mesh.skeleton.bones.map(()=>new Matrix4()),envelopeMatrices:mesh.skeleton.bones.map(()=>new Matrix4()),toWorld:new Matrix4()};
+        const indexCount=topologyFor(mesh).indices.length;
+        state={owner,positions:new Float64Array(mesh.geometry.attributes.position.count*3),sampled:new Uint8Array(mesh.geometry.attributes.position.count),bounds:new Map(),bounded:new Set(),candidates:new Uint32Array(indexCount/3),indices:new Uint32Array(indexCount),zones:[],whole:new Box3(),skinMatrices:mesh.skeleton.bones.map(()=>new Matrix4()),envelopeMatrices:mesh.skeleton.bones.map(()=>new Matrix4()),toWorld:new Matrix4()};
         frameMeshes.set(mesh,state);
       }
-      state.owner=owner; state.sampled.fill(0); state.ready.clear(); state.bounded.clear();
+      state.owner=owner; state.sampled.fill(0); state.bounded.clear();
       mesh.skeleton.bones.forEach((bone,i)=>state!.skinMatrices[i].multiplyMatrices(bone.matrixWorld,mesh.skeleton.boneInverses[i]));
       state.skinMatrices.forEach((matrix,i)=>state!.envelopeMatrices[i].copy(matrix).multiply(mesh.bindMatrix));
       state.toWorld.multiplyMatrices(mesh.matrixWorld,mesh.bindMatrixInverse);
@@ -211,28 +224,35 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
         // Populate ownership without skinning this mesh (see sampler helper).
         topologyFor(mesh);
       }
-      const data=topology.get(mesh)!,state=states[m],chunks=envelopes.get(mesh)!.chunks;
-      chunks.forEach((envelope,c)=>{
-        let bound=state.bounds.get(c);
-        if(!bound) { bound=new Box3(); state.bounds.set(c,bound); }
-        if(!state.bounded.has(c)) { envelopeBounds(envelope,state.envelopeMatrices,state.toWorld,bound); state.bounded.add(c); }
-        if(!segmentIntersectsBounds(start,end,bound.min,bound.max)) return;
-        let cached=state.chunks.get(c);
-        if(!cached) {
-          const first=c*192,indices=data.indices.subarray(first,first+192);
-          cached=[{positions:state.positions,indices,zones:data.zones.slice(first/3,(first+indices.length)/3)}];
-          state.chunks.set(c,cached);
+      const data=topology.get(mesh)!,state=states[m];
+      const intersects=(envelope: BoneEnvelope)=>{
+        let bound=state.bounds.get(envelope);
+        if(!bound) { bound=new Box3(); state.bounds.set(envelope,bound); }
+        if(!state.bounded.has(envelope)) { envelopeBounds(envelope,state.envelopeMatrices,state.toWorld,bound); state.bounded.add(envelope); }
+        return segmentIntersectsBounds(start,end,bound.min,bound.max);
+      };
+      let count=0;
+      for(const bone of envelopes.get(mesh)!.bones) {
+        if(!intersects(bone.envelope)) continue;
+        for(const patch of bone.patches) if(intersects(patch.envelope)) {
+          state.candidates.set(patch.triangles,count); count+=patch.triangles.length;
         }
-        if(!state.ready.has(c)) {
-          for(const i of cached[0].indices) if(!state.sampled[i]) {
-            skinHitVertex(mesh,state.skinMatrices,i,point).applyMatrix4(mesh.matrixWorld).toArray(state.positions,i*3);
-            skinnedVertexCount++;
-            state.sampled[i]=1;
-          }
-          state.ready.add(c);
+      }
+      if(count===0) return;
+      // Bone grouping must not change first-contact ties across damage zones.
+      // Restore original triangle order before passing to the unchanged tester.
+      const candidates=state.candidates.subarray(0,count); candidates.sort();
+      state.zones.length=count;
+      for(let t=0;t<count;t++) {
+        const triangle=candidates[t]; state.zones[t]=data.zones[triangle];
+        for(let k=0;k<3;k++) {
+          const i=data.indices[triangle*3+k]; state.indices[t*3+k]=i;
+          if(state.sampled[i]) continue;
+          skinHitVertex(mesh,state.skinMatrices,i,point).applyMatrix4(mesh.matrixWorld).toArray(state.positions,i*3);
+          skinnedVertexCount++; state.sampled[i]=1;
         }
-        surfaces.push(...cached);
-      });
+      }
+      surfaces.push({positions:state.positions,indices:state.indices.subarray(0,count*3),zones:state.zones});
     });
     return surfaces;
   };
