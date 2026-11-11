@@ -7,7 +7,7 @@ import { applyFloatArmTilt } from '../../client/src/player/playerAimPose';
 import { applyBarHoldPose } from '../../client/src/player/playerGrabPose';
 
 /** Real glTF channels + CPU skinning. No textures, browser, renderer or collider input. */
-async function loadRig(asset: string) {
+export async function loadRig(asset: string) {
   const bytes = readFileSync(new URL(`../../client/public/models/${asset}.glb`, import.meta.url));
   const jsonLength = bytes.readUInt32LE(12);
   const gltf = JSON.parse(bytes.subarray(20, 20 + jsonLength).toString());
