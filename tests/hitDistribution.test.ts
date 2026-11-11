@@ -115,13 +115,16 @@ describe('current mesh damage geometry',()=>{
     const target=pose.headVertices[0];a.copy(target).addScalar(-.1);b.copy(target).addScalar(.1);
     expect(query.mayIntersect!(a,b)).toBe(true);
     const first=segmentHitSurface(a,b,query(a,b)),cold=count();expect(cold).toBeGreaterThan(0);
-    // Body/helmet palettes each have 45 bones, shared by their 5/6 primitives.
-    expect(query.boneMatrixUpdateCount).toBe(90);
+    // Body/helmet have 90 bones total. Rejected roots never prepare palettes;
+    // accepted roots and exact candidates share lazily prepared matrices.
+    const matrices=query.boneMatrixUpdateCount!;
+    expect(matrices).toBeGreaterThan(0);expect(matrices).toBeLessThan(90);
     const raw=sampleHitSurfaces(root),nativePoints=new Set<string>();
     const key=(p:Vector3)=>p.toArray().join(',');
     for(const s of raw) for(let i=0;i<s.positions.length;i+=3) nativePoints.add(key(new Vector3().fromArray(s.positions,i)));
     for(const s of query(a,b)) for(const i of s.indices) expect(nativePoints.has(key(new Vector3().fromArray(s.positions,i*3)))).toBe(true);
     expect(segmentHitSurface(a,b,query(a,b))).toEqual(first);expect(count()).toBe(cold);
+    expect(query.boneMatrixUpdateCount).toBe(matrices);
     const next=lazyHitSurfaces(root);expect(next).toBe(query);next(a,b);expect(count()).toBe(cold);
     query.beginFrame!();query(a,b);const frameCount=count();query(a,b);expect(count()).toBe(frameCount);query.endFrame!();
     query.beginFrame!();query(a,b);expect(count()).toBe(frameCount);query.endFrame!();

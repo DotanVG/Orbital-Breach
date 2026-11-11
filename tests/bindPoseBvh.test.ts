@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bindBoundsEntry, buildBindBvh, queryBindBvh } from '../client/src/player/bindPoseBvh';
+import { segmentIntersectsBounds } from '../shared/projectileCollider';
+import { seededRandom } from './helpers/hitboxOrientation';
 
 describe('bind-pose BVH candidate selection',()=>{
   const positions=Float64Array.from(Array.from({length:20},(_,i)=>[i*2,0,0,i*2+1,0,0,i*2,1,0]).flat());
@@ -11,6 +13,19 @@ describe('bind-pose BVH candidate selection',()=>{
     expect(bindBoundsEntry(min,max,min,max)).toBe(0);
     expect(bindBoundsEntry({x:2,y:0,z:-1},{x:2,y:0,z:1},min,max)).toBe(Infinity);
     expect(bindBoundsEntry({x:NaN,y:0,z:-1},max,min,max)).toBe(Infinity);
+  });
+  it('matches the existing slab oracle for seeded padded, parallel and degenerate segments',()=>{
+    const random=seededRandom(0x129bb),vector=()=>({x:random()*6-3,y:random()*6-3,z:random()*6-3});
+    for(let i=0;i<4096;i++) {
+      const min=vector(),size=vector(),pad={x:random(),y:random(),z:random()};
+      const max={x:min.x+Math.abs(size.x),y:min.y+Math.abs(size.y),z:min.z+Math.abs(size.z)};
+      const start=i%5===0?{...min}:vector(),end=i%7===0?{...start}:vector();
+      if(i%3===0) end.x=start.x;
+      if(i%11===0) end.z=start.z+1e-15;
+      const low={x:min.x-pad.x,y:min.y-pad.y,z:min.z-pad.z},high={x:max.x+pad.x,y:max.y+pad.y,z:max.z+pad.z};
+      expect(bindBoundsEntry(start,end,min,max,pad)!==Infinity).toBe(segmentIntersectsBounds(start,end,low,high));
+      expect(bindBoundsEntry(start,end,min,max,pad)).toBe(bindBoundsEntry(start,end,low,high));
+    }
   });
   it('keeps hit and grazing triangles, deduplicates repeated bone membership and rejects distant leaves',()=>{
     const output=new Set<number>(),stack=[];

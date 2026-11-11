@@ -7,12 +7,15 @@ Run `node scripts/qa/bone-bvh-bench.cjs` from the checkout root with:
 - `BENCH_OUT`: output directory outside the checkouts, including Vite caches.
 - `BENCH_PLAYWRIGHT`: installed Playwright module or module path.
 - `BENCH_CHROME`: headless Chrome executable, optional if Playwright's default is installed.
+- `BENCH_PROFILE=1`: diagnostic head-only repeat, injecting nested exclusive stage
+  timers in memory and recording CDP CPU samples and GC/User Timing traces.
+  Omit for acceptance measurements; instrumentation adds substantial overhead.
 
 The harness starts and closes its own Vite servers and headless browsers. It does
 not write either measured checkout. It records source hashes as well as commit
 IDs so uncommitted candidates remain identifiable. Staging gets only an in-memory
 triangle counter, matching the head's cumulative candidate count; no profiling
-timers are injected. Missing instrumentation anchors fail the run.
+timers are injected in acceptance mode. Missing instrumentation anchors fail the run.
 
 Eight body/helmet pairs advance `Alien_Swimming` by 1/60 each frame, followed by
 `restoreFloatRightArmPose`, `applyFloatArmTilt` and matrix updates. Positions are

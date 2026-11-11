@@ -28,7 +28,7 @@ for(let i=0;i<8;i++) {
 
 window.runBoneBvhBench=()=>{
   const results={};
-  const totals=()=>actors.reduce((sum,a)=>({vertices:sum.vertices+a.query.skinnedVertexCount,triangles:sum.triangles+a.query.candidateTriangleCount}),{vertices:0,triangles:0});
+  const totals=()=>actors.reduce((sum,a)=>({vertices:sum.vertices+a.query.skinnedVertexCount,triangles:sum.triangles+a.query.candidateTriangleCount,bones:sum.bones+(a.query.boneMatrixUpdateCount??0)}),{vertices:0,triangles:0,bones:0});
   for(const [mode,every] of [['hit',1],['miss',1],['hit',10],['miss',10]]) {
     const system=new ProjectileSystem(new THREE.Scene()),times=[],zones={};
     let actorHits=0,shots=0,before;
@@ -51,7 +51,7 @@ window.runBoneBvhBench=()=>{
       if(frame>=0) times.push(performance.now()-start);
     }
     const after=totals();system.clear();
-    results[`${mode}_every${every}`]={times,zones,actorHits,shots,vertices:after.vertices-before.vertices,triangles:after.triangles-before.triangles};
+    results[`${mode}_every${every}`]={times,zones,actorHits,shots,vertices:after.vertices-before.vertices,triangles:after.triangles-before.triangles,bones:after.bones-before.bones};
   }
   return results;
 };

@@ -1,4 +1,3 @@
-import { segmentIntersectsBounds } from '../../../shared/projectileCollider';
 import type { Vec3 } from '../../../shared/vec3';
 
 export interface BindBvh {
@@ -10,16 +9,23 @@ export interface BindBvh {
 }
 
 /** Segment entry parameter, or Infinity for a reject (also invalid input). */
-export function bindBoundsEntry(start: Vec3, end: Vec3, min: Vec3, max: Vec3): number {
+export function bindBoundsEntry(start: Vec3, end: Vec3, min: Vec3, max: Vec3, pad?: Vec3): number {
   let lo=0,hi=1;
-  for(const axis of ['x','y','z'] as const) {
-    const d=end[axis]-start[axis];
-    if(!Number.isFinite(start[axis]) || !Number.isFinite(d)) return Infinity;
+  // Numeric axes avoid an array/iterator and dynamic property lookups at every
+  // visited node. Optional padding also avoids temporary min/max objects.
+  for(let axis=0;axis<3;axis++) {
+    const s=axis===0?start.x:axis===1?start.y:start.z;
+    const d=(axis===0?end.x:axis===1?end.y:end.z)-s;
+    const p=pad ? axis===0?pad.x:axis===1?pad.y:pad.z : 0;
+    const low=(axis===0?min.x:axis===1?min.y:min.z)-p;
+    const high=(axis===0?max.x:axis===1?max.y:max.z)+p;
+    if(!Number.isFinite(s) || !Number.isFinite(d)) return Infinity;
     if(Math.abs(d)<1e-14) {
-      if(start[axis]<min[axis] || start[axis]>max[axis]) return Infinity;
+      if(s<low || s>high) return Infinity;
     } else {
-      const a=(min[axis]-start[axis])/d,b=(max[axis]-start[axis])/d;
+      const a=(low-s)/d,b=(high-s)/d;
       lo=Math.max(lo,Math.min(a,b));hi=Math.min(hi,Math.max(a,b));
+      if(lo>hi) return Infinity;
     }
   }
   return lo<=hi ? lo : Infinity;
@@ -46,21 +52,14 @@ export function buildBindBvh(positions: Float64Array, indices: Uint32Array, tria
 /** Reusable traversal scratch; pad is reject-only and never changes triangles. */
 export function queryBindBvh(tree: BindBvh, start: Vec3, end: Vec3, padding: Vec3 | ((node: BindBvh) => {min: Vec3; max: Vec3}), output: Set<number>, stack: BindBvh[], visit?: (triangles: readonly number[]) => void, fixedPadding?: Vec3): void {
   stack.length=0; stack.push(tree);
-  const min={x:0,y:0,z:0},max={x:0,y:0,z:0};
   while(stack.length) {
     const node=stack.pop()!;
-    if(fixedPadding) {
-      min.x=node.min.x-fixedPadding.x; min.y=node.min.y-fixedPadding.y; min.z=node.min.z-fixedPadding.z;
-      max.x=node.max.x+fixedPadding.x; max.y=node.max.y+fixedPadding.y; max.z=node.max.z+fixedPadding.z;
-      if(!segmentIntersectsBounds(start,end,min,max)) continue;
-    }
+    if(fixedPadding && bindBoundsEntry(start,end,node.min,node.max,fixedPadding)===Infinity) continue;
     if(typeof padding==='function') {
       const bounds=padding(node);
-      if(!segmentIntersectsBounds(start,end,bounds.min,bounds.max)) continue;
+      if(bindBoundsEntry(start,end,bounds.min,bounds.max)===Infinity) continue;
     } else {
-      min.x=node.min.x-padding.x; min.y=node.min.y-padding.y; min.z=node.min.z-padding.z;
-      max.x=node.max.x+padding.x; max.y=node.max.y+padding.y; max.z=node.max.z+padding.z;
-      if(!segmentIntersectsBounds(start,end,min,max)) continue;
+      if(bindBoundsEntry(start,end,node.min,node.max,padding)===Infinity) continue;
     }
     if(node.triangles) {
       if(visit) visit(node.triangles);
