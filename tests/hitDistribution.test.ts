@@ -158,3 +158,34 @@ describe('current mesh damage geometry',()=>{
     }
   });
 });
+
+it('skips hierarchy signatures and live pose bounds for framed far misses, with safe invalidation',async()=>{
+  const pose=await sampleAlienPose('FLOATING',.08,'FLOATING',.4,true,true);
+  const root=new Group(),parent=new Group();root.add(pose.root,pose.helmetRoot);parent.add(root);
+  const query=lazyHitSurfaces(root);query.enableDiagnostics!();
+  const from=new Vector3(30,30,-1),to=new Vector3(30,30,1);
+  for(let frame=0;frame<12;frame++) {
+    pose.animation.tickMixers(1/60);pose.animation.restoreFloatRightArmPose();applyFloatArmTilt(pose.animation.getRigs());
+    query.beginFrame!();expect(query.mayIntersect!(from,to)).toBe(false);expect(query(from,to)).toEqual([]);query.endFrame!();
+  }
+  expect(query.posePreparationCount).toBe(0);expect(query.coarseRejectCount).toBe(24);expect(query.skinnedVertexCount).toBe(0);
+  // Ancestor matrix edits need no pose notification. The live root transform
+  // moves the all-rotation envelope before an early reject is allowed.
+  parent.matrixAutoUpdate=false;parent.matrix.makeTranslation(30,30,0);
+  let oracle=sampleHitSurfaces(root),point=new Vector3().fromArray(oracle[0].positions,0);
+  from.copy(point).addScalar(-.1);to.copy(point).addScalar(.1);
+  query.beginFrame!();
+  expect(segmentHitSurface(from,to,query.mayIntersect!(from,to)?query(from,to):[])).toEqual(segmentHitSurface(from,to,oracle));
+  query.endFrame!();
+  // A procedural bone translation outside the load-time budget must defeat
+  // the coarse reject and use the pose weight bound even without matrix refresh.
+  pose.root.getObjectByName('Head')!.position.x+=50;
+  oracle=sampleHitSurfaces(root);point.fromArray(oracle[0].positions,0);
+  from.copy(point).addScalar(-.1);to.copy(point).addScalar(.1);
+  query.beginFrame!();
+  expect(segmentHitSurface(from,to,query.mayIntersect!(from,to)?query(from,to):[])).toEqual(segmentHitSurface(from,to,oracle));
+  expect(query.posePreparationCount).toBeGreaterThan(0);expect(query.fallbackPadCount).toBeGreaterThan(0);
+  // Detach after a prepared hit in the SAME frame: child events invalidate both caches.
+  root.remove(pose.root,pose.helmetRoot);
+  expect(query.mayIntersect!(from,to)).toBe(false);expect(query(from,to)).toEqual([]);query.endFrame!();
+});

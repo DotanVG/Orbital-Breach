@@ -13,7 +13,8 @@ function instrument(code) {
   } else {
     replace('  };\n  const prepareInverse=', '  });\n  const prepareInverse=');
     replace('  const prepareInverse=(palette:Palette,bone:number)=>{','  const prepareInverse=(palette:Palette,bone:number)=>timed("palette",()=>{');
-    replace('  };\n  const boundsFor=', '  });\n  const boundsFor=');
+    const next=code.includes('  const preparePad=')?'preparePad':'boundsFor';
+    replace(`  };\n  const ${next}=`, `  });\n  const ${next}=`);
     replace('      p.prepareSkin=i=>{','      p.prepareSkin=i=>timed("palette",()=>{');
     replace('      };\n      palettes.push', '      });\n      palettes.push');
     replace('  const rootMayIntersect=(group:BoneTree,palette:Palette,start:Vec3,end:Vec3)=>{','  const rootMayIntersect=(group:BoneTree,palette:Palette,start:Vec3,end:Vec3)=>timed("root reject",()=>{');

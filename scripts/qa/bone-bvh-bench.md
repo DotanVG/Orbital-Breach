@@ -29,7 +29,7 @@ case. Counts exclude warmup and are amortized per spawned shot, including later
 projectile travel. Triangles count unique candidate triangles submitted to exact
 tests, rather than three independent vertex skinning operations per triangle.
 
-Regenerate the small fixed displacement-pad table with:
+Regenerate the offline diagnostic displacement samples with:
 
 ```sh
 node node_modules/vite-node/vite-node.mjs --config vitest.config.ts scripts/qa/measure-bone-bvh-padding.ts
@@ -38,9 +38,21 @@ node node_modules/vite-node/vite-node.mjs --config vitest.config.ts scripts/qa/m
 This offline pass covers all 15 clips at 30 Hz and applies the FLOATING arm
 overlay. The table takes maximum component displacement in bind geometry space
 across both assets and includes 10% plus 1e-5. Asset SHA256s are recorded in the
-generated module. Runtime weight-interval certificates expand the fixed pad to
-cover unsampled motion and arbitrary procedural poses; tighter per-node
-certificates then reject conservative padding slack. Neither envelope awards a
-hit. Exact tests retain native CPU skinning and original mesh/triangle ordering.
+generated module. Sampling is diagnostic only. Production computes conservative
+per-bone pads at load from skin weights, joint-space vertex distances and bone
+chain translation/scale budgets. The triangle inequality covers every rotation,
+including between-sample and procedural poses. A once-per-frame budget check
+allows far misses to skip hierarchy signatures and live pose bounds. Near rays
+prepare the current AABB lazily. Translation/scale outside the load-time budget
+uses a conservative root weight bound once per bone and pose; there is no
+per-node certificate walk. Child events invalidate hierarchy caches, and
+unframed/debug calls retain full signature invalidation.
+
+BVHs store outward-rounded Float32 bounds, Int32 children/leaf ranges and
+Uint32 triangle IDs. Leaves hold up to 16 triangles (8-16 after median splits),
+with reusable typed stacks, inverse-direction slabs and near-first contact
+pruning. Traversal itself allocates no objects or leaf views; exact hit results,
+candidate Sets and final surface views can still allocate. Neither envelope
+awards a hit. Exact tests retain native CPU skinning and mesh/triangle ordering.
 
 Large repeat/frame JSON belongs only in `BENCH_OUT`. Do not commit it.

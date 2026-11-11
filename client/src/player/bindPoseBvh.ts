@@ -1,18 +1,17 @@
 import type { Vec3 } from '../../../shared/vec3';
 
+/** Flat immutable topology, with per-tree traversal scratch. Leaves hold <=16 triangles. */
 export interface BindBvh {
-  min: Vec3;
-  max: Vec3;
-  left?: BindBvh;
-  right?: BindBvh;
-  triangles?: number[];
+  bounds: Float32Array;
+  nodes: Int32Array; // left, right, first triangle, triangle count (zero for branches)
+  triangles: Uint32Array;
+  stack: Int32Array;
+  ray: Float64Array;
 }
 
 /** Segment entry parameter, or Infinity for a reject (also invalid input). */
 export function bindBoundsEntry(start: Vec3, end: Vec3, min: Vec3, max: Vec3, pad?: Vec3): number {
   let lo=0,hi=1;
-  // Numeric axes avoid an array/iterator and dynamic property lookups at every
-  // visited node. Optional padding also avoids temporary min/max objects.
   for(let axis=0;axis<3;axis++) {
     const s=axis===0?start.x:axis===1?start.y:start.z;
     const d=(axis===0?end.x:axis===1?end.y:end.z)-s;
@@ -31,44 +30,76 @@ export function bindBoundsEntry(start: Vec3, end: Vec3, min: Vec3, max: Vec3, pa
   return lo<=hi ? lo : Infinity;
 }
 
-/** Median split of triangle centroids; triangle IDs retain the asset's order. */
+/** Median split at load; outward rounding preserves the double-precision bind bounds. */
 export function buildBindBvh(positions: Float64Array, indices: Uint32Array, triangles: number[]): BindBvh {
-  const min={x:Infinity,y:Infinity,z:Infinity},max={x:-Infinity,y:-Infinity,z:-Infinity};
-  for(const t of triangles) for(let k=0;k<3;k++) {
-    const v=indices[t*3+k]*3;
-    min.x=Math.min(min.x,positions[v]); max.x=Math.max(max.x,positions[v]);
-    min.y=Math.min(min.y,positions[v+1]); max.y=Math.max(max.y,positions[v+1]);
-    min.z=Math.min(min.z,positions[v+2]); max.z=Math.max(max.z,positions[v+2]);
+  const bounds:number[]=[],nodes:number[]=[],ordered:number[]=[];
+  const build=(list:number[]):number=>{
+    const node=nodes.length/4,offset=bounds.length;
+    nodes.push(-1,-1,0,0);bounds.push(Infinity,Infinity,Infinity,-Infinity,-Infinity,-Infinity);
+    for(const t of list) for(let k=0;k<3;k++) for(let axis=0;axis<3;axis++) {
+      const value=positions[indices[t*3+k]*3+axis];
+      bounds[offset+axis]=Math.min(bounds[offset+axis],value);
+      bounds[offset+3+axis]=Math.max(bounds[offset+3+axis],value);
+    }
+    if(list.length<=16) {
+      nodes[node*4+2]=ordered.length;nodes[node*4+3]=list.length;ordered.push(...list);
+    } else {
+      let axis=0;
+      for(let a=1;a<3;a++) if(bounds[offset+3+a]-bounds[offset+a]>bounds[offset+3+axis]-bounds[offset+axis]) axis=a;
+      const center=(t:number)=>positions[indices[t*3]*3+axis]+positions[indices[t*3+1]*3+axis]+positions[indices[t*3+2]*3+axis];
+      list.sort((a,b)=>center(a)-center(b));const mid=list.length>>1;
+      nodes[node*4]=build(list.slice(0,mid));nodes[node*4+1]=build(list.slice(mid));
+    }
+    return node;
+  };
+  build(triangles);
+  for(let i=0;i<bounds.length;i++) {
+    const value=bounds[i],error=Math.abs(value)*2**-23+1e-7;
+    bounds[i]=Math.fround(value+(i%6<3?-error:error));
   }
-  if(triangles.length<=4) return {min,max,triangles};
-  const sizes=[max.x-min.x,max.y-min.y,max.z-min.z];
-  const axis=sizes.indexOf(Math.max(...sizes));
-  const center=(t:number)=>positions[indices[t*3]*3+axis]+positions[indices[t*3+1]*3+axis]+positions[indices[t*3+2]*3+axis];
-  triangles.sort((a,b)=>center(a)-center(b));
-  const mid=triangles.length>>1;
-  return {min,max,left:buildBindBvh(positions,indices,triangles.slice(0,mid)),right:buildBindBvh(positions,indices,triangles.slice(mid))};
+  return {bounds:Float32Array.from(bounds),nodes:Int32Array.from(nodes),triangles:Uint32Array.from(ordered),stack:new Int32Array(nodes.length/4),ray:new Float64Array(9)};
 }
 
-/** Reusable traversal scratch; pad is reject-only and never changes triangles. */
-export function queryBindBvh(tree: BindBvh, start: Vec3, end: Vec3, padding: Vec3 | ((node: BindBvh) => {min: Vec3; max: Vec3}), output: Set<number>, stack: BindBvh[], visit?: (triangles: readonly number[]) => void, fixedPadding?: Vec3): void {
-  stack.length=0; stack.push(tree);
-  while(stack.length) {
-    const node=stack.pop()!;
-    if(fixedPadding && bindBoundsEntry(start,end,node.min,node.max,fixedPadding)===Infinity) continue;
-    if(typeof padding==='function') {
-      const bounds=padding(node);
-      if(bindBoundsEntry(start,end,bounds.min,bounds.max)===Infinity) continue;
-    } else {
-      if(bindBoundsEntry(start,end,node.min,node.max,padding)===Infinity) continue;
+/** ray = start xyz, inverse direction xyz, displacement pad xyz. */
+export function flatBoundsEntry(bounds: Float32Array, node: number, ray: Float64Array, limit: number): number {
+  let lo=0,hi=limit;const offset=node*6;
+  for(let axis=0;axis<3;axis++) {
+    const s=ray[axis],inverse=ray[3+axis],pad=ray[6+axis];
+    const low=bounds[offset+axis]-pad,high=bounds[offset+3+axis]+pad;
+    if(inverse===Infinity) {if(s<low || s>high) return Infinity;}
+    else {
+      const a=(low-s)*inverse,b=(high-s)*inverse;
+      lo=Math.max(lo,Math.min(a,b));hi=Math.min(hi,Math.max(a,b));
+      if(lo>hi) return Infinity;
     }
-    if(node.triangles) {
-      if(visit) visit(node.triangles);
-      else for(const t of node.triangles) output.add(t);
-    } else if(typeof padding==='function') {
-      const left=padding(node.left!),right=padding(node.right!);
-      const a=bindBoundsEntry(start,end,left.min,left.max),b=bindBoundsEntry(start,end,right.min,right.max);
-      if(a<b) {if(b!==Infinity) stack.push(node.right!);if(a!==Infinity) stack.push(node.left!);}
-      else {if(a!==Infinity) stack.push(node.left!);if(b!==Infinity) stack.push(node.right!);}
-    } else { stack.push(node.right!,node.left!); }
+  }
+  return lo<=hi?lo:Infinity;
+}
+
+/** Allocation-free traversal, including leaf ranges and stack. A visitor may
+ * return a smaller contact parameter; inverse directions remain valid. */
+export function queryBindBvh(tree: BindBvh, start: Vec3, end: Vec3, padding: Vec3, output: Set<number>, visit?: (triangles: Uint32Array, first: number, count: number) => number): void {
+  const {ray,stack,nodes,bounds,triangles}=tree;
+  ray[0]=start.x;ray[1]=start.y;ray[2]=start.z;
+  ray[6]=padding.x;ray[7]=padding.y;ray[8]=padding.z;
+  for(let a=0;a<3;a++) {
+    const d=(a===0?end.x:a===1?end.y:end.z)-ray[a];
+    if(!Number.isFinite(ray[a]) || !Number.isFinite(d)) return;
+    ray[3+a]=Math.abs(d)<1e-14?Infinity:1/d;
+  }
+  let size=1,limit=1;stack[0]=0;
+  while(size) {
+    const node=stack[--size],offset=node*4;
+    if(flatBoundsEntry(bounds,node,ray,limit)===Infinity) continue;
+    const count=nodes[offset+3],first=nodes[offset+2];
+    if(count) {
+      if(visit) limit=Math.min(limit,visit(triangles,first,count));
+      else for(let i=first;i<first+count;i++) output.add(triangles[i]);
+    } else {
+      const left=nodes[offset],right=nodes[offset+1];
+      const a=flatBoundsEntry(bounds,left,ray,limit),b=flatBoundsEntry(bounds,right,ray,limit);
+      if(a<b) {if(b!==Infinity) stack[size++]=right;if(a!==Infinity) stack[size++]=left;}
+      else {if(a!==Infinity) stack[size++]=left;if(b!==Infinity) stack[size++]=right;}
+    }
   }
 }

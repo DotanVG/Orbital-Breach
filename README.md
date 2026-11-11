@@ -251,7 +251,7 @@ rebuild after a major refactor.
 
 Shipped and implemented:
 
-- Projectile damage uses exact body/helmet triangle first contact. A conservative actor AABB rejects distant segments before skin-matrix work. Bone-local bind-pose BVHs nominate triangles using conservative weight-interval deformation bounds; conservative joint-space root boxes reject before lazy palette/inverse/relative matrix preparation. Near-first traversal skins only candidate vertices, sharing bone matrices across primitives and retaining exact mesh/triangle tie ordering. Pose signatures, leaf views and candidate ordering reuse scratch storage; unchanged poses reuse the cache. The online server validates reported zones and plausibility without loading or skinning meshes.
+- Projectile damage uses exact body/helmet triangle first contact. Load-time, weight-derived rotation envelopes conservatively pad flat typed-array bone-local BVHs; 8-16 triangle leaves use iterative, near-first traversal with precomputed ray inverses. Far projectile misses skip hierarchy signatures and live pose AABBs behind a checked all-rotation actor envelope. Near queries cache the live pose bounds once per frame; exceptional translation/scale or hierarchy changes retain conservative fallback invalidation and a per-bone weight bound. Only candidate vertices are CPU-skinned, with original mesh/triangle tie ordering. Head damage, helmets and zone mapping are unchanged. The online server validates reported zones and plausibility without loading or skinning meshes.
 
 - Browser-playable zero-G FPS with solo bot matches and Colyseus-backed online multiplayer.
 - Quick match, room browser, private/public room creation, invite URLs, native share, and QR joins.

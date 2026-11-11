@@ -1,5 +1,4 @@
 import { Box3, Matrix4, SkinnedMesh, Vector3, type Object3D } from 'three';
-import { BONE_BVH_PADDING } from './boneBvhPadding';
 import { bindBoundsEntry, buildBindBvh, queryBindBvh, type BindBvh } from './bindPoseBvh';
 import { hitZoneForBone, indexHitSurface, segmentHitSurface, segmentIntersectsBounds, type HitSurface } from '../../../shared/projectileCollider';
 import type { HitZone } from '../../../shared/player-logic';
@@ -54,8 +53,8 @@ export function sampleHitSurfaces(root: Object3D): HitSurface[] {
 }
 
 interface Influence { matrix: Matrix4; minWeight: number; maxWeight: number; count: number }
-interface Displacement { influences: Influence[]; sumError: number; radius: Vector3; bounds: Box3; pad: Vector3; frame: number }
-interface BoneTree { bone: number; tree: BindBvh; padding: Map<BindBvh,Displacement>; fixedPad: number; queryPad: Vector3; reject: Map<number,Box3>; broad: Box3; broadFrame: number }
+interface Displacement { influences: Influence[]; sumError: number; radius: Vector3; bounds: Box3; pad: Vector3 }
+interface BoneTree { bone: number; tree: BindBvh; displacement: Displacement; min: Vector3; max: Vector3; fixedPad: Vector3; queryPad: Vector3; padFrame: number; reject: Map<number,Box3>; broad: Box3; broadFrame: number }
 interface Palette {
   mesh: SkinnedMesh;
   skin: Matrix4[];
@@ -64,7 +63,6 @@ interface Palette {
   prepareSkin: (bone: number) => void;
   skinFrame: number[];
   inverseFrame: number[];
-  relativeFrame: Map<number,number>;
   radii: number[];
   relative: Map<number,Map<number,Matrix4>>;
 }
@@ -81,6 +79,66 @@ interface MeshState {
   native: boolean;
   bindMatrix: Matrix4;
 }
+// Bind only the dirty flag to descendant events. A detached asset must not
+// retain the old root/query through an event-listener closure.
+function invalidateHitHierarchy(this: {dirty: boolean}): void {this.dirty=true;}
+
+interface TransformEnvelope { node: Object3D; parent: Object3D | null; translation: number; minScale: number; maxScale: number }
+
+// Any rotation is allowed. Translation/scale budgets are checked once before a
+// frame's coarse reject. Outside them we use a cheap per-bone weight bound.
+function transformEnvelope(node: Object3D): TransformEnvelope {
+  return {node,parent:node.parent,translation:node.position.length()*1.35+.02,
+    minScale:Math.min(Math.abs(node.scale.x),Math.abs(node.scale.y),Math.abs(node.scale.z))*.999-1e-8,
+    maxScale:Math.max(Math.abs(node.scale.x),Math.abs(node.scale.y),Math.abs(node.scale.z))*1.001+1e-8};
+}
+
+/** Triangle inequality in the two bone chains up to their common ancestor.
+ * In owner joint space, |owner^-1 * other * p| <=
+ * (reach(other,p) + reach(owner,0)) / minScale(owner).
+ * The immutable inverse binds map that ball back into geometry space.
+ * Taking the maximum weighted sum over vertices proves a pad for EVERY
+ * rotation, including unsampled poses; clip sampling is not the proof. */
+function precomputedPad(mesh: SkinnedMesh, owner: number, triangles: number[], indices: Uint32Array, envelopes: Map<Object3D,TransformEnvelope>): Vector3 {
+  const bones=mesh.skeleton.bones,paths=new Map<number,{ownerReach:number; inverseScale:number; otherPath:TransformEnvelope[]}>();
+  const ownerPath:Object3D[]=[];
+  for(let n:Object3D|null=bones[owner];n;n=n.parent) ownerPath.push(n);
+  const getEnvelope=(node:Object3D)=>{
+    let e=envelopes.get(node);if(!e) {e=transformEnvelope(node);envelopes.set(node,e);}return e;
+  };
+  const mapping=new Matrix4().copy(mesh.bindMatrix).invert().multiply(mesh.skeleton.boneInverses[owner].clone().invert()).elements;
+  const rows=new Vector3(Math.hypot(mapping[0],mapping[4],mapping[8]),Math.hypot(mapping[1],mapping[5],mapping[9]),Math.hypot(mapping[2],mapping[6],mapping[10]));
+  const {position,skinIndex,skinWeight}=mesh.geometry.attributes;
+  const bind=new Vector3(),own=new Vector3(),other=new Vector3();let maximum=0,sumError=0;
+  for(const t of triangles) for(let k=0;k<3;k++) {
+    const v=indices[t*3+k];bind.fromBufferAttribute(position,v).applyMatrix4(mesh.bindMatrix);
+    own.copy(bind).applyMatrix4(mesh.skeleton.boneInverses[owner]);let displacement=0,sum=0;
+    for(let slot=0;slot<4;slot++) {
+      const weight=skinWeight.getComponent(v,slot),b=skinIndex.getComponent(v,slot);sum+=weight;
+      if(weight<=0 || b===owner) continue;
+      let path=paths.get(b);
+      if(!path) {
+        const otherNodes:Object3D[]=[];let common:Object3D|null=bones[b];
+        while(common && !ownerPath.includes(common)) {otherNodes.push(common);common=common.parent;}
+        if(!common) return new Vector3(Infinity,Infinity,Infinity);
+        let ownerReach=0,inverseScale=1;
+        const ownNodes=ownerPath.slice(0,ownerPath.indexOf(common));
+        for(const node of ownNodes) {
+          const e=getEnvelope(node);ownerReach=e.translation+e.maxScale*ownerReach;inverseScale/=e.minScale;
+        }
+        path={ownerReach,inverseScale,otherPath:otherNodes.map(getEnvelope)};paths.set(b,path);
+      }
+      other.copy(bind).applyMatrix4(mesh.skeleton.boneInverses[b]);let reach=other.length();
+      for(const e of path.otherPath) reach=e.translation+e.maxScale*reach;
+      displacement+=weight*((reach+path.ownerReach)*path.inverseScale+own.length());
+    }
+    maximum=Math.max(maximum,displacement);
+    // Weights within 1e-6 of unity are supported; include their exact error.
+    other.fromBufferAttribute(position,v);sumError=Math.max(sumError,Math.abs(sum-1)*Math.max(Math.abs(other.x),Math.abs(other.y),Math.abs(other.z)));
+  }
+  return rows.multiplyScalar(maximum).addScalar(sumError+1e-6);
+}
+
 const owners=new WeakMap<SkinnedMesh,object>();
 const bindPoint=new Vector3(),bonePoint=new Vector3();
 
@@ -99,7 +157,7 @@ function skinHitVertex(mesh: SkinnedMesh, palette: Palette, index: number, point
   return point.applyMatrix4(mesh.bindMatrixInverse);
 }
 
-function buildMeshState(mesh: SkinnedMesh, palette: Palette): MeshState {
+function buildMeshState(mesh: SkinnedMesh, palette: Palette, envelopes: Map<Object3D,TransformEnvelope>): MeshState {
   const data=topologyFor(mesh),{position,skinIndex,skinWeight}=mesh.geometry.attributes;
   const positions=new Float64Array(position.count*3),point=new Vector3();
   const lists=new Map<number,number[]>();
@@ -135,7 +193,7 @@ function buildMeshState(mesh: SkinnedMesh, palette: Palette): MeshState {
   }
   const trees: BoneTree[]=[];
   for(const [bone,triangles] of lists) {
-    const tree=buildBindBvh(positions,data.indices,triangles),padding=new Map<BindBvh,Displacement>();
+    const tree=buildBindBvh(positions,data.indices,triangles);
     // A convex skin blend lies in the union AABB of all influencing bind
     // boxes transformed by their current joints. Reject only: never damage.
     const reject=new Map<number,Box3>();
@@ -150,8 +208,9 @@ function buildMeshState(mesh: SkinnedMesh, palette: Palette): MeshState {
     }
     let relative=palette.relative.get(bone);
     if(!relative) {relative=new Map();palette.relative.set(bone,relative);}
-    const measure=(node:BindBvh):number[]=>{
-      const triangles=node.triangles ?? [...measure(node.left!),...measure(node.right!)];
+    // One root weight bound for exceptional translation/scale poses. There are
+    // no per-node certificates and no per-shot displacement evaluation.
+    const measure=()=>{
       const influences=new Map<number,Influence>(),radius=new Vector3();let sumError=0;
       for(const t of triangles) for(let k=0;k<3;k++) {
         const v=data.indices[t*3+k];point.fromBufferAttribute(position,v);
@@ -171,21 +230,22 @@ function buildMeshState(mesh: SkinnedMesh, palette: Palette): MeshState {
         sumError=Math.max(sumError,Math.abs(sum-1));
       }
       for(const influence of influences.values()) if(influence.count<triangles.length*3) influence.minWeight=0;
-      padding.set(node,{influences:[...influences.values()],sumError,radius,bounds:new Box3(),pad:new Vector3(),frame:-1});
-      return triangles;
+      return {influences:[...influences.values()],sumError,radius,bounds:new Box3(),pad:new Vector3()};
     };
-    measure(tree);trees.push({bone,tree,padding,fixedPad:BONE_BVH_PADDING[mesh.skeleton.bones[bone].name]??0,queryPad:new Vector3(),reject,broad:new Box3(),broadFrame:-1});
+    const fixedPad=precomputedPad(mesh,bone,triangles,data.indices,envelopes);
+    const b=tree.bounds;
+    trees.push({bone,tree,displacement:measure(),min:new Vector3(b[0],b[1],b[2]),max:new Vector3(b[3],b[4],b[5]),fixedPad,queryPad:new Vector3(),padFrame:-1,reject,broad:new Box3(),broadFrame:-1});
   }
   return {mesh,palette,trees,positions:new Float64Array(positions.length),sampled:new Uint8Array(position.count),candidates:new Set(),triangleOrder:[],indices:new Uint32Array(data.indices.length),zones:[],native,bindMatrix:mesh.bindMatrix.clone()};
 }
 
 /** With D_j=inverse(owner)*influence_j-I, skin(p)=p+sum(w_j*D_j*p).
  * Split each weight interval at its midpoint: the mean affine transform moves
- * the bind box; interval residuals conservatively pad it. Constant-weight
- * leaves therefore have no deformation slack. This bounds every pose (also
- * procedural translation/scale), without sampling or skinning vertices.
+ * the root bind box; interval residuals conservatively pad it. Used only
+ * outside the precomputed rotation envelope, once per bone tree and pose.
+ * This bounds procedural translation/scale without skinning vertices.
  */
-function displacementBounds(node: BindBvh, group: Displacement): Box3 {
+function displacementBounds(node: {min: Vec3; max: Vec3}, group: Displacement): Box3 {
   const x=(node.min.x+node.max.x)/2,y=(node.min.y+node.max.y)/2,z=(node.min.z+node.max.z)/2;
   const hx=(node.max.x-node.min.x)/2,hy=(node.max.y-node.min.y)/2,hz=(node.max.z-node.min.z)/2;
   for(let axis=0;axis<3;axis++) {
@@ -213,6 +273,9 @@ export type HitSurfaceQuery = ((start?: Vec3, end?: Vec3) => readonly HitSurface
   readonly skinnedVertexCount?: number;
   readonly candidateTriangleCount?: number;
   readonly boneMatrixUpdateCount?: number;
+  readonly posePreparationCount?: number;
+  readonly coarseRejectCount?: number;
+  readonly fallbackPadCount?: number;
 };
 const queries=new WeakMap<Object3D,HitSurfaceQuery>();
 
@@ -220,11 +283,11 @@ const queries=new WeakMap<Object3D,HitSurfaceQuery>();
  * and the native skinning formula retain first-contact/zone tie behaviour. */
 export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
   const existing=queries.get(root);if(existing) return existing;
-  const owner={},palettes:Palette[]=[],states:MeshState[]=[];
+  const owner={},palettes:Palette[]=[],states:MeshState[]=[],envelopes=new Map<Object3D,TransformEnvelope>();
   const register=(node:SkinnedMesh)=>{
     let palette=palettes.find(p=>p.mesh.skeleton.bones.length===node.skeleton.bones.length && p.mesh.skeleton.bones.every((b,i)=>b===node.skeleton.bones[i] && p.mesh.skeleton.boneInverses[i].equals(node.skeleton.boneInverses[i])) && p.mesh.bindMatrix.equals(node.bindMatrix));
     if(!palette) {
-      palette={mesh:node,skin:node.skeleton.bones.map(()=>new Matrix4()),forward:node.skeleton.bones.map(()=>new Matrix4()),inverse:node.skeleton.bones.map(()=>new Matrix4()),skinFrame:node.skeleton.bones.map(()=>-1),inverseFrame:node.skeleton.bones.map(()=>-1),relativeFrame:new Map(),prepareSkin:()=>{},radii:node.skeleton.bones.map(()=>0),relative:new Map()};
+      palette={mesh:node,skin:node.skeleton.bones.map(()=>new Matrix4()),forward:node.skeleton.bones.map(()=>new Matrix4()),inverse:node.skeleton.bones.map(()=>new Matrix4()),skinFrame:node.skeleton.bones.map(()=>-1),inverseFrame:node.skeleton.bones.map(()=>-1),prepareSkin:()=>{},radii:node.skeleton.bones.map(()=>0),relative:new Map()};
       const p=palette;
       p.prepareSkin=i=>{
         if(p.skinFrame[i]===frame) return;p.skinFrame[i]=frame;
@@ -234,20 +297,73 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
       };
       palettes.push(palette);
     }
-    states.push(buildMeshState(node,palette));
+    states.push(buildMeshState(node,palette,envelopes));
   };
   root.traverse(node=>{if(node instanceof SkinnedMesh) register(node);});
   const jobs=states.flatMap(state=>state.trees.map(group=>({state,group,entry:Infinity})));
   let stable=false,prepared=false,nativeRequired=false,diagnostics=false,full:HitSurface[]|undefined;
   const signature:number[]=[],objects:Object3D[]=[],meshes:SkinnedMesh[]=[];
-  let skinnedVertexCount=0,candidateTriangleCount=0,boneMatrixUpdateCount=0,frame=0;
+  let skinnedVertexCount=0,candidateTriangleCount=0,boneMatrixUpdateCount=0,posePreparationCount=0,coarseRejectCount=0,fallbackPadCount=0,frame=0;
   const broad=new Box3(),point=new Vector3(),localStart=new Vector3(),localEnd=new Vector3();
-  const stack:BindBvh[]=[],surfaces:HitSurface[]=[];
-  const leafIndices=new Uint32Array(12),leafZones:HitZone[]=[];
-  const leafViews=[leafIndices.subarray(0,0),leafIndices.subarray(0,3),leafIndices.subarray(0,6),leafIndices.subarray(0,9),leafIndices];
+  const surfaces:HitSurface[]=[];
+  const leafIndices=new Uint32Array(48),leafZones:HitZone[]=[];
+  const leafViews=Array.from({length:17},(_,i)=>leafIndices.subarray(0,i*3));
   const leafSurface:HitSurface={positions:new Float64Array(0),indices:leafIndices,zones:leafZones},leafSurfaces=[leafSurface];
   const triangleOrder=(a:number,b:number)=>a-b;
   const fullLocalEnd=new Vector3();
+  let envelopeValid=false,coarsePrepared=false,coarseRadius=Infinity;
+  const hierarchy={dirty:false};
+  const watched=new WeakSet<Object3D>(),coarse=new Box3();
+  const invalidateHierarchy=invalidateHitHierarchy.bind(hierarchy);
+  const watch=(node:Object3D)=>{
+    if(watched.has(node)) return;watched.add(node);
+    node.addEventListener('childadded',invalidateHierarchy);node.addEventListener('childremoved',invalidateHierarchy);
+  };
+  const rebuildCoarse=()=>{
+    root.traverse(watch);coarseRadius=0;
+    for(const palette of palettes) for(let b=0;b<palette.radii.length;b++) {
+      if(!palette.radii[b]) continue;
+      let reach=palette.radii[b],node:Object3D|null=palette.mesh.skeleton.bones[b];
+      while(node && node!==root) {
+        let e=envelopes.get(node);if(!e) {e=transformEnvelope(node);envelopes.set(node,e);}
+        reach=e.translation+e.maxScale*reach;node=node.parent;
+      }
+      coarseRadius=node?Math.max(coarseRadius,reach):Infinity;
+    }
+    hierarchy.dirty=false;coarsePrepared=false;
+  };
+  rebuildCoarse();
+  const checkEnvelope=()=>{
+    for(const e of envelopes.values()) {
+      const n=e.node,p=n.position,s=n.scale,qError=Math.abs(n.quaternion.lengthSq()-1);
+      // A malformed quaternion or manually supplied matrix cannot use the
+      // rotation proof. Normal matrix/TRS queries still take the exact fallback.
+      if(n.parent!==e.parent || !n.matrixAutoUpdate || !n.matrixWorldAutoUpdate || !(p.lengthSq()<=e.translation*e.translation) ||
+        !(Math.min(Math.abs(s.x),Math.abs(s.y),Math.abs(s.z))*(1-2*qError)>=e.minScale) ||
+        !(Math.max(Math.abs(s.x),Math.abs(s.y),Math.abs(s.z))*(1+2*qError)<=e.maxScale) ||
+        !Number.isFinite(qError) || qError>1e-3 || e.minScale<=0) return false;
+    }
+    return true;
+  };
+  const coarseMayIntersect=(start:Vec3,end:Vec3)=>{
+    // Unframed/debug callers retain the full signature fallback. Within the
+    // projectile frame, far misses check only the all-rotation envelope and
+    // root ancestors, never traverse the hierarchy or rebuild the pose AABB.
+    if(!stable || hierarchy.dirty || states.some(s=>s.native || s.mesh.bindMode!=='attached' || !s.mesh.bindMatrix.equals(s.bindMatrix))) return true;
+    if(!coarsePrepared) {
+      envelopeValid=checkEnvelope();coarsePrepared=true;
+      if(!envelopeValid) return true;
+      root.updateWorldMatrix(true,false);
+      const e=root.matrixWorld.elements,r=coarseRadius;
+      const rx=r*Math.hypot(e[0],e[4],e[8]),ry=r*Math.hypot(e[1],e[5],e[9]),rz=r*Math.hypot(e[2],e[6],e[10]);
+      coarse.min.set(e[12]-rx,e[13]-ry,e[14]-rz);coarse.max.set(e[12]+rx,e[13]+ry,e[14]+rz);
+      const magnitude=Math.max(Math.abs(e[12])+rx,Math.abs(e[13])+ry,Math.abs(e[14])+rz,1);
+      coarse.expandByScalar(magnitude*1e-6+1e-7);
+    }
+    const accepted=!envelopeValid || segmentIntersectsBounds(start,end,coarse.min,coarse.max);
+    if(!accepted && diagnostics) coarseRejectCount++;
+    return accepted;
+  };
   let numberCursor=0,objectCursor=0,meshCursor=0,changed=false;
   const rememberNumber=(value:number)=>{if(signature[numberCursor]!==value) changed=true;signature[numberCursor++]=value;};
   const remember=(node:Object3D)=>{
@@ -257,6 +373,7 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
     rememberNumber(q.x);rememberNumber(q.y);rememberNumber(q.z);rememberNumber(q.w);
     rememberNumber(s.x);rememberNumber(s.y);rememberNumber(s.z);
     if(!node.matrixAutoUpdate) for(const n of node.matrix.elements) rememberNumber(n);
+    if(!node.matrixWorldAutoUpdate) for(const n of node.matrixWorld.elements) rememberNumber(n);
   };
   const rememberChild=(node:Object3D)=>{
     remember(node);
@@ -267,7 +384,8 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
     }
   };
   const prepare=()=>{
-    if(stable && prepared) return;
+    if(stable && prepared && !hierarchy.dirty) return;
+    if(diagnostics) posePreparationCount++;
     numberCursor=0;objectCursor=0;meshCursor=0;changed=false;
     for(let parent=root.parent;parent;parent=parent.parent) remember(parent);
     root.traverse(rememberChild);
@@ -276,10 +394,13 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
     // Assets arrive asynchronously; a query may already exist for an empty
     // avatar root. Rebuild only when its actual skinned primitive list changes.
     if(meshes.length!==states.length || meshes.some((mesh,i)=>mesh!==states[i].mesh)) {
-      states.length=0;palettes.length=0;jobs.length=0;changed=true;
+      states.length=0;palettes.length=0;jobs.length=0;envelopes.clear();changed=true;
       for(const mesh of meshes) register(mesh);
       for(const state of states) for(const group of state.trees) jobs.push({state,group,entry:Infinity});
+      rebuildCoarse();
     }
+    if(hierarchy.dirty) {rebuildCoarse();changed=true;}
+    if(!coarsePrepared) envelopeValid=checkEnvelope();
     prepared=true;
     if(!changed && states.every(s=>owners.get(s.mesh)===owner)) return;
     full=undefined;frame++;
@@ -305,17 +426,24 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
     palette.prepareSkin(bone);
     if(palette.inverseFrame[bone]!==frame) {palette.inverse[bone].copy(palette.forward[bone]).invert();palette.inverseFrame[bone]=frame;}
   };
-  const boundsFor=(group:BoneTree,palette:Palette,node:BindBvh)=>{
-    const bounds=group.padding.get(node)!;
-    if(bounds.frame!==frame) {
-      if(palette.relativeFrame.get(group.bone)!==frame) {
-        const matrices=palette.relative.get(group.bone)!;
-        for(const [other,matrix] of matrices) {palette.prepareSkin(other);matrix.multiplyMatrices(palette.inverse[group.bone],palette.forward[other]);}
-        palette.relativeFrame.set(group.bone,frame);
-      }
-      displacementBounds(node,bounds);bounds.frame=frame;
+  const preparePad=(group:BoneTree,palette:Palette)=>{
+    if(group.padFrame===frame) return;
+    group.queryPad.copy(group.fixedPad);
+    if(!envelopeValid || !Number.isFinite(group.fixedPad.x)) {
+      // Exceptional procedural translations/scales: the precomputed root
+      // weight intervals prove a pad once per pose, shared by ALL nodes/rays.
+      // This is O(influencing bones), never an interval walk over BVH nodes.
+      if(diagnostics) fallbackPadCount++;
+      const matrices=palette.relative.get(group.bone)!;
+      for(const [other,matrix] of matrices) {palette.prepareSkin(other);matrix.multiplyMatrices(palette.inverse[group.bone],palette.forward[other]);}
+      displacementBounds(group,group.displacement);
+      group.queryPad.copy(group.displacement.pad);
     }
-    return bounds.bounds;
+    // Native CPU skinning does not normalize near-unit weight sums. The
+    // inverse ray's affine translation contributes (1-sum(weights))*t too.
+    const inverse=palette.inverse[group.bone].elements,error=group.displacement.sumError;
+    group.queryPad.x+=error*Math.abs(inverse[12]);group.queryPad.y+=error*Math.abs(inverse[13]);group.queryPad.z+=error*Math.abs(inverse[14]);
+    group.padFrame=frame;
   };
   const rootMayIntersect=(group:BoneTree,palette:Palette,start:Vec3,end:Vec3)=>{
     if(group.broadFrame!==frame) {
@@ -334,6 +462,8 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
     return bindBoundsEntry(start,end,group.broad.min,group.broad.max)!==Infinity;
   };
   const query:HitSurfaceQuery=(start,end)=>{
+    surfaces.length=0;
+    if(start && end && !coarseMayIntersect(start,end)) return surfaces;
     prepare();
     if(!start || !end) return full??=sampleHitSurfaces(root);
     surfaces.length=0;
@@ -347,22 +477,21 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
       const {palette}=job.state,inverse=palette.inverse[job.group.bone];
       prepareInverse(palette,job.group.bone);
       localStart.copy(start).applyMatrix4(inverse);localEnd.copy(end).applyMatrix4(inverse);
-      const bounds=boundsFor(job.group,palette,job.group.tree);
-      // Offline clip maxima seed a fixed padded BVH. A live displacement
-      // certificate expands it for between-sample motion, recoil or any pose
-      // outside that capture; the tighter node intervals further reject work.
-      job.group.queryPad.setScalar(job.group.fixedPad).max(job.group.padding.get(job.group.tree)!.pad);
-      job.entry=palette.forward[job.group.bone].determinant()===0 ? 0 : bindBoundsEntry(localStart,localEnd,bounds.min,bounds.max);
+      preparePad(job.group,palette);
+      job.entry=palette.forward[job.group.bone].determinant()===0 ? 0 : Math.max(
+        bindBoundsEntry(start,end,job.group.broad.min,job.group.broad.max),
+        bindBoundsEntry(localStart,localEnd,job.group.min,job.group.max,job.group.queryPad));
     }
     jobs.sort((a,b)=>a.entry-b.entry);
     for(const {state,group,entry} of jobs) {
       if(entry>closest+1e-9) continue;
       const {mesh,palette}=state,data=topologyFor(mesh),inverse=palette.inverse[group.bone];
       localStart.copy(start).applyMatrix4(inverse);fullLocalEnd.copy(end).applyMatrix4(inverse);
-      localEnd.copy(localStart).lerp(fullLocalEnd,Math.min(1,closest+1e-9));
-      const visit=(triangles:readonly number[])=>{
+      localEnd.copy(fullLocalEnd);
+      const visit=(triangles:Uint32Array,first:number,length:number)=>{
         let count=0;leafZones.length=0;
-        for(const t of triangles) {
+        for(let i=first;i<first+length;i++) {
+          const t=triangles[i];
           if(state.candidates.has(t)) continue;
           state.candidates.add(t);leafZones.push(data.zones[t]);
           for(let k=0;k<3;k++) {
@@ -376,19 +505,16 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
         if(count) {
           leafSurface.positions=state.positions;leafSurface.indices=leafViews[count/3];
           const hit=segmentHitSurface(start,end,leafSurfaces);
-          if(hit && hit.t<closest) {closest=hit.t;localEnd.copy(localStart).lerp(fullLocalEnd,Math.min(1,closest+1e-9));}
+          if(hit && hit.t<closest) closest=hit.t;
         }
+        return Math.min(1,closest+1e-9);
       };
       if(palette.forward[group.bone].determinant()===0) {
         // An inverse ray is undefined at singular scales: exact native candidates.
-        for(let t=0;t<data.zones.length;t++) visit([t]);
+        for(let t=0;t<data.zones.length;t++) {leafIndices[0]=t;visit(leafIndices,0,1);}
         continue;
       }
-      const padding=(node:BindBvh)=>{
-        localEnd.copy(localStart).lerp(fullLocalEnd,Math.min(1,closest+1e-9));
-        return boundsFor(group,palette,node);
-      };
-      queryBindBvh(group.tree,localStart,localEnd,padding,state.candidates,stack,visit,group.queryPad);
+      queryBindBvh(group.tree,localStart,localEnd,group.queryPad,state.candidates,visit);
     }
     // Restore asset mesh/triangle ordering for exact first-contact ties.
     for(const state of states) {
@@ -406,9 +532,9 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
     }
     return surfaces;
   };
-  query.mayIntersect=(start,end)=>{prepare();return !broad.isEmpty() && segmentIntersectsBounds(start,end,broad.min,broad.max);};
-  query.beginFrame=()=>{stable=true;prepared=false;};query.endFrame=()=>{stable=false;prepared=false;};
+  query.mayIntersect=(start,end)=>{if(!coarseMayIntersect(start,end)) return false;prepare();return !broad.isEmpty() && segmentIntersectsBounds(start,end,broad.min,broad.max);};
+  query.beginFrame=()=>{stable=true;prepared=false;coarsePrepared=false;};query.endFrame=()=>{stable=false;prepared=false;coarsePrepared=false;};
   query.enableDiagnostics=()=>{diagnostics=true;};
-  Object.defineProperties(query,{skinnedVertexCount:{get:()=>skinnedVertexCount},candidateTriangleCount:{get:()=>candidateTriangleCount},boneMatrixUpdateCount:{get:()=>boneMatrixUpdateCount}});
+  Object.defineProperties(query,{skinnedVertexCount:{get:()=>skinnedVertexCount},candidateTriangleCount:{get:()=>candidateTriangleCount},boneMatrixUpdateCount:{get:()=>boneMatrixUpdateCount},posePreparationCount:{get:()=>posePreparationCount},coarseRejectCount:{get:()=>coarseRejectCount},fallbackPadCount:{get:()=>fallbackPadCount}});
   queries.set(root,query);return query;
 }
