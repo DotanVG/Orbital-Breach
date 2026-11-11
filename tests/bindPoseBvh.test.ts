@@ -7,13 +7,13 @@ describe('bind-pose BVH candidate selection',()=>{
   const positions=Float64Array.from(Array.from({length:20},(_,i)=>[i*2,0,0,i*2+1,0,0,i*2,1,0]).flat());
   const indices=Uint32Array.from({length:60},(_,i)=>i);
   const tree=buildBindBvh(positions,indices,Array.from({length:20},(_,i)=>i));
-  it('packs outward-rounded bounds and 8-16 triangle leaves without losing bind vertices',()=>{
+  it('packs outward-rounded bounds and 2-4 triangle leaves without losing bind vertices',()=>{
     expect(tree.bounds).toBeInstanceOf(Float32Array);expect(tree.nodes).toBeInstanceOf(Int32Array);
     expect([...tree.triangles].sort((a,b)=>a-b)).toEqual(Array.from({length:20},(_,i)=>i));
     for(let n=0;n<tree.nodes.length/4;n++) {
       const count=tree.nodes[n*4+3],first=tree.nodes[n*4+2];
       if(!count) continue;
-      expect(count).toBeGreaterThanOrEqual(8);expect(count).toBeLessThanOrEqual(16);
+      expect(count).toBeGreaterThanOrEqual(2);expect(count).toBeLessThanOrEqual(4);
       for(let t=first;t<first+count;t++) for(let k=0;k<3;k++) for(let a=0;a<3;a++) {
         const value=positions[indices[tree.triangles[t]*3+k]*3+a];
         expect(tree.bounds[n*6+a]).toBeLessThanOrEqual(value);expect(tree.bounds[n*6+3+a]).toBeGreaterThanOrEqual(value);
@@ -62,7 +62,7 @@ describe('bind-pose BVH candidate selection',()=>{
     const output=new Set<number>();
     const start={x:0,y:0,z:-1},end={x:0,y:0,z:1},pad={x:0,y:0,z:0};
     queryBindBvh(tree,start,end,pad,output);
-    expect(output.has(0)).toBe(true);expect(output.size).toBeLessThanOrEqual(16);
+    expect(output.has(0)).toBe(true);expect(output.size).toBeLessThanOrEqual(4);
     const before=output.size;queryBindBvh(tree,start,end,pad,output);expect(output.size).toBe(before);
     output.clear();queryBindBvh(tree,{x:-1,y:0,z:-1},{x:-1,y:0,z:1},pad,output);expect(output.size).toBe(0);
   });
@@ -81,6 +81,17 @@ describe('bind-pose BVH candidate selection',()=>{
       for(let i=first;i<first+count;i++) seen.push(triangles[i]);
       return 2/41;
     });
-    expect(seen).toContain(0);expect(Math.max(...seen)).toBeLessThanOrEqual(16);
+    expect(seen).toContain(0);expect(Math.max(...seen)).toBeLessThanOrEqual(4);
+  });
+  it('uses per-node certificates instead of the undeformed flat bounds and preserves pruning',()=>{
+    const output=new Set<number>(),start={x:0,y:.1,z:4},end={x:40,y:.1,z:4},seen:number[]=[];
+    const certificate=(n:number)=>({min:{x:tree.bounds[n*6],y:tree.bounds[n*6+1],z:tree.bounds[n*6+2]+4},max:{x:tree.bounds[n*6+3],y:tree.bounds[n*6+4],z:tree.bounds[n*6+5]+4}});
+    queryBindBvh(tree,start,end,certificate,output,(triangles,first,count)=>{
+      for(let i=first;i<first+count;i++) seen.push(triangles[i]);
+      return 1/40;
+    });
+    expect(seen).toContain(0);expect(Math.max(...seen)).toBeLessThanOrEqual(4);
+    queryBindBvh(tree,{...start,z:0},{...end,z:0},certificate,output);
+    expect(output.size).toBe(0);
   });
 });

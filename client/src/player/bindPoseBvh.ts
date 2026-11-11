@@ -1,6 +1,6 @@
 import type { Vec3 } from '../../../shared/vec3';
 
-/** Flat immutable topology, with per-tree traversal scratch. Leaves hold <=16 triangles. */
+/** Flat immutable topology, with per-tree traversal scratch. Leaves hold <=4 triangles. */
 export interface BindBvh {
   bounds: Float32Array;
   nodes: Int32Array; // left, right, first triangle, triangle count (zero for branches)
@@ -41,7 +41,7 @@ export function buildBindBvh(positions: Float64Array, indices: Uint32Array, tria
       bounds[offset+axis]=Math.min(bounds[offset+axis],value);
       bounds[offset+3+axis]=Math.max(bounds[offset+3+axis],value);
     }
-    if(list.length<=16) {
+    if(list.length<=4) {
       nodes[node*4+2]=ordered.length;nodes[node*4+3]=list.length;ordered.push(...list);
     } else {
       let axis=0;
@@ -78,28 +78,34 @@ export function flatBoundsEntry(bounds: Float32Array, node: number, ray: Float64
 
 /** Allocation-free traversal, including leaf ranges and stack. A visitor may
  * return a smaller contact parameter; inverse directions remain valid. */
-export function queryBindBvh(tree: BindBvh, start: Vec3, end: Vec3, padding: Vec3, output: Set<number>, visit?: (triangles: Uint32Array, first: number, count: number) => number): void {
+export function queryBindBvh(tree: BindBvh, start: Vec3, end: Vec3, padding: Vec3 | ((node: number) => {min: Vec3; max: Vec3}), output: Set<number>, visit?: (triangles: Uint32Array, first: number, count: number) => number): void {
   const {ray,stack,nodes,bounds,triangles}=tree;
+  const certificate=typeof padding==='function'?padding:undefined;
   ray[0]=start.x;ray[1]=start.y;ray[2]=start.z;
-  ray[6]=padding.x;ray[7]=padding.y;ray[8]=padding.z;
+  ray[6]=certificate?0:(padding as Vec3).x;ray[7]=certificate?0:(padding as Vec3).y;ray[8]=certificate?0:(padding as Vec3).z;
   for(let a=0;a<3;a++) {
     const d=(a===0?end.x:a===1?end.y:end.z)-ray[a];
     if(!Number.isFinite(ray[a]) || !Number.isFinite(d)) return;
     ray[3+a]=Math.abs(d)<1e-14?Infinity:1/d;
   }
+  const entry=(node:number,limit:number)=>{
+    if(!certificate) return flatBoundsEntry(bounds,node,ray,limit);
+    const box=certificate(node);
+    return bindBoundsEntry(start,end,box.min,box.max);
+  };
   let size=1,limit=1;stack[0]=0;
   while(size) {
     const node=stack[--size],offset=node*4;
-    if(flatBoundsEntry(bounds,node,ray,limit)===Infinity) continue;
+    if(entry(node,limit)>limit) continue;
     const count=nodes[offset+3],first=nodes[offset+2];
     if(count) {
       if(visit) limit=Math.min(limit,visit(triangles,first,count));
       else for(let i=first;i<first+count;i++) output.add(triangles[i]);
     } else {
       const left=nodes[offset],right=nodes[offset+1];
-      const a=flatBoundsEntry(bounds,left,ray,limit),b=flatBoundsEntry(bounds,right,ray,limit);
-      if(a<b) {if(b!==Infinity) stack[size++]=right;if(a!==Infinity) stack[size++]=left;}
-      else {if(a!==Infinity) stack[size++]=left;if(b!==Infinity) stack[size++]=right;}
+      const a=entry(left,limit),b=entry(right,limit);
+      if(a<b) {if(b<=limit) stack[size++]=right;if(a<=limit) stack[size++]=left;}
+      else {if(a<=limit) stack[size++]=left;if(b<=limit) stack[size++]=right;}
     }
   }
 }

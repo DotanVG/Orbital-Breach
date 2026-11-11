@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
-import { Bone, BufferGeometry, Float32BufferAttribute, Group, MeshBasicMaterial, Skeleton, SkinnedMesh, Uint16BufferAttribute, Vector3 } from 'three';
+import { AnimationClip, Bone, BufferGeometry, Float32BufferAttribute, Group, MeshBasicMaterial, NumberKeyframeTrack, Skeleton, SkinnedMesh, Uint16BufferAttribute, Vector3 } from 'three';
 import { lazyHitSurfaces, sampleHitSurfaces } from '../client/src/player/hitSurface';
+import { registerHitClips } from '../client/src/player/boneBvhClipPads';
 import { segmentHitSurface } from '../shared/projectileCollider';
 
 it('bounds sub-threshold influences, duplicate bone slots and deformation beyond the offline pad',()=>{
@@ -59,4 +60,36 @@ it('uses the proven precomputed pad for arbitrary unsampled rotations with exact
     query.endFrame!();
   }
   expect(probes).toBe(1536);expect(query.fallbackPadCount).toBe(0);
+});
+
+it('samples actual clips without changing the live pose, admitting only analytically rigid node pads',()=>{
+  for(const mixed of [false,true]) {
+    const geometry=new BufferGeometry();
+    geometry.setAttribute('position',new Float32BufferAttribute([-1,-1,0,1,-1,0,0,1,0],3));
+    geometry.setAttribute('skinIndex',new Uint16BufferAttribute([0,1,0,0,0,1,0,0,0,1,0,0],4));
+    geometry.setAttribute('skinWeight',new Float32BufferAttribute(Array.from({length:3},()=>mixed?[.8,.2,0,0]:[1,0,0,0]).flat(),4));
+    geometry.setIndex([0,1,2]);
+    const body=new Bone(),head=new Bone();body.name='Body';head.name='Head';body.add(head);
+    const mesh=new SkinnedMesh(geometry,new MeshBasicMaterial());mesh.add(body);mesh.bind(new Skeleton([body,head]));
+    const root=new Group();root.add(mesh);
+    registerHitClips(root,[new AnimationClip('actual-translation',1,[new NumberKeyframeTrack('Head.position[x]',[0,1],[0,2])])]);
+    head.position.x=.37;root.updateMatrixWorld(true);
+    const before=head.matrixWorld.clone(),query=lazyHitSurfaces(root);query.enableDiagnostics!();
+    expect(head.position.x).toBe(.37);expect(head.matrixWorld.equals(before)).toBe(true);
+    expect(query.sampledPadNodeCount!>0).toBe(!mixed);
+    // Unsampled procedural translation and a moving ancestor cannot rely on
+    // the sampled translation range. Mixed nodes retain tight certificates.
+    for(const translation of [.37,23]) {
+      head.position.x=translation;root.position.set(3,-2,1);root.rotation.y=.7;
+      const oracle=sampleHitSurfaces(root),p=oracle[0].positions;
+      const a=new Vector3().fromArray(p,0),b=new Vector3().fromArray(p,3),c=new Vector3().fromArray(p,6);
+      const center=a.clone().add(b).add(c).multiplyScalar(1/3),normal=b.sub(a).cross(c.sub(a)).normalize();
+      const from=center.clone().addScaledVector(normal,-2),to=center.clone().addScaledVector(normal,2);
+      query.beginFrame!();
+      expect(segmentHitSurface(from,to,query(from,to))).toEqual(segmentHitSurface(from,to,oracle));
+      const matrices=query.boneMatrixUpdateCount;
+      expect(segmentHitSurface(from,to,query(from,to))).toEqual(segmentHitSurface(from,to,oracle));
+      expect(query.boneMatrixUpdateCount).toBe(matrices);query.endFrame!();
+    }
+  }
 });

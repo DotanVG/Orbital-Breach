@@ -1,5 +1,5 @@
 // Run with BENCH_STAGING, BENCH_OUT, BENCH_PLAYWRIGHT and BENCH_CHROME set.
-// Optional BENCH_HEAD defaults to this checkout. No measured tree is written.
+// Optional BENCH_REFERENCE adds a third tree; BENCH_HEAD defaults to this checkout.
 const fs=require('node:fs');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
@@ -8,7 +8,7 @@ const {createHash}=require('node:crypto');
 const root=path.resolve(__dirname,'../..');
 const output=process.env.BENCH_OUT;
 const profiling=process.env.BENCH_PROFILE==='1';
-const variants=profiling?[['head',process.env.BENCH_HEAD||root]]:[['staging',process.env.BENCH_STAGING],['head',process.env.BENCH_HEAD||root]];
+const variants=profiling?[['head',process.env.BENCH_HEAD||root]]:[['staging',process.env.BENCH_STAGING],...(process.env.BENCH_REFERENCE?[['reference',process.env.BENCH_REFERENCE]]:[]),['head',process.env.BENCH_HEAD||root]];
 let entry=fs.readFileSync(path.join(__dirname,'bone-bvh-entry.js'),'utf8');
 if(profiling) entry=entry.replace('const start=performance.now();',`globalThis.__boneProfile={times:{},counts:{}};performance.mark('bone-frame-start');const start=performance.now();`)
   .replace('if(frame>=0) times.push(performance.now()-start);',`performance.mark('bone-frame-end');if(frame>=0) {times.push(performance.now()-start);profiles.push(globalThis.__boneProfile);}`)
@@ -69,7 +69,7 @@ async function measure(name,tree,repeat) {
     }
     if(errors.length) throw Error(errors.join('\n'));
     const hash=createHash('sha256');
-    for(const file of ['client/src/player/hitSurface.ts','client/src/player/bindPoseBvh.ts','client/src/player/boneBvhPadding.ts','client/src/game/projectileSystem.ts','shared/projectileCollider.ts']) {
+    for(const file of ['client/src/player/hitSurface.ts','client/src/player/bindPoseBvh.ts','client/src/player/boneBvhPadding.ts','client/src/player/boneBvhClipPads.ts','client/src/player/playerAnimationController.ts','client/src/game/projectileSystem.ts','shared/projectileCollider.ts']) {
       hash.update(file);if(fs.existsSync(path.join(tree,file))) hash.update(fs.readFileSync(path.join(tree,file)));
     }
     return {name,repeat,sha:git(tree,'rev-parse','HEAD'),dirty:git(tree,'status','--short'),sourceHash:hash.digest('hex'),browser:await browser.version(),cases};
@@ -87,7 +87,7 @@ if(require.main===module) (async()=>{
     console.log(JSON.stringify(Object.fromEntries(Object.entries(run.cases).map(([key,c])=>[key,{...stats(c.times),zones:c.zones,actorHits:c.actorHits,verticesPerShot:c.vertices/c.shots,trianglesPerShot:c.triangles/c.shots}]))));
   }
   if(profiling) return;
-  const summary={protocol:{phase:'FLOATING',animation:'Alien_Swimming',dt:1/60,players:8,throttle:4,warmup:40,frames:240,repeats:3,order:['staging','head'],timer:'ProjectileSystem.update only'},versions:{}};
+  const summary={protocol:{phase:'FLOATING',animation:'Alien_Swimming',dt:1/60,players:8,throttle:4,warmup:40,frames:240,repeats:3,order:variants.map(([name])=>name),timer:'ProjectileSystem.update only'},versions:{}};
   for(const [name] of variants) {
     const subset=runs.filter(r=>r.name===name),cases={};
     if(new Set(subset.map(r=>r.sourceHash)).size!==1) throw Error(`${name} source changed between repeats`);
@@ -99,14 +99,14 @@ if(require.main===module) (async()=>{
     }
     summary.versions[name]={sha:subset[0].sha,sourceHash:subset[0].sourceHash,cases};
   }
-  summary.zoneParity=Object.keys(summary.versions.head.cases).every(key=>{
-    const a=summary.versions.staging.cases[key],b=summary.versions.head.cases[key];
+  summary.zoneParity=variants.every(([name])=>Object.keys(summary.versions.head.cases).every(key=>{
+    const a=summary.versions.staging.cases[key],b=summary.versions[name].cases[key];
     return a.actorHits===b.actorHits && a.shots===b.shots && JSON.stringify(a.zones)===JSON.stringify(b.zones) && [0,1,2].every(repeat=>{
-      const x=runs.find(r=>r.name==='staging' && r.repeat===repeat).cases[key],y=runs.find(r=>r.name==='head' && r.repeat===repeat).cases[key];
+      const x=runs.find(r=>r.name==='staging' && r.repeat===repeat).cases[key],y=runs.find(r=>r.name===name && r.repeat===repeat).cases[key];
       return x.actorHits===y.actorHits && x.shots===y.shots && JSON.stringify(x.zones)===JSON.stringify(y.zones);
     });
-  });
-  summary.acceptance={hitEvery1P95:summary.versions.head.cases.hit_every1.p95<16.67,missEvery10Mean:summary.versions.head.cases.miss_every10.mean<=1.04};
+  }));
+  summary.acceptance={hitEvery1P95:summary.versions.head.cases.hit_every1.p95<16.67,missEvery10Mean:summary.versions.head.cases.miss_every10.mean<=1.04,vertexBudget:summary.versions.head.cases.hit_every1.verticesPerShot<=(summary.versions.reference?.cases.hit_every1.verticesPerShot??111.063)};
   fs.writeFileSync(path.join(output,'summary.json'),JSON.stringify(summary,null,2));
   console.log(JSON.stringify(summary,null,2));
 })().catch(error=>{console.error(error);process.exitCode=1;});

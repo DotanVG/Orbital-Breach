@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { AnimatedRig, PoseBoneName, BreathingBoneName, RightArmPoseBoneName } from './playerTypes';
+import { registerHitClips } from './boneBvhClipPads';
 
 export const ANIM_IDLE_HOLD = 'Alien_IdleHold';
 export const ANIM_FLOAT = 'Alien_Swimming';
@@ -53,6 +54,7 @@ export class PlayerAnimationController {
   private breathTime = 0;
 
   public registerRig(root: THREE.Group, clips: THREE.AnimationClip[]): AnimatedRig {
+    registerHitClips(root,clips);
     const mixer = new THREE.AnimationMixer(root);
     const actions = new Map<string, THREE.AnimationAction>();
 

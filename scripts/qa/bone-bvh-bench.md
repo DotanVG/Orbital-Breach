@@ -3,6 +3,7 @@
 Run `node scripts/qa/bone-bvh-bench.cjs` from the checkout root with:
 
 - `BENCH_STAGING`: immutable staging checkout (this run: commit `ef325795b4c6aac2f3c5eb9c78e740605210507e`).
+- `BENCH_REFERENCE`: optional immutable tight-hit reference checkout (third variant, between staging and head).
 - `BENCH_HEAD`: candidate checkout, defaults to this repository.
 - `BENCH_OUT`: output directory outside the checkouts, including Vite caches.
 - `BENCH_PLAYWRIGHT`: installed Playwright module or module path.
@@ -12,7 +13,7 @@ Run `node scripts/qa/bone-bvh-bench.cjs` from the checkout root with:
   Omit for acceptance measurements; instrumentation adds substantial overhead.
 
 The harness starts and closes its own Vite servers and headless browsers. It does
-not write either measured checkout. It records source hashes as well as commit
+not write any measured checkout. It records source hashes as well as commit
 IDs so uncommitted candidates remain identifiable. Staging gets only an in-memory
 triangle counter, matching the head's cumulative candidate count; no profiling
 timers are injected in acceptance mode. Missing instrumentation anchors fail the run.
@@ -23,7 +24,7 @@ the eight tiny transforms from the original pose capture (identity rotations,
 x=-10.5 to 10.5 at 3 m intervals). Origins track the next actor's live Head bone,
 offset -0.4 m on Z; misses add 4 m on Y. Directions are +Z. Only
 `ProjectileSystem.update` is timed, with CDP 4x CPU throttling. Each of three
-interleaved staging/head repeats uses 40 warmup and 240 measured frames for each
+interleaved staging/reference/head repeats (or staging/head when no reference is set) uses 40 warmup and 240 measured frames for each
 of hit/miss every 1/10 frames. Aggregated percentiles pool 720 frame samples per
 case. Counts exclude warmup and are amortized per spawned shot, including later
 projectile travel. Triangles count unique candidate triangles submitted to exact
@@ -38,21 +39,28 @@ node node_modules/vite-node/vite-node.mjs --config vitest.config.ts scripts/qa/m
 This offline pass covers all 15 clips at 30 Hz and applies the FLOATING arm
 overlay. The table takes maximum component displacement in bind geometry space
 across both assets and includes 10% plus 1e-5. Asset SHA256s are recorded in the
-generated module. Sampling is diagnostic only. Production computes conservative
-per-bone pads at load from skin weights, joint-space vertex distances and bone
-chain translation/scale budgets. The triangle inequality covers every rotation,
-including between-sample and procedural poses. A once-per-frame budget check
-allows far misses to skip hierarchy signatures and live pose bounds. Near rays
-prepare the current AABB lazily. Translation/scale outside the load-time budget
-uses a conservative root weight bound once per bone and pose; there is no
-per-node certificate walk. Child events invalidate hierarchy caches, and
-unframed/debug calls retain full signature invalidation.
+generated module. That historical per-bone table remains diagnostic only.
 
-BVHs store outward-rounded Float32 bounds, Int32 children/leaf ranges and
-Uint32 triangle IDs. Leaves hold up to 16 triangles (8-16 after median splits),
-with reusable typed stacks, inverse-direction slabs and near-first contact
-pruning. Traversal itself allocates no objects or leaf views; exact hit results,
-candidate Sets and final surface views can still allocate. Neither envelope
-awards a hit. Exact tests retain native CPU skinning and mesh/triangle ordering.
+Production retains the miss-frame actor envelope and its checked transform
+budgets. Near rays lazily prepare current bounds once per frame. Four-triangle
+flat BVH leaves use tight, cached per-node weight-interval certificates, including
+procedural translations/scales and near-unit weight errors. The loose whole-bone
+pad is no longer a hit filter. Bone joint-space reject bounds transform once per
+bone/pose; palettes, inverse matrices and rays are shared across primitives.
+Child events invalidate hierarchy caches; unframed calls retain signature scans.
+
+At load, actual registered asset clips are sampled on a detached clone at 4 Hz
+with per-node maximum displacement plus 10% and 1e-5. Shared asset geometries
+reuse samples. This bounded trial cannot prove between-sample/crossfade/overlay
+conservativeness. Only exactly unit-weight owner-rigid nodes have a separate
+analytic proof; they intersect the sampled box with the tighter rigid certificate.
+Every blended node keeps runtime certificates, so samples never loosen candidate
+selection. Live mixers/poses are unchanged. Sampling happens before measurement.
+
+BVHs store outward-rounded Float32 bounds, Int32 children/leaf ranges and Uint32
+triangle IDs. Reusable typed stacks, inverse-direction slabs and near-first
+contact pruning retain exact native CPU skinning and mesh/triangle ordering.
+Candidate Sets, callbacks, hit results and final surface views can still allocate.
+Neither an envelope nor a sampled pad awards a hit.
 
 Large repeat/frame JSON belongs only in `BENCH_OUT`. Do not commit it.

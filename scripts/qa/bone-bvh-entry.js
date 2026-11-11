@@ -51,7 +51,7 @@ window.runBoneBvhBench=()=>{
       if(frame>=0) times.push(performance.now()-start);
     }
     const after=totals();system.clear();
-    results[`${mode}_every${every}`]={times,zones,actorHits,shots,vertices:after.vertices-before.vertices,triangles:after.triangles-before.triangles,bones:after.bones-before.bones};
+    results[`${mode}_every${every}`]={times,zones,actorHits,shots,vertices:after.vertices-before.vertices,triangles:after.triangles-before.triangles,bones:after.bones-before.bones,sampledPadNodes:actors.reduce((n,a)=>n+(a.query.sampledPadNodeCount??0),0)};
   }
   return results;
 };
