@@ -14,8 +14,11 @@ updates:
     target-branch: staging
     open-pull-requests-limit: 3
     groups:
+      colyseus:
+        patterns: ["@colyseus/*"]
       minor-and-patch:
         update-types: [minor, patch]
+        exclude-patterns: ["@colyseus/*", "three", "@types/three"]
     schedule:
       interval: weekly
   - package-ecosystem: npm
@@ -23,8 +26,11 @@ updates:
     target-branch: staging
     open-pull-requests-limit: 3
     groups:
+      colyseus:
+        patterns: ["@colyseus/*"]
       minor-and-patch:
         update-types: [minor, patch]
+        exclude-patterns: ["@colyseus/*"]
     schedule:
       interval: weekly
   - package-ecosystem: github-actions
