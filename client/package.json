@@ -21,7 +21,7 @@
     "graph:watch": "node ../scripts/graphify.mjs watch"
   },
   "dependencies": {
-    "@colyseus/sdk": "^0.17.40",
+    "@colyseus/sdk": "^0.18.9",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.1.0",
     "@types/qrcode": "^1.5.6",

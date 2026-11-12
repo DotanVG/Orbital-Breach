@@ -11,9 +11,9 @@
     "start": "node dist/server/src/index.js"
   },
   "dependencies": {
-    "@colyseus/core": "^0.17.41",
-    "@colyseus/schema": "^4.0.20",
-    "@colyseus/ws-transport": "^0.17.13",
+    "@colyseus/core": "^0.18.27",
+    "@colyseus/schema": "^5.0.45",
+    "@colyseus/ws-transport": "^0.18.4",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
     "express": "^5.3.0",
