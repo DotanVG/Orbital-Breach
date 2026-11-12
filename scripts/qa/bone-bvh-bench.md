@@ -38,13 +38,14 @@ tests, rather than three independent vertex skinning operations per triangle.
 Regenerate the offline diagnostic displacement samples with:
 
 ```sh
-node node_modules/vite-node/vite-node.mjs --config vitest.config.ts scripts/qa/measure-bone-bvh-padding.ts
+BONE_BVH_PADDING_OUT=/tmp/bone-bvh-padding.ts node node_modules/vite-node/vite-node.mjs --config vitest.config.ts scripts/qa/measure-bone-bvh-padding.ts
 ```
 
 This offline pass covers all 15 clips at 30 Hz and applies the FLOATING arm
 overlay. The table takes maximum component displacement in bind geometry space
 across both assets and includes 10% plus 1e-5. Asset SHA256s are recorded in the
-generated module. That historical per-bone table remains diagnostic only.
+generated table, which is written outside the repo (or to stdout) and is diagnostic only;
+the game does not import it.
 
 Production retains the miss-frame actor envelope and its checked transform
 budgets. Near rays lazily prepare current bounds once per frame. Four-triangle

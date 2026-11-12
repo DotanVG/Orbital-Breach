@@ -29,7 +29,9 @@ async function measure(name,tree,repeat) {
   const {createServer}=await import(pathToFileURL(path.join(root,'client/node_modules/vite/dist/node/index.js')).href);
   let browser,server;const errors=[];
   try {
-    server=await createServer({root:path.join(tree,'client'),configFile:false,cacheDir:path.join(output,`vite-${name}-${repeat}`),server:{host:'127.0.0.1',port:0,fs:{allow:[tree,output,fs.realpathSync(path.join(tree,'client/node_modules'))]}},plugins:[{
+    // One Three.js instance: without this, instanceof SkinnedMesh fails, no trees are
+    // built and both sides "pass" parity with zero hits (same alias as vitest.config.ts).
+    server=await createServer({root:path.join(tree,'client'),configFile:false,resolve:{dedupe:['three'],alias:[{find:/^three$/,replacement:path.join(tree,'client/node_modules/three/build/three.module.js')}]},cacheDir:path.join(output,`vite-${name}-${repeat}`),server:{host:'127.0.0.1',port:0,fs:{allow:[tree,output,fs.realpathSync(path.join(tree,'client/node_modules'))]}},plugins:[{
       name:'bone-bvh-benchmark',
       enforce:'pre',
       configureServer(s) {s.middlewares.use((req,res,next)=>{
@@ -59,6 +61,7 @@ async function measure(name,tree,repeat) {
     const {chromium}=require(process.env.BENCH_PLAYWRIGHT||'playwright');
     browser=await chromium.launch({headless:true,...(process.env.BENCH_CHROME?{executablePath:process.env.BENCH_CHROME}:{})});
     const page=await browser.newPage();page.on('pageerror',e=>errors.push(String(e)));
+    page.on('console',m=>{if(/Multiple instances of Three\.js/i.test(m.text())) errors.push(`${name}: ${m.text()}`);});
     const failedResponse=new Promise((_,reject)=>page.on('response',r=>{
       if(r.status()>=400) reject(Error(`HTTP ${r.status()} ${r.url()}`));
     }));
@@ -79,8 +82,12 @@ async function measure(name,tree,repeat) {
       fs.writeFileSync(path.join(output,'trace.json'),JSON.stringify({traceEvents:trace}));
     }
     if(errors.length) throw Error(errors.join('\n'));
+    for(const key of ['hit_every1','hit_every10']) {
+      const c=cases[key];
+      if(!c || !(c.shots>0) || !(c.actorHits>0) || !Object.keys(c.zones||{}).length) throw Error(`${name} repeat ${repeat}: ${key} registered no hits (vacuous parity); check for duplicate Three.js copies`);
+    }
     const hash=createHash('sha256');
-    for(const file of ['client/src/player/hitSurface.ts','client/src/player/bindPoseBvh.ts','client/src/player/boneBvhPadding.ts','client/src/player/boneBvhClipPads.ts','client/src/player/playerAnimationController.ts','client/src/game/projectileSystem.ts','shared/projectileCollider.ts']) {
+    for(const file of ['client/src/player/hitSurface.ts','client/src/player/bindPoseBvh.ts','client/src/player/boneBvhClipPads.ts','client/src/player/playerAnimationController.ts','client/src/game/projectileSystem.ts','shared/projectileCollider.ts']) {
       const source=name==='candidate' && candidateSource && ['client/src/player/hitSurface.ts','client/src/player/bindPoseBvh.ts','client/src/player/boneBvhClipPads.ts','client/src/player/playerAnimationController.ts'].includes(file)?path.join(candidateSource,file):path.join(tree,file);
       hash.update(file);if(fs.existsSync(source)) hash.update(fs.readFileSync(source));
     }
@@ -112,7 +119,9 @@ if(require.main===module) (async()=>{
     }
     summary.versions[name]={sha:subset[0].sha,sourceHash:subset[0].sourceHash,cases};
   }
-  summary.zoneParity=variants.every(([name])=>Object.keys(summary.versions.head.cases).every(key=>{
+  const nonEmpty=variants.every(([name])=>['hit_every1','hit_every10'].every(key=>summary.versions[name].cases[key]?.actorHits>0 && Object.keys(summary.versions[name].cases[key].zones).length>0));
+  if(!nonEmpty) throw Error('Empty hit parity: a variant registered no hits');
+  summary.zoneParity=nonEmpty && variants.every(([name])=>Object.keys(summary.versions.head.cases).every(key=>{
     const a=summary.versions.staging.cases[key],b=summary.versions[name].cases[key];
     return a.actorHits===b.actorHits && a.shots===b.shots && JSON.stringify(a.zones)===JSON.stringify(b.zones) && Array.from({length:repeats},(_,i)=>i).every(repeat=>{
       const x=runs.find(r=>r.name==='staging' && r.repeat===repeat).cases[key],y=runs.find(r=>r.name===name && r.repeat===repeat).cases[key];
