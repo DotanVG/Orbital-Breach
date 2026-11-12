@@ -1,6 +1,7 @@
 // Isolated real server: a malformed packet must not crash the Vitest worker.
 // Transpile the checked-in source so CI can run tests before production builds.
 const fs = require('node:fs');
+const path = require('path');
 const ts = require('../../server/node_modules/typescript');
 require.extensions['.ts'] = (module, filename) => {
   const result = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
@@ -10,7 +11,7 @@ require.extensions['.ts'] = (module, filename) => {
   module._compile(result.outputText, filename);
 };
 
-const { Server, matchMaker } = require('../../server/node_modules/@colyseus/core');
+const { Server, matchMaker } = require(require.resolve('@colyseus/core', { paths: [path.join(__dirname, '../../server/src')] }));
 const { ActorState } = require('../../server/src/colyseus/state.ts');
 const listen = Server.prototype.listen;
 let server;
