@@ -37,7 +37,9 @@ describe('body versus obstacle boxes',()=>{
         }
         stepActorWorld(actor,0.25,'z',[thin]);
         expect(s.vel[axis]).toBe(sign*10);
-        expect([actor.posX,actor.posY,actor.posZ]).toEqual(s.pos.toArray());
+        // Batched clear-space translations retain the fine contact grid;
+        // summing individual increments differs by floating-point roundoff.
+        for (const [i, value] of [actor.posX,actor.posY,actor.posZ].entries()) expect(value).toBeCloseTo(s.pos.toArray()[i],12);
         expect([actor.velX,actor.velY,actor.velZ]).toEqual(s.vel.toArray());
       }
     }

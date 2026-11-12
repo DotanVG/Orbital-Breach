@@ -1,5 +1,5 @@
 import { bodyWorldBounds, breachFloorAnchorY } from '../../../shared/bodyCollider';
-import { projectileBodyTarget } from '../../../shared/projectileCollider';
+import { lazyHitSurfaces } from '../player/hitSurface';
 import { BAR_GRIP_LOCAL, barHoldQuaternion } from '../player/playerGrabPose';
 import * as THREE from "three";
 import { ACTOR_COLLISION_RADIUS, GRAB_RADIUS, MATCH_POINT_TARGET, BAR_LAUNCH_CLEARANCE } from "../../../shared/constants";
@@ -41,15 +41,11 @@ const BREACH_ENTRY_CARRY_TIME = 0.55;
 const BREACH_ENTRY_CARRY_DAMPING_PER_60HZ = 0.9;
 const ZERO_CARRY = new THREE.Vector3();
 
-export interface ProjectileActorTarget {
-  active: boolean;
-  id: string;
-  pos: THREE.Vector3;
-  radius: number;
-  team: 0 | 1;
-}
+export type { ProjectileActorTarget } from '../game/projectileSystem';
+import type { ProjectileActorTarget } from '../game/projectileSystem';
 
 export interface ProjectileHitEvent {
+  zone: import('../../../shared/player-logic').HitZone;
   direction: THREE.Vector3;
   impactPoint: THREE.Vector3;
   ownerId: string;
@@ -74,6 +70,7 @@ export interface LocalMatchStatsActor {
   position: Vec3;
   orientation?: import("../../../shared/hitZoneColliders").QuaternionLike;
   phase?: string;
+  getSurfaces?: () => readonly import('../../../shared/projectileCollider').HitSurface[];
 }
 
 export type LocalMatchEvent =
@@ -225,6 +222,7 @@ export class LocalMatch {
         frozen: player.deaths,
         position: toVec3(player.getPosition()),
         orientation: player.getVisualQuaternion(), phase: player.phase,
+        getSurfaces: lazyHitSurfaces(player.getMesh()),
       },
       ...this.bots.map((bot) => ({
         id: bot.id,
@@ -236,6 +234,7 @@ export class LocalMatch {
         frozen: bot.deaths,
         position: toVec3(bot.phys.pos),
         orientation: botOrientation(bot), phase: bot.phase,
+        getSurfaces: lazyHitSurfaces(bot.avatar.getMesh()),
       })),
     ];
   }
@@ -274,24 +273,18 @@ export class LocalMatch {
   }
 
   public getProjectileTargets(player: LocalPlayer): ProjectileActorTarget[] {
-    const humanBody = projectileBodyTarget(player.getPosition(),player.getVisualQuaternion(),player.phase);
-    const humanCentre = new THREE.Vector3().copy(humanBody.center);
     return [
       {
         active: player.phase !== "RESPAWNING" && player.phase !== "BREACH" && !player.damage.frozen,
         id: LOCAL_PLAYER_ID,
-        pos: humanCentre,
-        radius: humanBody.radius,
+        getSurfaces: lazyHitSurfaces(player.getMesh()),
         team: this.config.humanTeam,
       },
       ...this.bots.map((bot) => {
-        const botBody = projectileBodyTarget(bot.phys.pos,botOrientation(bot),bot.phase);
-        const botCentre = new THREE.Vector3().copy(botBody.center);
         return {
           active: bot.phase !== "RESPAWNING" && bot.phase !== "BREACH" && !bot.damage.frozen,
           id: bot.id,
-          pos: botCentre,
-          radius: botBody.radius,
+          getSurfaces: lazyHitSurfaces(bot.avatar.getMesh()),
           team: bot.team,
         };
       }),
@@ -315,12 +308,7 @@ export class LocalMatch {
     const impulse = event.direction.clone().normalize().multiplyScalar(0);
 
     if (event.targetId === LOCAL_PLAYER_ID) {
-      const zone = LocalPlayer.classifyHitZone(
-        event.impactPoint,
-        player.getPosition(),
-        player.getVisualQuaternion(),
-        undefined, undefined, player.phase,
-      );
+      const zone = event.zone;
       const frozen = player.applyHit(zone, impulse);
       if (frozen) {
         if (owner) {
@@ -341,12 +329,7 @@ export class LocalMatch {
     const bot = this.bots.find((candidate) => candidate.id === event.targetId);
     if (!bot) return;
 
-    const zone = classifyHitZone(
-      toVec3(event.impactPoint),
-      toVec3(bot.phys.pos),
-      botOrientation(bot),
-      undefined, undefined, bot.phase,
-    );
+    const zone = event.zone;
     const frozen = applyHitToBot(bot, zone, impulse);
     if (event.ownerId === LOCAL_PLAYER_ID) {
       this.emitEvent({

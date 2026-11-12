@@ -8,9 +8,9 @@ export default defineConfig({
     globals: false,
   },
   resolve: {
-    alias: {
-      three: path.resolve(__dirname, 'client/node_modules/three/build/three.module.js'),
-      '@colyseus/sdk': path.resolve(__dirname, 'client/node_modules/@colyseus/sdk'),
-    },
+    alias: [
+      { find: /^three$/, replacement: path.resolve(__dirname, 'client/node_modules/three/build/three.module.js') },
+      { find: '@colyseus/sdk', replacement: path.resolve(__dirname, 'client/node_modules/@colyseus/sdk') },
+    ],
   },
 });

@@ -402,7 +402,7 @@ export class ColliderEditor {
       paddingBottom: '6px',
       marginBottom: '4px',
     });
-    title.textContent = '▣ COLLIDER EDITOR';
+    title.textContent = 'LEGACY POSE EDITOR (damage uses mesh)';
 
     const listLabel = this.makeLabel('COLLIDERS');
     const listEl    = document.createElement('div');
