@@ -4,8 +4,49 @@ import { sampleAlienPose } from './helpers/alienPose';
 import { sampleHitSurfaces, lazyHitSurfaces } from '../client/src/player/hitSurface';
 import { segmentHitSurface } from '../shared/projectileCollider';
 import { seededRandom } from './helpers/hitboxOrientation';
+import { applyFloatArmTilt } from '../client/src/player/playerAimPose';
 
 describe('current mesh damage geometry',()=>{
+  it('discovers asynchronously attached assets and stops hitting detached assets on the same query',async()=>{
+    const root=new Group(),query=lazyHitSurfaces(root),a=new Vector3(0,0,-1),b=new Vector3(0,0,1);
+    expect(query(a,b)).toEqual([]);
+    const pose=await sampleAlienPose('FLOATING',.08,'FLOATING',.4,true,true);
+    root.add(pose.root,pose.helmetRoot);
+    a.copy(pose.headVertices[0]).addScalar(-.1);b.copy(pose.headVertices[0]).addScalar(.1);
+    const expected=segmentHitSurface(a,b,sampleHitSurfaces(root));expect(expected).not.toBeNull();
+    expect(query.mayIntersect!(a,b)).toBe(true);
+    expect(segmentHitSurface(a,b,query(a,b))).toEqual(expected);
+    expect(query.skinnedVertexCount).toBe(0);expect(query.boneMatrixUpdateCount).toBe(0);
+    root.remove(pose.root,pose.helmetRoot);
+    expect(query.mayIntersect!(a,b)).toBe(false);expect(query(a,b)).toEqual([]);
+  });
+  it('retains exact first contact throughout animated swimming under a moving, rotating and scaled parent',async()=>{
+    const pose=await sampleAlienPose('FLOATING',.08,'FLOATING',.4,true,true);
+    const root=new Group(),parent=new Group();root.add(pose.root,pose.helmetRoot);parent.add(root);
+    const query=lazyHitSurfaces(root),random=seededRandom(0x129b);
+    let hits=0,misses=0;
+    for(let frame=0;frame<24;frame++) {
+      pose.animation.tickMixers(1/30);pose.animation.restoreFloatRightArmPose();
+      applyFloatArmTilt(pose.animation.getRigs());
+      parent.position.set(Math.sin(frame)*2,frame*.03,-frame*.05);
+      parent.rotation.set(frame*.07,frame*.11,-frame*.04);
+      parent.scale.set(1+frame*.002,1-frame*.001,1+frame*.003);
+      parent.updateMatrixWorld(true);
+      const oracle=sampleHitSurfaces(root),center=new Vector3();
+      pose.root.getObjectByName('Head')!.getWorldPosition(center);
+      query.beginFrame!();
+      for(let probe=0;probe<96;probe++) {
+        const aim=center.clone().add(new Vector3((random()-.5)*1.5,(random()-.7)*1.5,(random()-.5)*1.5));
+        const direction=new Vector3(random()-.5,random()-.5,random()-.5).normalize();
+        const a=aim.clone().addScaledVector(direction,-2),b=aim.clone().addScaledVector(direction,2);
+        const expected=segmentHitSurface(a,b,oracle);
+        if(expected) hits++;else misses++;
+        expect(segmentHitSurface(a,b,query.mayIntersect!(a,b)?query(a,b):[])).toEqual(expected);
+      }
+      query.endFrame!();
+    }
+    expect(hits).toBeGreaterThan(100);expect(misses).toBeGreaterThan(100);
+  });
   for(const phase of ['BREACH','FLOATING','GRABBING','FROZEN']) it(`${phase}: every head/helmet vertex belongs to the exact head surface`,async()=>{
     const pose=await sampleAlienPose(phase,.08,'FLOATING',.4,true,true);
     const root=new Group();root.add(pose.root,pose.helmetRoot);
@@ -67,16 +108,23 @@ describe('current mesh damage geometry',()=>{
     const root=new Group();root.add(pose.root,pose.helmetRoot);
     const meshes: SkinnedMesh[]=[];root.traverse(n=>{if(n instanceof SkinnedMesh) meshes.push(n)});
     const query=lazyHitSurfaces(root),a=new Vector3(30,30,-1),b=new Vector3(30,30,1);
+    query.enableDiagnostics!();
     const count=()=>query.skinnedVertexCount!;
     expect(query.mayIntersect!(a,b)).toBe(false);expect(query(a,b)).toEqual([]);expect(count()).toBe(0);
+    expect(query.boneMatrixUpdateCount).toBe(0);
     const target=pose.headVertices[0];a.copy(target).addScalar(-.1);b.copy(target).addScalar(.1);
     expect(query.mayIntersect!(a,b)).toBe(true);
     const first=segmentHitSurface(a,b,query(a,b)),cold=count();expect(cold).toBeGreaterThan(0);
+    // Body/helmet have 90 bones total. Rejected roots never prepare palettes;
+    // accepted roots and exact candidates share lazily prepared matrices.
+    const matrices=query.boneMatrixUpdateCount!;
+    expect(matrices).toBeGreaterThan(0);expect(matrices).toBeLessThan(90);
     const raw=sampleHitSurfaces(root),nativePoints=new Set<string>();
     const key=(p:Vector3)=>p.toArray().join(',');
     for(const s of raw) for(let i=0;i<s.positions.length;i+=3) nativePoints.add(key(new Vector3().fromArray(s.positions,i)));
     for(const s of query(a,b)) for(const i of s.indices) expect(nativePoints.has(key(new Vector3().fromArray(s.positions,i*3)))).toBe(true);
     expect(segmentHitSurface(a,b,query(a,b))).toEqual(first);expect(count()).toBe(cold);
+    expect(query.boneMatrixUpdateCount).toBe(matrices);
     const next=lazyHitSurfaces(root);expect(next).toBe(query);next(a,b);expect(count()).toBe(cold);
     query.beginFrame!();query(a,b);const frameCount=count();query(a,b);expect(count()).toBe(frameCount);query.endFrame!();
     query.beginFrame!();query(a,b);expect(count()).toBe(frameCount);query.endFrame!();
@@ -88,6 +136,7 @@ describe('current mesh damage geometry',()=>{
     const pose=await sampleAlienPose('FLOATING',.08,'FLOATING',.4,true,true);
     const root=new Group(),parent=new Group();root.add(pose.root,pose.helmetRoot);parent.add(root);
     const query=lazyHitSurfaces(root),target=pose.headVertices[0];
+    query.enableDiagnostics!();
     const a=target.clone().addScalar(-.1),b=target.clone().addScalar(.1);
     query.beginFrame!();query(a,b);query.endFrame!();
     // Another root can own the same meshes (e.g. the full debug sampler).
@@ -108,4 +157,35 @@ describe('current mesh damage geometry',()=>{
       expect(query.skinnedVertexCount).toBeGreaterThan(count);query.endFrame!();
     }
   });
+});
+
+it('skips hierarchy signatures and live pose bounds for framed far misses, with safe invalidation',async()=>{
+  const pose=await sampleAlienPose('FLOATING',.08,'FLOATING',.4,true,true);
+  const root=new Group(),parent=new Group();root.add(pose.root,pose.helmetRoot);parent.add(root);
+  const query=lazyHitSurfaces(root);query.enableDiagnostics!();
+  const from=new Vector3(30,30,-1),to=new Vector3(30,30,1);
+  for(let frame=0;frame<12;frame++) {
+    pose.animation.tickMixers(1/60);pose.animation.restoreFloatRightArmPose();applyFloatArmTilt(pose.animation.getRigs());
+    query.beginFrame!();expect(query.mayIntersect!(from,to)).toBe(false);expect(query(from,to)).toEqual([]);query.endFrame!();
+  }
+  expect(query.posePreparationCount).toBe(0);expect(query.coarseRejectCount).toBe(24);expect(query.skinnedVertexCount).toBe(0);
+  // Ancestor matrix edits need no pose notification. The live root transform
+  // moves the all-rotation envelope before an early reject is allowed.
+  parent.matrixAutoUpdate=false;parent.matrix.makeTranslation(30,30,0);
+  let oracle=sampleHitSurfaces(root),point=new Vector3().fromArray(oracle[0].positions,0);
+  from.copy(point).addScalar(-.1);to.copy(point).addScalar(.1);
+  query.beginFrame!();
+  expect(segmentHitSurface(from,to,query.mayIntersect!(from,to)?query(from,to):[])).toEqual(segmentHitSurface(from,to,oracle));
+  query.endFrame!();
+  // A procedural bone translation outside the load-time budget must defeat
+  // the coarse reject and use the pose weight bound even without matrix refresh.
+  pose.root.getObjectByName('Head')!.position.x+=50;
+  oracle=sampleHitSurfaces(root);point.fromArray(oracle[0].positions,0);
+  from.copy(point).addScalar(-.1);to.copy(point).addScalar(.1);
+  query.beginFrame!();
+  expect(segmentHitSurface(from,to,query.mayIntersect!(from,to)?query(from,to):[])).toEqual(segmentHitSurface(from,to,oracle));
+  expect(query.posePreparationCount).toBeGreaterThan(0);expect(query.fallbackPadCount).toBeGreaterThan(0);
+  // Detach after a prepared hit in the SAME frame: child events invalidate both caches.
+  root.remove(pose.root,pose.helmetRoot);
+  expect(query.mayIntersect!(from,to)).toBe(false);expect(query(from,to)).toEqual([]);query.endFrame!();
 });
