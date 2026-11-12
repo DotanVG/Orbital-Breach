@@ -12,6 +12,7 @@ interface DebugActorSnapshot {
   position: { x: number; y: number; z: number };
   orientation?: THREE.Quaternion | import("../../../shared/hitZoneColliders").QuaternionLike;
   phase?: string;
+  getSurfaces?: () => readonly import('../../../shared/projectileCollider').HitSurface[];
 }
 
 /**

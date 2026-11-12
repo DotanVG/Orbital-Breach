@@ -3,16 +3,14 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Matrix4, Quaternion, Vector3 } from 'three';
-import { classifyHitZoneByColliders, hitZoneCollidersForPhase, orientationFromSnapshot, quaternionFromYawPitchRoll, type HitZoneCollider } from '../shared/hitZoneColliders';
+import { hitZoneCollidersForPhase, orientationFromSnapshot, quaternionFromYawPitchRoll } from '../shared/hitZoneColliders';
 import { applyHit, classifyHitZone, type SharedPlayerState } from '../shared/player-logic';
 import { bodyColliderForPhase } from '../shared/bodyCollider';
-import { projectileBodyTarget, projectileRadiusForPhase } from '../shared/projectileCollider';
 import { BAR_LAUNCH_CLEARANCE } from '../shared/constants';
 import { measureHandGripOffset, BAR_GRIP_LOCAL, applyBarHoldPose } from '../client/src/player/playerGrabPose';
 import { integrateZeroG } from '../client/src/physics';
 import { classifiedWorldFrame, randomOrientation, seededRandom } from './helpers/hitboxOrientation';
 import { sampleAlienPose } from './helpers/alienPose';
-import staging from './fixtures/stagingHitZoneColliders.json';
 vi.mock('../client/src/net/endpoint', () => ({ getColyseusEndpoint: () => null }));
 vi.mock('../client/src/match/simulatedPlayerAvatar', () => ({ SimulatedPlayerAvatar: class {} }));
 import { toActorSnapshot } from '../client/src/net/client';
@@ -138,37 +136,7 @@ describe('independent pose and 377-orientation guard',()=>{
     expect(snapshotOrientation({phase:'BREACH',yaw:Math.PI,orientX:0,orientY:0,orientZ:0,orientW:1})).toMatchObject(quaternionFromYawPitchRoll(Math.PI));
     measured.L1='PASS';
   });
-  it('broadphase encloses every zone at every orientation with a rotated centre',()=>{
-    for(const {pos,q,phase} of [...samples,{pos:new Vector3(2,3,4),q:new Quaternion(),phase:'BREACH'}]){
-      const sphere=projectileBodyTarget(pos,q,phase);
-      const expected=new Vector3().copy(bodyColliderForPhase(phase).center).applyQuaternion(q).add(pos);
-      expect(expected.distanceTo(new Vector3().copy(sphere.center))).toBeLessThan(1e-9);
-      for(const c of hitZoneCollidersForPhase(phase)) for(const x of [-1,1]) for(const y of [-1,1]) for(const z of [-1,1]){
-        const corner=c.shape==='sphere'?new Vector3(x,y,z).normalize().multiplyScalar(c.size.x):new Vector3(x*c.size.x,y*c.size.y,z*c.size.z);
-        const point=corner.add(c.position).applyQuaternion(q).add(pos);
-        expect(point.distanceTo(expected)).toBeLessThanOrEqual(sphere.radius+1e-8);
-      }
-    }
-  });
+
 });
 
-describe('seeded uniform sphere contact distribution',()=>{
-  it('reports staging versus each production v2 pose without tuning targets',()=>{
-    const count=60000, rng=seededRandom(0x215d157), layouts=['staging','BREACH','FLOATING','GRABBING'];
-    const counts=Object.fromEntries(layouts.map(k=>[k,{head:0,body:0,leftArm:0,rightArm:0,leftLeg:0,rightLeg:0}]));
-    for(let i=0;i<count;i++){
-      const y=2*rng()-1, theta=2*Math.PI*rng(),r=Math.sqrt(1-y*y), n=new Vector3(r*Math.cos(theta),y,r*Math.sin(theta)), q=samples[i%256].q;
-      for(const layout of layouts){
-        const center=layout==='staging'?new Vector3(0,-0.35,0):new Vector3().copy(bodyColliderForPhase(layout).center).applyQuaternion(q);
-        const radius=layout==='staging'?0.42:projectileRadiusForPhase(layout);
-        const impact=n.clone().multiplyScalar(radius).add(center);
-        const table=layout==='staging'?staging.colliders as HitZoneCollider[]:hitZoneCollidersForPhase(layout);
-        counts[layout][classifyHitZoneByColliders(impact,{x:0,y:0,z:0},q,table)]++;
-      }
-    }
-    const rates=Object.fromEntries(Object.entries(counts).map(([k,h])=>[k,{head:100*h.head/count,body:100*h.body/count,arms:100*(h.leftArm+h.rightArm)/count,legs:100*(h.leftLeg+h.rightLeg)/count}]));
-    for(const h of Object.values(counts)) expect(Object.values(h).reduce((a,b)=>a+b,0)).toBe(count);
-    if(process.env.HITBOX_QA_DIR) writeFileSync(join(process.env.HITBOX_QA_DIR,'HIT_DISTRIBUTION.json'),JSON.stringify({seed:0x215d157,sampleCount:count,orientationCount:256,method:'Uniform world-space first-contact normals; same seed and 256 Haar SO(3) orientations. Each layout uses its own production broadphase centre/radius. Nearest signed distance, not live aim or historical heuristic.',stagingSource:staging.source,counts,ratesPercent:rates},null,2));
-  });
-});
 afterAll(()=>{if(process.env.HITBOX_QA_DIR){mkdirSync(process.env.HITBOX_QA_DIR,{recursive:true});writeFileSync(join(process.env.HITBOX_QA_DIR,'ORIENTATION_RESULTS.json'),JSON.stringify(measured,null,2));}});

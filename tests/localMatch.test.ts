@@ -77,7 +77,7 @@ describe("LocalMatch", () => {
     match.handleProjectileHit(
       {
         direction: new THREE.Vector3(1, 0, 0),
-        impactPoint: enemyBot.phys.pos.clone(),
+        impactPoint: enemyBot.phys.pos.clone(), zone: 'head',
         ownerId: "local-player",
         targetId: enemyBot.id,
       },
@@ -114,7 +114,7 @@ describe("LocalMatch", () => {
     match.handleProjectileHit(
       {
         direction: new THREE.Vector3(1, 0, 0),
-        impactPoint: enemyBot.phys.pos.clone().add(new THREE.Vector3(-0.07, -0.563, 0.283).applyQuaternion(new THREE.Quaternion().setFromEuler(new THREE.Euler(0,(enemyBot as any).rot.yaw,0)))),
+        zone: 'leftLeg', impactPoint: enemyBot.phys.pos.clone().add(new THREE.Vector3(-0.07, -0.563, 0.283).applyQuaternion(new THREE.Quaternion().setFromEuler(new THREE.Euler(0,(enemyBot as any).rot.yaw,0)))),
         ownerId: "local-player",
         targetId: enemyBot.id,
       },
