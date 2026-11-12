@@ -23,7 +23,7 @@
   "dependencies": {
     "@colyseus/sdk": "^0.17.40",
     "@vercel/analytics": "^2.0.1",
-    "@vercel/speed-insights": "^2.0.0",
+    "@vercel/speed-insights": "^2.1.0",
     "@types/qrcode": "^1.5.6",
     "@types/three": "^0.179.0",
     "qrcode": "^1.5.4",
