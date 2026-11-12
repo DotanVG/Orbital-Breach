@@ -55,7 +55,7 @@ export function sampleHitSurfaces(root: Object3D): HitSurface[] {
 
 interface Influence { matrix: Matrix4; minWeight: number; maxWeight: number; count: number }
 interface Displacement { influences: Influence[]; sumError: number; radius: Vector3; bounds: Box3; min: Vector3; max: Vector3; frame: number; sampledPad?: Vector3 }
-interface BoneTree { bone: number; tree: BindBvh; padding: Displacement[]; reject: Map<number,Box3>; broad: Box3; broadFrame: number }
+interface BoneTree { bone: number; tree: BindBvh; padding: Displacement[]; reject: {bone: number; center: Vector3; half: Vector3}[]; broad: Box3; broadFrame: number[] }
 interface Palette {
   mesh: SkinnedMesh;
   skin: Matrix4[];
@@ -69,9 +69,6 @@ interface Palette {
   rayStart: Vector3[];
   rayEnd: Vector3[];
   singular: boolean[];
-  jointBoxes: Box3[];
-  jointWorld: Box3[];
-  jointFrame: number[];
   radii: number[];
   relative: Map<number,Map<number,Matrix4>>;
 }
@@ -81,7 +78,8 @@ interface MeshState {
   trees: BoneTree[];
   positions: Float64Array;
   sampled: Uint8Array;
-  candidates: Set<number>;
+  candidates: Uint8Array;
+  candidateCount: number;
   triangleOrder: number[];
   indices: Uint32Array;
   zones: HitZone[];
@@ -169,7 +167,6 @@ function buildMeshState(mesh: SkinnedMesh, palette: Palette, envelopes: Map<Obje
         bounds.expandByPoint(point);
       }
     }
-    for(const [b,box] of reject) palette.jointBoxes[b].union(box);
     let relative=palette.relative.get(bone);
     if(!relative) {relative=new Map();palette.relative.set(bone,relative);}
     // Restore the tight per-node interval certificate on the flat topology.
@@ -202,7 +199,7 @@ function buildMeshState(mesh: SkinnedMesh, palette: Palette, envelopes: Map<Obje
       return triangles;
     };
     measure(0);
-    trees.push({bone,tree,padding,reject,broad:new Box3(),broadFrame:-1});
+    trees.push({bone,tree,padding,reject:[...reject].map(([bone,box])=>({bone,center:box.getCenter(new Vector3()),half:box.getSize(new Vector3()).multiplyScalar(.5)})),broad:new Box3(),broadFrame:[-1,-1,-1]});
   }
   if(!native) {
     const sampled=sampleBoneNodePads(mesh,trees,data.indices);
@@ -214,7 +211,7 @@ function buildMeshState(mesh: SkinnedMesh, palette: Palette, envelopes: Map<Obje
       if(pad && !certificate.influences.length && certificate.sumError===0) certificate.sampledPad=pad;
     }
   }
-  return {mesh,palette,trees,positions:new Float64Array(positions.length),sampled:new Uint8Array(position.count),candidates:new Set(),triangleOrder:[],indices:new Uint32Array(data.indices.length),zones:[],native,bindMatrix:mesh.bindMatrix.clone()};
+  return {mesh,palette,trees,positions:new Float64Array(positions.length),sampled:new Uint8Array(position.count),candidates:new Uint8Array(data.zones.length),candidateCount:0,triangleOrder:[],indices:new Uint32Array(data.indices.length),zones:[],native,bindMatrix:mesh.bindMatrix.clone()};
 }
 
 /** With D_j=inverse(owner)*influence_j-I, skin(p)=p+sum(w_j*D_j*p).
@@ -264,7 +261,7 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
   const register=(node:SkinnedMesh)=>{
     let palette=palettes.find(p=>p.mesh.skeleton.bones.length===node.skeleton.bones.length && p.mesh.skeleton.bones.every((b,i)=>b===node.skeleton.bones[i] && p.mesh.skeleton.boneInverses[i].equals(node.skeleton.boneInverses[i])) && p.mesh.bindMatrix.equals(node.bindMatrix));
     if(!palette) {
-      palette={mesh:node,skin:node.skeleton.bones.map(()=>new Matrix4()),forward:node.skeleton.bones.map(()=>new Matrix4()),inverse:node.skeleton.bones.map(()=>new Matrix4()),skinFrame:node.skeleton.bones.map(()=>-1),inverseFrame:node.skeleton.bones.map(()=>-1),relativeFrame:node.skeleton.bones.map(()=>-1),rayQuery:node.skeleton.bones.map(()=>-1),rayStart:node.skeleton.bones.map(()=>new Vector3()),rayEnd:node.skeleton.bones.map(()=>new Vector3()),singular:node.skeleton.bones.map(()=>false),jointBoxes:node.skeleton.bones.map(()=>new Box3()),jointWorld:node.skeleton.bones.map(()=>new Box3()),jointFrame:node.skeleton.bones.map(()=>-1),prepareSkin:()=>{},radii:node.skeleton.bones.map(()=>0),relative:new Map()};
+      palette={mesh:node,skin:node.skeleton.bones.map(()=>new Matrix4()),forward:node.skeleton.bones.map(()=>new Matrix4()),inverse:node.skeleton.bones.map(()=>new Matrix4()),skinFrame:node.skeleton.bones.map(()=>-1),inverseFrame:node.skeleton.bones.map(()=>-1),relativeFrame:node.skeleton.bones.map(()=>-1),rayQuery:node.skeleton.bones.map(()=>-1),rayStart:node.skeleton.bones.map(()=>new Vector3()),rayEnd:node.skeleton.bones.map(()=>new Vector3()),singular:node.skeleton.bones.map(()=>false),prepareSkin:()=>{},radii:node.skeleton.bones.map(()=>0),relative:new Map()};
       const p=palette;
       p.prepareSkin=i=>{
         if(p.skinFrame[i]===frame) return;p.skinFrame[i]=frame;
@@ -277,7 +274,7 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
     states.push(buildMeshState(node,palette,envelopes));
   };
   root.traverse(node=>{if(node instanceof SkinnedMesh) register(node);});
-  const jobs=states.flatMap(state=>state.trees.map(group=>({state,group,entry:Infinity})));
+  const jobs=states.flatMap(state=>state.trees.map(group=>({state,group,entry:Infinity,refined:false})));
   let stable=false,prepared=false,nativeRequired=false,diagnostics=false,full:HitSurface[]|undefined;
   const signature:number[]=[],objects:Object3D[]=[],meshes:SkinnedMesh[]=[];
   let skinnedVertexCount=0,candidateTriangleCount=0,boneMatrixUpdateCount=0,posePreparationCount=0,coarseRejectCount=0,fallbackPadCount=0,frame=0;
@@ -373,7 +370,7 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
     if(meshes.length!==states.length || meshes.some((mesh,i)=>mesh!==states[i].mesh)) {
       states.length=0;palettes.length=0;jobs.length=0;envelopes.clear();changed=true;
       for(const mesh of meshes) register(mesh);
-      for(const state of states) for(const group of state.trees) jobs.push({state,group,entry:Infinity});
+      for(const state of states) for(const group of state.trees) jobs.push({state,group,entry:Infinity,refined:false});
       rebuildCoarse();
     }
     if(hierarchy.dirty) {rebuildCoarse();changed=true;}
@@ -437,25 +434,32 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
     palette.rayQuery[bone]=queryId;
   };
   const rootMayIntersect=(group:BoneTree,palette:Palette,start:Vec3,end:Vec3)=>{
-    if(group.broadFrame!==frame) {
-      const bounds=group.broad;bounds.makeEmpty();
-      for(const bone of group.reject.keys()) {
-        if(palette.jointFrame[bone]!==frame) {
-          const box=palette.jointBoxes[bone],world=palette.jointWorld[bone];
+    let lo=0,hi=1;
+    // Keep each tree's own boxes and compute axes only until a separating slab
+    // rejects. A later ray can lazily fill the remaining axes in the same pose.
+    for(let axis=0;axis<3;axis++) {
+      if(group.broadFrame[axis]!==frame) {
+        let min=Infinity,max=-Infinity;
+        for(const {bone,center,half} of group.reject) {
           const e=palette.mesh.skeleton.bones[bone].matrixWorld.elements;
-          const x=(box.min.x+box.max.x)/2,y=(box.min.y+box.max.y)/2,z=(box.min.z+box.max.z)/2;
-          const hx=(box.max.x-box.min.x)/2,hy=(box.max.y-box.min.y)/2,hz=(box.max.z-box.min.z)/2;
-          const cx=e[0]*x+e[4]*y+e[8]*z+e[12],cy=e[1]*x+e[5]*y+e[9]*z+e[13],cz=e[2]*x+e[6]*y+e[10]*z+e[14];
-          const rx=Math.abs(e[0])*hx+Math.abs(e[4])*hy+Math.abs(e[8])*hz,ry=Math.abs(e[1])*hx+Math.abs(e[5])*hy+Math.abs(e[9])*hz,rz=Math.abs(e[2])*hx+Math.abs(e[6])*hy+Math.abs(e[10])*hz;
-          world.min.set(cx-rx,cy-ry,cz-rz);world.max.set(cx+rx,cy+ry,cz+rz);
-          palette.jointFrame[bone]=frame;
+          const c=e[axis]*center.x+e[4+axis]*center.y+e[8+axis]*center.z+e[12+axis];
+          const r=Math.abs(e[axis])*half.x+Math.abs(e[4+axis])*half.y+Math.abs(e[8+axis])*half.z;
+          min=Math.min(min,c-r);max=Math.max(max,c+r);
         }
-        bounds.union(palette.jointWorld[bone]);
+        const guard=Math.max(Math.abs(min),Math.abs(max),1)*1e-6+1e-7;
+        group.broad.min.setComponent(axis,min-guard);group.broad.max.setComponent(axis,max+guard);group.broadFrame[axis]=frame;
       }
-      const magnitude=Math.max(Math.abs(bounds.min.x),Math.abs(bounds.min.y),Math.abs(bounds.min.z),Math.abs(bounds.max.x),Math.abs(bounds.max.y),Math.abs(bounds.max.z),1);
-      bounds.expandByScalar(magnitude*1e-6+1e-7);group.broadFrame=frame;
+      const s=axis===0?start.x:axis===1?start.y:start.z,d=(axis===0?end.x:axis===1?end.y:end.z)-s;
+      if(!Number.isFinite(s) || !Number.isFinite(d)) return Infinity;
+      const min=group.broad.min.getComponent(axis),max=group.broad.max.getComponent(axis);
+      if(Math.abs(d)<1e-14) {if(s<min || s>max) return Infinity;}
+      else {
+        const a=(min-s)/d,b=(max-s)/d;
+        lo=Math.max(lo,Math.min(a,b));hi=Math.min(hi,Math.max(a,b));
+        if(lo>hi) return Infinity;
+      }
     }
-    return bindBoundsEntry(start,end,group.broad.min,group.broad.max)!==Infinity;
+    return lo;
   };
   const query:HitSurfaceQuery=(start,end)=>{
     surfaces.length=0;
@@ -466,26 +470,37 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
     if(broad.isEmpty() || !segmentIntersectsBounds(start,end,broad.min,broad.max)) return surfaces;
     if(nativeRequired) return sampleHitSurfaces(root);
     let closest=1;queryId++;
-    for(const state of states) state.candidates.clear();
+    for(const state of states) {state.candidates.fill(0);state.candidateCount=0;}
     for(const job of jobs) {
-      job.entry=Infinity;
-      if(!rootMayIntersect(job.group,job.state.palette,start,end)) continue;
-      const {palette}=job.state,bone=job.group.bone;
-      prepareRay(palette,bone,start,end);
-      const bounds=boundsFor(job.group,palette,0);
-      job.entry=palette.singular[bone] ? 0 : bindBoundsEntry(palette.rayStart[bone],palette.rayEnd[bone],bounds.min,bounds.max);
+      job.refined=false;
+      job.entry=rootMayIntersect(job.group,job.state.palette,start,end);
     }
-    jobs.sort((a,b)=>a.entry-b.entry);
-    for(const {state,group,entry} of jobs) {
-      if(entry>closest+1e-9) continue;
+    // Integer comparator results avoid boxing fractional entry differences.
+    jobs.sort((a,b)=>a.entry>b.entry?1:a.entry<b.entry?-1:0);
+    for(let j=0;j<jobs.length;j++) {
+      const job=jobs[j],{state,group}=job;
+      if(job.entry>closest+1e-9) break;
       const {mesh,palette}=state,data=topologyFor(mesh);
+      if(!job.refined) {
+        prepareRay(palette,group.bone,start,end);
+        const bounds=boundsFor(group,palette,0);
+        job.entry=palette.singular[group.bone] ? job.entry : Math.max(job.entry,bindBoundsEntry(palette.rayStart[group.bone],palette.rayEnd[group.bone],bounds.min,bounds.max));
+        job.refined=true;
+        // Refine only the next conservative root. Its tighter entry may move
+        // behind another root; retain global near-first order before skinning.
+        let k=j;
+        while(k+1<jobs.length && jobs[k+1].entry<job.entry) {jobs[k]=jobs[k+1];k++;}
+        jobs[k]=job;
+        if(k!==j) {j--;continue;}
+        if(job.entry>closest+1e-9) break;
+      }
       localStart.copy(palette.rayStart[group.bone]);localEnd.copy(palette.rayEnd[group.bone]);
       const visit=(triangles:Uint32Array,first:number,length:number)=>{
         let count=0;leafZones.length=0;
         for(let i=first;i<first+length;i++) {
           const t=triangles[i];
-          if(state.candidates.has(t)) continue;
-          state.candidates.add(t);leafZones.push(data.zones[t]);
+          if(state.candidates[t]) continue;
+          state.candidates[t]=1;state.triangleOrder[state.candidateCount++]=t;leafZones.push(data.zones[t]);
           for(let k=0;k<3;k++) {
             const v=data.indices[t*3+k];leafIndices[count++]=v;
             if(!state.sampled[v]) {
@@ -506,14 +521,13 @@ export function lazyHitSurfaces(root: Object3D): HitSurfaceQuery {
         for(let t=0;t<data.zones.length;t++) {leafIndices[0]=t;visit(leafIndices,0,1);}
         continue;
       }
-      queryBindBvh(group.tree,localStart,localEnd,node=>boundsFor(group,palette,node),state.candidates,visit);
+      queryBindBvh(group.tree,localStart,localEnd,node=>boundsFor(group,palette,node),undefined,visit,Math.min(1,closest+1e-9));
     }
     // Restore asset mesh/triangle ordering for exact first-contact ties.
     for(const state of states) {
-      if(!state.candidates.size) continue;
-      const data=topologyFor(state.mesh),triangles=state.triangleOrder;let count=0,length=0;
-      for(const t of state.candidates) triangles[length++]=t;
-      triangles.length=length;triangles.sort(triangleOrder);
+      if(!state.candidateCount) continue;
+      const data=topologyFor(state.mesh),triangles=state.triangleOrder;let count=0;
+      triangles.length=state.candidateCount;triangles.sort(triangleOrder);
       state.zones.length=0;
       for(const t of triangles) {
         for(let k=0;k<3;k++) state.indices[count++]=data.indices[t*3+k];

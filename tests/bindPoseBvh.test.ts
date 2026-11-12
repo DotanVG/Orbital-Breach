@@ -94,4 +94,19 @@ describe('bind-pose BVH candidate selection',()=>{
     queryBindBvh(tree,{...start,z:0},{...end,z:0},certificate,output);
     expect(output.size).toBe(0);
   });
+  it('carries a prior tree contact into both slab and certificate traversal before visiting any leaf',()=>{
+    const start={x:-1,y:.1,z:0},end={x:40,y:.1,z:0};
+    const certificate=(n:number)=>({min:{x:tree.bounds[n*6],y:tree.bounds[n*6+1],z:tree.bounds[n*6+2]},max:{x:tree.bounds[n*6+3],y:tree.bounds[n*6+4],z:tree.bounds[n*6+5]}});
+    for(const padding of [{x:0,y:0,z:0},certificate]) {
+      const seen:number[]=[];
+      queryBindBvh(tree,start,end,padding,new Set(),(triangles,first,count)=>{
+        for(let i=first;i<first+count;i++) seen.push(triangles[i]);return 1;
+      },.01);
+      expect(seen).toEqual([]);
+      queryBindBvh(tree,start,end,padding,new Set(),(triangles,first,count)=>{
+        for(let i=first;i<first+count;i++) seen.push(triangles[i]);return 1;
+      },1/41);
+      expect(seen).toContain(0);expect(Math.max(...seen)).toBeLessThanOrEqual(4);
+    }
+  });
 });

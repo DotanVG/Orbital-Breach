@@ -4,6 +4,29 @@ import { lazyHitSurfaces, sampleHitSurfaces } from '../client/src/player/hitSurf
 import { registerHitClips } from '../client/src/player/boneBvhClipPads';
 import { segmentHitSurface } from '../shared/projectileCollider';
 
+it('defers a farther root palette until it can beat the exact contact, and refreshes after motion',()=>{
+  const geometry=new BufferGeometry();
+  geometry.setAttribute('position',new Float32BufferAttribute([-1,-1,0,1,-1,0,0,1,0,-1,-1,5,1,-1,5,0,1,5],3));
+  geometry.setAttribute('skinIndex',new Uint16BufferAttribute([0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],4));
+  geometry.setAttribute('skinWeight',new Float32BufferAttribute(Array.from({length:6},()=>[1,0,0,0]).flat(),4));
+  geometry.setIndex([0,1,2,3,4,5]);
+  const body=new Bone(),head=new Bone();body.name='Body';head.name='Head';
+  const mesh=new SkinnedMesh(geometry,new MeshBasicMaterial());mesh.add(body,head);mesh.bind(new Skeleton([body,head]));
+  const root=new Group();root.add(mesh);
+  const query=lazyHitSurfaces(root);query.enableDiagnostics!();
+  for(const z of [0,-10]) {
+    head.position.z=z;
+    const oracle=sampleHitSurfaces(root),from=new Vector3(0,0,-6),to=new Vector3(0,0,10);
+    const before=query.boneMatrixUpdateCount!;
+    query.beginFrame!();
+    const hit=segmentHitSurface(from,to,query(from,to));
+    expect(hit).toEqual(segmentHitSurface(from,to,oracle));
+    expect(hit?.zone).toBe(z===0?'body':'head');
+    expect(query.boneMatrixUpdateCount!-before).toBe(1);
+    query.endFrame!();
+  }
+});
+
 it('bounds sub-threshold influences, duplicate bone slots and deformation beyond the offline pad',()=>{
   const geometry=new BufferGeometry();
   geometry.setAttribute('position',new Float32BufferAttribute([-1,-1,0,1,-1,0,0,1,0],3));

@@ -78,7 +78,7 @@ export function flatBoundsEntry(bounds: Float32Array, node: number, ray: Float64
 
 /** Allocation-free traversal, including leaf ranges and stack. A visitor may
  * return a smaller contact parameter; inverse directions remain valid. */
-export function queryBindBvh(tree: BindBvh, start: Vec3, end: Vec3, padding: Vec3 | ((node: number) => {min: Vec3; max: Vec3}), output: Set<number>, visit?: (triangles: Uint32Array, first: number, count: number) => number): void {
+export function queryBindBvh(tree: BindBvh, start: Vec3, end: Vec3, padding: Vec3 | ((node: number) => {min: Vec3; max: Vec3}), output: Set<number> | undefined, visit?: (triangles: Uint32Array, first: number, count: number) => number, initialLimit=1): void {
   const {ray,stack,nodes,bounds,triangles}=tree;
   const certificate=typeof padding==='function'?padding:undefined;
   ray[0]=start.x;ray[1]=start.y;ray[2]=start.z;
@@ -93,14 +93,14 @@ export function queryBindBvh(tree: BindBvh, start: Vec3, end: Vec3, padding: Vec
     const box=certificate(node);
     return bindBoundsEntry(start,end,box.min,box.max);
   };
-  let size=1,limit=1;stack[0]=0;
+  let size=1,limit=initialLimit;stack[0]=0;
   while(size) {
     const node=stack[--size],offset=node*4;
     if(entry(node,limit)>limit) continue;
     const count=nodes[offset+3],first=nodes[offset+2];
     if(count) {
       if(visit) limit=Math.min(limit,visit(triangles,first,count));
-      else for(let i=first;i<first+count;i++) output.add(triangles[i]);
+      else for(let i=first;i<first+count;i++) output?.add(triangles[i]);
     } else {
       const left=nodes[offset],right=nodes[offset+1];
       const a=entry(left,limit),b=entry(right,limit);

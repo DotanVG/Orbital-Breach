@@ -21,9 +21,8 @@ function instrument(code) {
     replace('  };\n  const query:HitSurfaceQuery=', '  });\n  const query:HitSurfaceQuery=');
   }
   replace('    for(const job of jobs) {','    timed("root rays",()=>{for(const job of jobs) {');
-  replace('    jobs.sort((a,b)=>a.entry-b.entry);','    }});\n    timed("sort",()=>jobs.sort((a,b)=>a.entry-b.entry));');
-  // The original loop closing brace is replaced by the two braces above.
-  replace('    }\n    }});','    }});');
+  const sort=code.includes('jobs.sort((a,b)=>a.entry-b.entry);')?'jobs.sort((a,b)=>a.entry-b.entry);':'jobs.sort((a,b)=>a.entry>b.entry?1:a.entry<b.entry?-1:0);';
+  replace('    '+sort,'    });\n    timed("sort",()=>'+sort.slice(0,-1)+');');
   code+=`\n
 const profileStack=[];
 globalThis.__boneProfile={times:{},counts:{}};
