@@ -1,4 +1,4 @@
-import { Client as ColyseusClient, type Room } from "@colyseus/sdk";
+import { Client as ColyseusClient, ErrorCode, MatchMakeError, ServerError, type Room } from "@colyseus/sdk";
 import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { orientationFromSnapshot } from "../../../shared/hitZoneColliders";
 import { getColyseusEndpoint } from "./endpoint";
@@ -136,7 +136,13 @@ export class NetClient {
       return snapshot;
     } catch (error) {
       if (generation !== this.generation) return null;
-      if (!isTransportError(error)) {
+      // The server can reject the token before its ping detects the drop and
+      // allowReconnection reserves the seat. Retry within the existing deadline.
+      const pendingReservation = this.reconnectionToken !== null
+        && (error instanceof MatchMakeError || error instanceof ServerError)
+        && error.code === ErrorCode.MATCHMAKE_EXPIRED
+        && error.message === "reconnection token invalid or expired.";
+      if (!isTransportError(error) && !pendingReservation) {
         if (!this.reconnectionToken) throw error;
         this.failReconnect();
         return null;

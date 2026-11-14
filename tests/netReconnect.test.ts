@@ -405,6 +405,56 @@ describe("DOT-137 recovery and menu cleanup", () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+  it.each(["MatchMakeError", "ServerError"])("retries a pending reconnection reservation from %s and recovers the same seat", async kind => {
+    const first = makeRoom();
+    const second = makeRoom();
+    const { client, handle } = makeClient(first.handle);
+    const message = "reconnection token invalid or expired.";
+    const error = kind === "MatchMakeError"
+      ? new MatchMakeError(message, ErrorCode.MATCHMAKE_EXPIRED)
+      : new ServerError(ErrorCode.MATCHMAKE_EXPIRED, message);
+    client.reconnect.mockRejectedValueOnce(error).mockResolvedValue(second.handle);
+    const net = new NetClient(handle);
+    const status = vi.fn(); net.onConnectionStatus = status;
+    const lost = vi.fn(); net.onLeave = lost;
+    await net.connect({ name: "Pilot" });
+    first.callbacks.leave(4010);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(client.reconnect).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(client.reconnect).toHaveBeenCalledExactlyOnceWith(first.room.reconnectionToken);
+    expect(status).toHaveBeenLastCalledWith("reconnecting");
+    await vi.advanceTimersByTimeAsync(999);
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(client.reconnect).toHaveBeenNthCalledWith(2, first.room.reconnectionToken);
+    expect(status).toHaveBeenLastCalledWith("connected");
+    expect(net.getSessionId()).toBe(first.room.sessionId);
+    expect(client.joinOrCreate).toHaveBeenCalledTimes(1);
+    expect(client.joinById).not.toHaveBeenCalled();
+    expect(status).not.toHaveBeenCalledWith("lost");
+    expect(lost).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    await net.disconnect();
+  });
+
+  it("bounds repeated pending reconnection rejections to the session retry budget", async () => {
+    const first = makeRoom();
+    const { client, handle } = makeClient(first.handle);
+    client.reconnect.mockRejectedValue(new MatchMakeError("reconnection token invalid or expired.", ErrorCode.MATCHMAKE_EXPIRED));
+    const net = new NetClient(handle);
+    const status = vi.fn(); net.onConnectionStatus = status;
+    await net.connect({ name: "Pilot" });
+    first.callbacks.leave(4010);
+    await vi.runAllTimersAsync();
+    expect(client.reconnect).toHaveBeenCalledTimes(MAX_SESSION_RECONNECT_ATTEMPTS);
+    expect(status).toHaveBeenLastCalledWith("lost");
+    expect(net.getSessionId()).toBeNull();
+    expect(client.joinById).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    await net.disconnect();
+  });
+
   it("force-closes the transport when consented leave never acknowledges", async () => {
     const first = makeRoom();
     const { client, handle } = makeClient(first.handle);
