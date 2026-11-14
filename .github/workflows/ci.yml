@@ -69,3 +69,9 @@ jobs:
         env:
           NODE_ENV: production
         run: npm ci && npm run build
+
+      - name: Install headless Chromium
+        run: node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Page-load smoke (desktop and iPhone landscape)
+        run: npm run test:page-load

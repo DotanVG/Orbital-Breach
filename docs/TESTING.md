@@ -17,6 +17,11 @@ All commands run from the **repo root** unless noted. Use the local
 npm test                   # single run, CI-style
 npm run test:watch         # watch mode
 
+# Production page-load smoke (headless Chromium: desktop + iPhone landscape)
+node_modules/.bin/playwright install chromium  # first run; add --with-deps on Linux CI
+npm run build --prefix client
+npm run test:page-load
+
 # TypeScript typecheck (run before any commit)
 cd client && node_modules/.bin/tsc --noEmit
 cd server && node_modules/.bin/tsc --noEmit
@@ -56,12 +61,14 @@ does not build this harness. Contents:
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:page-load": "node scripts/qa/page-load.mjs",
     "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\""
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@vitest/coverage-v8": "^3.2.4",
     "concurrently": "^9.1.0",
+    "playwright": "1.58.2",
     "vitest": "^3.2.4"
   }
 }
@@ -182,6 +189,10 @@ these paths.
 
 ### Desktop browser (Chrome + Firefox at minimum)
 
+- [ ] `npm run test:page-load` passes for the built app: direct welcome and embedded
+      menu loads on desktop and iPhone landscape produce zero console errors and
+      zero uncaught page errors. CI runs this automatically after building. Hosted
+      analytics loaders and font CSS are stubbed; unexpected external requests fail.
 - [ ] Boot opens directly on the main menu (call sign lives there). No page appears before that menu. Audio and fullscreen wait for a menu click.
 - [ ] Solo: 1v1, 2v2, 5v5, 10v10, 20v20 — bots fill empty seats; LMB fires; E
       grabs; Space launches with mouse-Y aim power.

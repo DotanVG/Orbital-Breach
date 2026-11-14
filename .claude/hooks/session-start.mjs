@@ -26,12 +26,14 @@ const harnessPackageJson = `{
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:page-load": "node scripts/qa/page-load.mjs",
     "dev": "concurrently \\"npm run dev --prefix server\\" \\"npm run dev --prefix client\\""
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@vitest/coverage-v8": "^3.2.4",
     "concurrently": "^9.1.0",
+    "playwright": "1.58.2",
     "vitest": "^3.2.4"
   }
 }

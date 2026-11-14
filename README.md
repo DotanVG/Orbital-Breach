@@ -251,6 +251,8 @@ rebuild after a major refactor.
 
 Shipped and implemented:
 
+- Page-load CI smoke checks the production build in headless Chromium on desktop and iPhone landscape, including direct welcome and embedded menu entry. Both console errors and uncaught page errors fail the check; unexpected external requests fail rather than being silently blocked. The broken third-party Vibe Jam badge script is removed; arena portals remain available.
+
 - Projectile damage uses exact body/helmet triangle first contact. Four-triangle flat bone-local BVHs retain tight per-node runtime deformation certificates; the loose whole-bone hit pad is removed. Far projectile misses keep the checked all-rotation actor envelope and skip hierarchy signatures/live pose AABBs. Near queries carry the closest contact across trees, use tight per-tree world rejects with lazy axis bounds, and refine roots in entry order before preparing their skin/inverse palettes and bone-space rays. Reusable candidate flags deduplicate triangles. Integer root-sort results avoid fractional comparator allocations. Actual asset clips are sampled on a detached rig at load (4 Hz, per-node displacement plus margin); analytically rigid nodes record a sampled pad, but it is only counted for diagnostics (sampledPadNodeCount); their candidate bounds use the exact rigid bind box, so sampled pads do not change candidate selection. Blended nodes keep runtime certificates. Exceptional transforms and hierarchy changes retain fallback invalidation. Only candidate vertices are CPU-skinned, with original mesh/triangle tie ordering. Head damage, helmets and zone mapping are unchanged. The online server validates reported zones and plausibility without loading or skinning meshes.
 
 - Browser-playable zero-G FPS with solo bot matches and Colyseus-backed online multiplayer.
@@ -296,6 +298,23 @@ Audio by **Noam Ouzana**: main theme, hit SFX, laser shots, and countdown audio.
   [quaternius.com/packs/scifigun.html](https://quaternius.com/packs/scifigun.html)
 
 ## More Docs
+
+Headless page-load smoke (Node 22+, after installing root and client dependencies):
+
+```powershell
+& node_modules/.bin/playwright.cmd install chromium
+npm.cmd run build --prefix client
+npm.cmd run test:page-load
+```
+
+CI runs the same smoke after the client production build and installs Chromium
+with its Linux dependencies. The check serves `client/dist` on a free loopback
+port and closes its browser and server on success or failure. It requires the
+welcome button or solo menu button to become visible, then checks for zero console
+errors and zero `pageerror` events through a one-second settling period. Only
+Vercel's two hosted analytics loaders and Google Fonts CSS are stubbed; other
+external requests fail the check. This does not verify hosted analytics, remote
+fonts, deployment headers, real iOS Safari, or gameplay.
 
 Headless menu QA (Node 22+, after installing client dependencies):
 
