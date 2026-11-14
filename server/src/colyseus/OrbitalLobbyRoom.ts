@@ -221,7 +221,8 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
   public onDrop(client: RoomClient, code: number): void {
     // Validation failures and server kicks still leave immediately.
-    const takeover = this.staleTakeovers.has(client);
+    // One-shot: only the 4002 close Colyseus sends for this takeover reserves the seat.
+    const takeover = code === 4002 && this.staleTakeovers.delete(client);
     if (this.rejectedTransports.has(client)) return;
     if (!takeover && ![1001, 1005, 1006, 1011, 1012, 1013, 4010].includes(code)) return;
     const member = this.state.members.get(client.sessionId);
