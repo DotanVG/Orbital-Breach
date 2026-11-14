@@ -487,4 +487,29 @@ describe("DOT-137 recovery and menu cleanup", () => {
     expect(rejected).not.toHaveBeenCalled();
     await net.disconnect();
   });
+
+  it("retries by roomId after an expired reservation reaches lost", async () => {
+    const first = makeRoom();
+    const second = makeRoom("room-1", "pilot-2");
+    const { client, handle } = makeClient(first.handle);
+    client.reconnect.mockRejectedValue(new MatchMakeError("Reservation expired", ErrorCode.MATCHMAKE_EXPIRED));
+    client.joinById.mockResolvedValue(second.handle);
+    const net = new NetClient(handle);
+    const status = vi.fn(); net.onConnectionStatus = status;
+    await net.connect({ name: "Pilot" });
+    first.callbacks.leave(1006);
+    await vi.runAllTimersAsync();
+    expect(status).toHaveBeenLastCalledWith("lost");
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(client.joinById).not.toHaveBeenCalled();
+
+    client.reconnect.mockClear();
+    net.retry();
+    await vi.runAllTimersAsync();
+    expect(client.joinById).toHaveBeenCalledExactlyOnceWith("room-1", { name: "Pilot" });
+    expect(client.reconnect).not.toHaveBeenCalled();
+    expect(status).toHaveBeenLastCalledWith("connected");
+    expect(net.getSessionId()).toBe("pilot-2");
+    await net.disconnect();
+  });
 });

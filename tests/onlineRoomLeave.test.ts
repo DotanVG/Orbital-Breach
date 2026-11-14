@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_PLAYER_NAME } from "../shared/callSigns";
-import { buildBotName } from "../shared/multiplayer";
+import { buildBotName, MULTIPLAYER_COUNTDOWN_SECONDS } from "../shared/multiplayer";
 import { RECONNECTION_GRACE_SECONDS, OrbitalLobbyRoom } from "../server/src/colyseus/OrbitalLobbyRoom";
 import { ActorState, LobbyMemberState, OrbitalLobbyState } from "../server/src/colyseus/state";
 
@@ -236,6 +236,47 @@ describe("OrbitalLobbyRoom fill_bots", () => {
 });
 
 describe("DOT-137 reconnect reservation", () => {
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it.each(["LOBBY", "COUNTDOWN"])("requires the reserved ready player to reconnect before starting from %s", phase => {
+    vi.useFakeTimers();
+    const room = createRoom();
+    addMember(room, "pilot", { name: "Alpha", team: 0 });
+    addMember(room, "peer", { name: "Bravo", team: 1 });
+    vi.spyOn(room, "allowReconnection").mockReturnValue(undefined as never);
+    vi.spyOn(room, "lock").mockResolvedValue(undefined);
+    vi.spyOn(room, "unlock").mockResolvedValue(undefined);
+    try {
+      if (phase === "COUNTDOWN") {
+        room.onReconnect({ sessionId: "peer" } as never);
+        expect(room.state.phase).toBe("COUNTDOWN");
+        vi.advanceTimersByTime(1000);
+      }
+
+      room.onDrop({ sessionId: "pilot" } as never, 1006);
+      expect(room.state.phase).toBe("LOBBY");
+      expect(room.state.countdownRemaining).toBe(0);
+      expect(room.state.roundNumber).toBe(0);
+      expect(room.state.actors.size).toBe(0);
+      expect(room.state.members.get("pilot")).toMatchObject({ connected: false, ready: true, team: 0 });
+      expect(() => room.onJoin({ sessionId: "newcomer" } as never, { name: "Charlie" })).toThrow("full");
+
+      // Another lobby update must not restart the countdown using the reserved seat.
+      room.onReconnect({ sessionId: "peer" } as never);
+      vi.advanceTimersByTime(MULTIPLAYER_COUNTDOWN_SECONDS * 1000);
+      expect(room.state.phase).toBe("LOBBY");
+
+      room.onReconnect({ sessionId: "pilot" } as never);
+      expect(room.state.members.get("pilot")).toMatchObject({ connected: true, ready: true, team: 0 });
+      expect(room.state.phase).toBe("COUNTDOWN");
+      expect(room.state.countdownRemaining).toBe(MULTIPLAYER_COUNTDOWN_SECONDS);
+      vi.advanceTimersByTime(MULTIPLAYER_COUNTDOWN_SECONDS * 1000);
+      expect(room.state.phase).toBe("PLAYING");
+    } finally {
+      room.onDispose();
+    }
+  });
+
   it("keeps the same member, team, actor and score through drop and reconnect", () => {
     const room = createRoom();
     room.state.phase = "PLAYING";

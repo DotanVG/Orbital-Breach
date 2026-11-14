@@ -226,6 +226,7 @@ export class NetClient {
   }
 
   private failReconnect(): void {
+    this.reconnectionToken = null;
     if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     if (this.attemptTimeout !== null) clearTimeout(this.attemptTimeout);

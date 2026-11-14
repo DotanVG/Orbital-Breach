@@ -213,6 +213,9 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     const member = this.state.members.get(client.sessionId);
     if (!member) return;
     member.connected = false;
+    if (this.state.phase === "LOBBY" || this.state.phase === "COUNTDOWN") {
+      this.syncLobbyFlow();
+    }
     // Colyseus keeps the seat (including in locked rooms) and calls onLeave
     // on expiry, or onReconnect with the same sessionId on success.
     this.allowReconnection(client, RECONNECTION_GRACE_SECONDS);
@@ -512,6 +515,14 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
   // ── Round flow ──────────────────────────────────────────────────────────────
 
+  private canStartLobbyRound(): boolean {
+    // Reserved seats still count for joining and balance, but cannot start play.
+    return canStartLobbyRound(
+      this.getMemberSnapshots().filter((member) => member.connected),
+      this.state.teamSize as MatchTeamSize,
+    );
+  }
+
   private syncLobbyFlow(): void {
     void this.refreshRoomMetadata();
 
@@ -520,7 +531,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }
 
     if (this.state.phase === "COUNTDOWN") {
-      if (!canStartLobbyRound(this.getMemberSnapshots(), this.state.teamSize as MatchTeamSize)) {
+      if (!this.canStartLobbyRound()) {
         this.cancelCountdown();
       }
       return;
@@ -528,7 +539,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
     if (
       this.state.phase === "LOBBY"
-      && canStartLobbyRound(this.getMemberSnapshots(), this.state.teamSize as MatchTeamSize)
+      && this.canStartLobbyRound()
     ) {
       this.startCountdown();
     }
@@ -629,7 +640,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
       if (
         matchWinner === null
-        && canStartLobbyRound(this.getMemberSnapshots(), this.state.teamSize as MatchTeamSize)
+        && this.canStartLobbyRound()
       ) {
         this.startCountdown();
         return;
