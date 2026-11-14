@@ -1,3 +1,4 @@
+import { Client as ColyseusClient, type ISeatReservation } from '@colyseus/sdk';
 import { fork, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +16,7 @@ const playerUpdate = (posX = 3) => ({ posX, posY: 0, posZ: 0, velX: 0, velY: 0, 
 
 interface Snapshot {
   rooms: number; exists: boolean; clients: number; members: number; actors: number;
-  ready: boolean[]; positions: number[]; rates: number; timers: number;
+  ready: boolean[]; connected: boolean[]; positions: number[]; rates: number; timers: number;
 }
 interface Seat { processId: string; roomId: string; sessionId: string }
 
@@ -92,7 +93,9 @@ describe('real multiplayer server trust boundary', () => {
   }
 
   async function disconnectAndCheck(): Promise<void> {
-    for (const ws of sockets) if (ws.readyState === WebSocket.OPEN) ws.terminate();
+    // Test teardown is an intentional exit. A terminated socket now correctly
+    // retains its seat for the reconnection grace window.
+    for (const ws of sockets) if (ws.readyState === WebSocket.OPEN) ws.send(Buffer.from([Protocol.LEAVE_ROOM]));
     await inspectUntil(state => expect(state).toMatchObject({ rooms: 0, exists: false, clients: 0, members: 0, actors: 0, rates: 0, timers: 0 }));
     await assertHealthy();
   }
@@ -134,6 +137,37 @@ describe('real multiplayer server trust boundary', () => {
       clearTimeout(fallback);
     }
   });
+
+  it('recovers the same actor in a locked playing room using the SDK token', async () => {
+    const client = new ColyseusClient(`http://127.0.0.1:${port}`);
+    const joined = await client.consumeSeatReservation(seat as ISeatReservation);
+    joined.onMessage('*', () => {});
+    joined.reconnection.enabled = false;
+    const sessionId = joined.sessionId;
+    const token = joined.reconnectionToken;
+    await rpc('playing');
+    await joined.leave(false);
+    await inspectUntil(state => expect(state).toMatchObject({ clients: 0, members: 1, actors: 1, connected: [false] }));
+    const recovered = await client.reconnect(token);
+    recovered.onMessage('*', () => {});
+    expect(recovered.sessionId).toBe(sessionId);
+    if (!recovered.state.phase) await new Promise<void>(resolve => recovered.onStateChange.once(() => resolve()));
+    expect(recovered.state.phase).toBe('PLAYING');
+    expect(recovered.state.actors.get(sessionId)).toMatchObject({ id: sessionId, posX: 3 });
+    expect(recovered.reconnectionToken).not.toBe(token);
+    await inspectUntil(state => expect(state).toMatchObject({ clients: 1, members: 1, actors: 1, connected: [true] }));
+    await recovered.leave();
+    await inspectUntil(state => expect(state).toMatchObject({ rooms: 0, exists: false, members: 0, actors: 0 }));
+  });
+
+  it('expires a dropped player and releases the last room after the grace window', async () => {
+    socket = await connect();
+    await rpc('playing');
+    socket.terminate();
+    await inspectUntil(state => expect(state).toMatchObject({ clients: 0, members: 1, actors: 1, connected: [false] }));
+    await pause(20_100);
+    await inspectUntil(state => expect(state).toMatchObject({ rooms: 0, exists: false, members: 0, actors: 0, rates: 0, timers: 0 }));
+  }, 25_000);
 
   it.each(['ready', 'switch_team', 'set_team_size', 'fill_bots', 'player_update', 'shot_event', 'hit_report'])('rejects null %s without crashing or leaking', async type => {
     socket = await connect();
@@ -259,7 +293,7 @@ describe('real multiplayer server trust boundary', () => {
     first.send(frame('hit_report', { targetId: 'missing', zone: 'body' }));
     first.send(frame('breach_report'));
     await inspectUntil(state => expect(state).toMatchObject({ members: 2, actors: 2, rates: 9 }));
-    first.terminate();
+    first.send(Buffer.from([Protocol.LEAVE_ROOM]));
     await inspectUntil(state => expect(state).toMatchObject({ exists: true, clients: 1, members: 1, actors: 1, rates: 1 }));
     expect(peer.readyState).toBe(WebSocket.OPEN);
     await disconnectAndCheck();

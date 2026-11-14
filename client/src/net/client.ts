@@ -2,7 +2,16 @@ import { Client as ColyseusClient, type Room } from "@colyseus/sdk";
 import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { orientationFromSnapshot } from "../../../shared/hitZoneColliders";
 import { getColyseusEndpoint } from "./endpoint";
-import { MAX_RECONNECT_ATTEMPTS, reconnectDelay, isAbnormalClose, isFatalRoomError, isTransportError } from "./reconnect";
+import {
+  MAX_RECONNECT_ATTEMPTS,
+  MAX_SESSION_RECONNECT_ATTEMPTS,
+  SESSION_RECONNECT_TIMEOUT_MS,
+  sessionReconnectDelay,
+  reconnectDelay,
+  isAbnormalClose,
+  isFatalRoomError,
+  isTransportError,
+} from "./reconnect";
 import { isMatchTeamSize, type MatchTeamSize } from "../../../shared/match";
 import {
   getMaxPlayersForTeamSize,
@@ -59,7 +68,7 @@ export class NetClient {
   private attempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private status: ConnectionStatus = "disconnected";
-  private inMatch = false;
+  private reconnectionToken: string | null = null;
   private attemptTimeout: ReturnType<typeof setTimeout> | null = null;
 
   public constructor(
@@ -78,7 +87,7 @@ export class NetClient {
   public onShotEvent: ((event: ShotEventMessage) => void) | null = null;
 
   public async connect(options: MultiplayerJoinOptions): Promise<MultiplayerRoomSnapshot | null> {
-    const cleanup = this.disconnect(false);
+    const cleanup = this.disconnect();
     const generation = this.generation;
     await cleanup;
     if (generation !== this.generation) return null;
@@ -90,36 +99,62 @@ export class NetClient {
     try {
       if (!this.options) return null;
       if (!this.client) throw new Error("Online multiplayer endpoint not configured.");
-      const room = await this.connectToTarget(this.options);
+      const recoveringSession = this.reconnectionToken !== null;
+      const room = this.reconnectionToken
+        ? await this.client.reconnect(this.reconnectionToken)
+        : await this.connectToTarget(this.options);
       // A late handshake must never resurrect a session the user has left.
       if (generation !== this.generation) {
-        await this.leaveRoom(room, false);
+        await this.leaveRoom(room, true);
+        return null;
+      }
+      // Manual reconnect creates a fresh decoder. JOIN_ROOM resolves before
+      // ROOM_STATE: publishing its empty state would send an active match back
+      // to the lobby. Track the socket for cancellation while awaiting state.
+      this.room = room;
+      this.reconnectionToken = room.reconnectionToken;
+      room.reconnection.enabled = false;
+      if (recoveringSession && !(room.state as ColyseusRoomState)?.phase) {
+        await new Promise<void>((resolve, reject) => {
+          room.onStateChange.once(() => resolve());
+          room.onLeave.once((code) => reject(Object.assign(
+            new Error("Connection closed before room state arrived."), { code },
+          )));
+        });
+      }
+      if (generation !== this.generation) {
+        await this.leaveRoom(room, true);
         return null;
       }
       this.attachRoom(room);
       this.options = { name: this.options.name, target: { kind: "roomId", roomId: room.roomId } };
       const snapshot = buildSnapshot(room, room.state as ColyseusRoomState);
-      this.inMatch = snapshot.phase !== "LOBBY";
+      if (this.attemptTimeout !== null) clearTimeout(this.attemptTimeout);
+      this.attemptTimeout = null;
       this.attempts = 0;
       this.setStatus("connected");
       return snapshot;
     } catch (error) {
       if (generation !== this.generation) return null;
-      if (!isTransportError(error)) throw error;
+      if (!isTransportError(error)) {
+        if (!this.reconnectionToken) throw error;
+        this.failReconnect();
+        return null;
+      }
       this.scheduleReconnect();
       return null;
     }
   }
 
   private attachRoom(room: Room): void {
-    // The server does not reserve disconnected seats. Rejoin the same room
-    // through matchmaking instead of running a second SDK retry loop.
+    // One retry owner: use the token to recover the reserved session, not a
+    // fresh matchmaking join (which is rejected during an active match).
     room.reconnection.enabled = false;
     this.room = room;
+    this.reconnectionToken = room.reconnectionToken;
     room.onStateChange((state) => {
       if (this.room !== room) return;
       const snapshot = buildSnapshot(room, state as ColyseusRoomState);
-      this.inMatch = snapshot.phase !== "LOBBY";
       this.onStateChange?.(snapshot);
     });
     room.onMessage("lobby_event", (event: LobbyEventMessage) => {
@@ -164,7 +199,7 @@ export class NetClient {
     this.attemptTimeout = null;
     this.options = null;
     this.attempts = 0;
-    this.inMatch = false;
+    this.reconnectionToken = null;
     const room = this.room;
     this.room = null;
     this.setStatus("disconnected");
@@ -172,12 +207,35 @@ export class NetClient {
   }
 
   private async leaveRoom(room: Room, consented: boolean): Promise<void> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       room.reconnection.enabled = false;
-      await room.leave(consented);
+      // Some embed/proxy paths swallow the leave acknowledgement. Always close
+      // the underlying transport after a bounded chance to leave gracefully.
+      await Promise.race([
+        room.leave(consented),
+        new Promise<void>((resolve) => { timeout = setTimeout(resolve, 1_000); }),
+      ]);
     } catch {
       // A closed socket must not interrupt local cleanup or navigation.
+    } finally {
+      clearTimeout(timeout);
+      room.connection?.close();
+      room.removeAllListeners();
     }
+  }
+
+  private failReconnect(): void {
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    if (this.attemptTimeout !== null) clearTimeout(this.attemptTimeout);
+    this.attemptTimeout = null;
+    this.generation += 1; // Close a handshake that completes after the deadline.
+    const room = this.room;
+    this.room = null;
+    if (room) void this.leaveRoom(room, true);
+    this.setStatus("lost");
+    this.onLeave?.();
   }
 
   public retry(): void {
@@ -196,33 +254,25 @@ export class NetClient {
     this.room = null;
     if (room) void this.leaveRoom(room, false);
     if (!this.options || this.reconnectTimer !== null) return;
-    if (this.attempts >= (this.inMatch ? 1 : MAX_RECONNECT_ATTEMPTS)) {
-      this.setStatus("lost");
-      this.onLeave?.();
+    const recoveringSession = this.reconnectionToken !== null;
+    if (this.attempts >= (recoveringSession ? MAX_SESSION_RECONNECT_ATTEMPTS : MAX_RECONNECT_ATTEMPTS)) {
+      this.failReconnect();
       return;
     }
+    if (recoveringSession && this.attemptTimeout === null) {
+      this.attemptTimeout = setTimeout(() => this.failReconnect(), SESSION_RECONNECT_TIMEOUT_MS);
+    }
     const generation = this.generation;
-    const delay = this.inMatch ? 1_000 : reconnectDelay(this.attempts);
+    const delay = recoveringSession ? sessionReconnectDelay(this.attempts) : reconnectDelay(this.attempts);
     this.attempts += 1;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      // Mid-match recovery gets one attempt and a five-second total deadline.
-      if (this.inMatch) this.attemptTimeout = setTimeout(() => {
-        this.attemptTimeout = null;
-        this.generation += 1; // Discard and close any handshake completing later.
-        this.setStatus("lost");
-        this.onLeave?.();
-      }, 4_000);
       void this.attemptConnect(generation).then((snapshot) => {
         if (snapshot && generation === this.generation) this.onStateChange?.(snapshot);
       }).catch((error: unknown) => {
         if (generation !== this.generation) return;
-        void this.disconnect(false);
+        void this.disconnect();
         this.onJoinError?.(error);
-      }).finally(() => {
-        if (generation !== this.generation) return;
-        if (this.attemptTimeout !== null) clearTimeout(this.attemptTimeout);
-        this.attemptTimeout = null;
       });
     }, delay);
     this.setStatus("reconnecting");
@@ -299,7 +349,7 @@ export class NetClient {
 
   private send<T>(type: string, message: T): void {
     try {
-      this.room?.send(type, message);
+      if (this.status === "connected") this.room?.send(type, message);
     } catch (error) {
       if (isTransportError(error)) this.scheduleReconnect();
       else this.serverDisconnect();

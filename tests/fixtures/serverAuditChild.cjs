@@ -34,6 +34,7 @@ process.on('message', async ({ id, action, roomId }) => {
   if (action === 'playing' && room) {
     // Fixture setup only; gameplay startup is covered by the manual smoke.
     room.state.phase = 'PLAYING';
+    await room.lock();
     for (const member of room.state.members.values()) {
       const actor = new ActorState();
       Object.assign(actor, { id: member.id, name: member.name, team: member.team, phase: 'FLOATING', posX: 3 });
@@ -50,6 +51,7 @@ process.on('message', async ({ id, action, roomId }) => {
     clients: resources?.clients.length ?? 0,
     members: resources?.state.members.size ?? 0,
     actors: resources?.state.actors.size ?? 0,
+    connected: room ? [...room.state.members.values()].map(m => m.connected) : [],
     ready: room ? [...room.state.members.values()].map(m => m.ready) : [],
     positions: room ? [...room.state.actors.values()].map(a => a.posX) : [],
     rates: resources ? ['shotEvents', 'readyActions', 'switchTeamActions', 'teamSizeActions', 'fillBotsActions', 'lastPlayerUpdate', 'lastHitReport', 'lastBreachReport'].reduce((n, key) => n + resources[key].size, 0) : 0,

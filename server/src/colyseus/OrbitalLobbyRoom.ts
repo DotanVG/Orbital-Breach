@@ -69,6 +69,8 @@ import { ActorState, LobbyMemberState, OrbitalLobbyState } from "./state";
 
 type RoomClient = Client;
 
+export const RECONNECTION_GRACE_SECONDS = 20;
+
 const MATCH_TICK_MS = 50;
 const BOT_RESPAWN_SECONDS = 5;
 const MAX_KILLS = 9999;
@@ -94,6 +96,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   // is ~25 updates/s plus shots/reports; retain ample room for short bursts.
   public maxMessagesPerSecond = 200;
 
+  private readonly rejectedTransports = new WeakSet<RoomClient>();
   private countdownTimer: ReturnType<typeof setInterval> | null = null;
   private roundTimer: ReturnType<typeof setInterval> | null = null;
   private roundEndTimer: ReturnType<typeof setTimeout> | null = null;
@@ -195,11 +198,30 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     member.connected = true;
     member.isBot = false;
 
+    this.trackTransportErrors(client);
     this.state.members.set(client.sessionId, member);
     this.broadcast("lobby_event", {
       type: "info",
       text: `${member.name} joined the room.`,
     });
+    this.syncLobbyFlow();
+  }
+
+  public onDrop(client: RoomClient, code: number): void {
+    // Validation failures and server kicks still leave immediately.
+    if (this.rejectedTransports.has(client) || ![1001, 1005, 1006, 1011, 1012, 1013, 4010].includes(code)) return;
+    const member = this.state.members.get(client.sessionId);
+    if (!member) return;
+    member.connected = false;
+    // Colyseus keeps the seat (including in locked rooms) and calls onLeave
+    // on expiry, or onReconnect with the same sessionId on success.
+    this.allowReconnection(client, RECONNECTION_GRACE_SECONDS);
+  }
+
+  public onReconnect(client: RoomClient): void {
+    this.trackTransportErrors(client);
+    const member = this.state.members.get(client.sessionId);
+    if (member) member.connected = true;
     this.syncLobbyFlow();
   }
 
@@ -237,6 +259,14 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }
 
     this.syncLobbyFlow();
+  }
+
+  private trackTransportErrors(client: RoomClient): void {
+    // ws reports parser/max-payload failures as 1006 on this side, even though
+    // it sends 1009 to the peer. Do not reserve seats for rejected frames.
+    client.ref?.once("error", (error: { code?: string }) => {
+      if (error.code?.startsWith("WS_ERR_")) this.rejectedTransports.add(client);
+    });
   }
 
   public onDispose(): void {

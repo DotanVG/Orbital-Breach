@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_PLAYER_NAME } from "../shared/callSigns";
 import { buildBotName } from "../shared/multiplayer";
-import { OrbitalLobbyRoom } from "../server/src/colyseus/OrbitalLobbyRoom";
+import { RECONNECTION_GRACE_SECONDS, OrbitalLobbyRoom } from "../server/src/colyseus/OrbitalLobbyRoom";
 import { ActorState, LobbyMemberState, OrbitalLobbyState } from "../server/src/colyseus/state";
 
 function createRoom(): OrbitalLobbyRoom {
@@ -232,5 +232,37 @@ describe("OrbitalLobbyRoom fill_bots", () => {
 
     expect(Array.from(room.state.members.keys())).toEqual(["human-1", "human-2", "bot-0"]);
     expect(room.setMetadata).not.toHaveBeenCalled();
+  });
+});
+
+describe("DOT-137 reconnect reservation", () => {
+  it("keeps the same member, team, actor and score through drop and reconnect", () => {
+    const room = createRoom();
+    room.state.phase = "PLAYING";
+    room.state.scoreTeam0 = 2;
+    addMember(room, "pilot", { name: "Alpha", team: 0 });
+    addMember(room, "peer", { name: "Bravo", team: 1 });
+    addActor(room, "pilot", { name: "Alpha", team: 0 });
+    const actor = room.state.actors.get("pilot")!;
+    actor.kills = 3;
+    actor.posX = 42;
+    const reserve = vi.spyOn(room, "allowReconnection").mockReturnValue(undefined as never);
+    room.onDrop({ sessionId: "pilot" } as never, 1006);
+    expect(reserve).toHaveBeenCalledWith({ sessionId: "pilot" }, RECONNECTION_GRACE_SECONDS);
+    expect(room.state.members.get("pilot")?.connected).toBe(false);
+    expect(room.state.actors.get("pilot")).toBe(actor);
+    expect(room.broadcast).not.toHaveBeenCalled();
+    room.onReconnect({ sessionId: "pilot" } as never);
+    expect(room.state.members.get("pilot")).toMatchObject({ connected: true, team: 0 });
+    expect(room.state.actors.get("pilot")).toMatchObject({ posX: 42, kills: 3 });
+    expect(room.state.scoreTeam0).toBe(2);
+  });
+
+  it.each([4000, 4002, 4003, 4403])("does not reserve a rejected or intentional departure (%s)", code => {
+    const room = createRoom();
+    addMember(room, "pilot", { name: "Alpha", team: 0 });
+    const reserve = vi.spyOn(room, "allowReconnection");
+    room.onDrop({ sessionId: "pilot" } as never, code);
+    expect(reserve).not.toHaveBeenCalled();
   });
 });

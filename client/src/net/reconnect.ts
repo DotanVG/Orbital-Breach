@@ -1,6 +1,13 @@
 import { CloseCode, ErrorCode, MatchMakeError, ServerError } from "@colyseus/sdk";
 
 export const MAX_RECONNECT_ATTEMPTS = 8;
+export const MAX_SESSION_RECONNECT_ATTEMPTS = 6;
+// Leave time for the last handshake before the server's 20-second reservation expires.
+export const SESSION_RECONNECT_TIMEOUT_MS = 18_000;
+
+export function sessionReconnectDelay(attempt: number): number {
+  return Math.min(4_000, 500 * 2 ** Math.min(attempt, 3));
+}
 
 const FATAL_ROOM_ERRORS: readonly number[] = [
   ErrorCode.MATCHMAKE_NO_HANDLER, ErrorCode.MATCHMAKE_INVALID_CRITERIA,
