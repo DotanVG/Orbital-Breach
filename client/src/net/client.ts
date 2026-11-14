@@ -1,4 +1,4 @@
-import { Client as ColyseusClient, ErrorCode, MatchMakeError, ServerError, type Room } from "@colyseus/sdk";
+import { Client as ColyseusClient, ServerError, type Room } from "@colyseus/sdk";
 import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { orientationFromSnapshot } from "../../../shared/hitZoneColliders";
 import { getColyseusEndpoint } from "./endpoint";
@@ -10,6 +10,7 @@ import {
   reconnectDelay,
   isAbnormalClose,
   isFatalRoomError,
+  isFinalReconnectRejection,
   isTransportError,
 } from "./reconnect";
 import { isMatchTeamSize, type MatchTeamSize } from "../../../shared/match";
@@ -111,8 +112,9 @@ export class NetClient {
       // Manual reconnect creates a fresh decoder. JOIN_ROOM resolves before
       // ROOM_STATE: publishing its empty state would send an active match back
       // to the lobby. Track the socket for cancellation while awaiting state.
+      // Keep the existing token until the handshake finishes so a rejected
+      // WS join can still retry the reserved seat.
       this.room = room;
-      this.reconnectionToken = room.reconnectionToken;
       room.reconnection.enabled = false;
       if (recoveringSession && !(room.state as ColyseusRoomState)?.phase) {
         await new Promise<void>((resolve, reject) => {
@@ -120,6 +122,7 @@ export class NetClient {
           room.onLeave.once((code) => reject(Object.assign(
             new Error("Connection closed before room state arrived."), { code },
           )));
+          room.onError.once((code, message) => reject(new ServerError(code ?? 0, message ?? "")));
         });
       }
       if (generation !== this.generation) {
@@ -136,17 +139,16 @@ export class NetClient {
       return snapshot;
     } catch (error) {
       if (generation !== this.generation) return null;
-      // The server can reject the token before its ping detects the drop and
-      // allowReconnection reserves the seat. Retry within the existing deadline.
-      const pendingReservation = this.reconnectionToken !== null
-        && (error instanceof MatchMakeError || error instanceof ServerError)
-        && error.code === ErrorCode.MATCHMAKE_EXPIRED
-        && error.message === "reconnection token invalid or expired.";
-      if (!isTransportError(error) && !pendingReservation) {
-        if (!this.reconnectionToken) throw error;
-        this.failReconnect();
+      if (this.reconnectionToken !== null) {
+        this.logRecoveryRejection(error);
+        if (isFinalReconnectRejection(error)) {
+          this.failReconnect();
+          return null;
+        }
+        this.scheduleReconnect();
         return null;
       }
+      if (!isTransportError(error)) throw error;
       this.scheduleReconnect();
       return null;
     }
@@ -283,6 +285,21 @@ export class NetClient {
       });
     }, delay);
     this.setStatus("reconnecting");
+  }
+
+  private logRecoveryRejection(error: unknown): void {
+    const record = error && typeof error === "object" ? error as {
+      name?: unknown;
+      code?: unknown;
+      data?: { code?: unknown };
+      message?: unknown;
+    } : undefined;
+    console.warn("[reconnect] recovery rejected", {
+      name: record?.name ?? (error instanceof Error ? error.name : typeof error),
+      code: record?.code,
+      "data?.code": record?.data?.code,
+      message: record?.message ?? (error instanceof Error ? error.message : String(error)),
+    });
   }
 
   private setStatus(status: ConnectionStatus): void {

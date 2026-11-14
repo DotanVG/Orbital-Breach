@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ErrorCode, MatchMakeError, ServerError } from "@colyseus/sdk";
+import { CloseCode, ErrorCode, MatchMakeError, ServerError } from "@colyseus/sdk";
 import { MAX_RECONNECT_ATTEMPTS, MAX_SESSION_RECONNECT_ATTEMPTS, SESSION_RECONNECT_TIMEOUT_MS, sessionReconnectDelay, reconnectDelay } from "../client/src/net/reconnect";
 
 vi.mock("../client/src/net/endpoint", () => ({ getColyseusEndpoint: () => null }));
@@ -21,9 +21,15 @@ function makeRoom(id = "room-1", sessionId = "pilot-1") {
     removeAllListeners: vi.fn(),
     state: { phase: "LOBBY", members: {}, actors: {}, scoreTeam0: 2 },
     reconnection: { enabled: true },
-    onLeave: vi.fn((cb: (code?: number) => void) => { callbacks.leave = cb; }),
-    onError: vi.fn((cb: (code?: number, message?: string) => void) => { callbacks.error = cb; }),
-    onStateChange: vi.fn((cb: (state: unknown) => void) => { callbacks.state = cb; }),
+    onLeave: Object.assign(vi.fn((cb: (code?: number) => void) => { callbacks.leave = cb; }), {
+      once: vi.fn((cb: (code?: number) => void) => { callbacks.leave = cb; }),
+    }),
+    onError: Object.assign(vi.fn((cb: (code?: number, message?: string) => void) => { callbacks.error = cb; }), {
+      once: vi.fn((cb: (code?: number, message?: string) => void) => { callbacks.error = cb; }),
+    }),
+    onStateChange: Object.assign(vi.fn((cb: (state: unknown) => void) => { callbacks.state = cb; }), {
+      once: vi.fn((cb: (state: unknown) => void) => { callbacks.state = cb; }),
+    }),
     onMessage: vi.fn((type: string, cb: (event: unknown) => void) => { callbacks.messages.set(type, cb); }),
     leave: vi.fn(async () => { callbacks.leave(1006); }),
     send: vi.fn(),
@@ -60,6 +66,7 @@ describe("NetClient reconnect lifecycle (fake transport)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0.5);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
   });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
@@ -255,6 +262,7 @@ describe("DOT-56 fix round 1 regressions", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0.5);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
   });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
@@ -394,9 +402,11 @@ describe("DOT-56 fix round 1 SDK transport preservation", () => {
 });
 
 describe("reserved-session retry schedule", () => {
-  it("doubles from 500ms up to 4s and fits the reservation", () => {
+  it("spaces six attempts so one lands at 12s, within the 18s budget", () => {
     const delays = Array.from({ length: MAX_SESSION_RECONNECT_ATTEMPTS }, (_, i) => sessionReconnectDelay(i));
-    expect(delays).toEqual([500, 1000, 2000, 4000, 4000, 4000]);
+    expect(delays).toEqual([500, 1000, 2000, 3500, 5000, 4000]);
+    expect(delays.slice(0, 5).reduce((a, b) => a + b, 0)).toBe(12_000);
+    expect(delays.reduce((a, b) => a + b, 0)).toBe(16_000);
     expect(delays.reduce((a, b) => a + b, 0)).toBeLessThan(SESSION_RECONNECT_TIMEOUT_MS);
   });
 });
@@ -405,18 +415,22 @@ describe("DOT-137 recovery and menu cleanup", () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
-  it.each(["MatchMakeError", "ServerError"])("retries a pending reconnection reservation from %s and recovers the same seat", async kind => {
+  function sdkHttpReconnectRejection() {
+    const message = "reconnection token invalid or expired.";
+    const error = new MatchMakeError(message, 400);
+    Object.assign(error, { data: { code: ErrorCode.MATCHMAKE_EXPIRED, error: message } });
+    return error;
+  }
+
+  it("retries a real-SDK HTTP 400 token rejection (data.code 524) and recovers the same seat", async () => {
     const first = makeRoom();
     const second = makeRoom();
     const { client, handle } = makeClient(first.handle);
-    const message = "reconnection token invalid or expired.";
-    const error = kind === "MatchMakeError"
-      ? new MatchMakeError(message, ErrorCode.MATCHMAKE_EXPIRED)
-      : new ServerError(ErrorCode.MATCHMAKE_EXPIRED, message);
-    client.reconnect.mockRejectedValueOnce(error).mockResolvedValue(second.handle);
+    client.reconnect.mockRejectedValueOnce(sdkHttpReconnectRejection()).mockResolvedValue(second.handle);
     const net = new NetClient(handle);
     const status = vi.fn(); net.onConnectionStatus = status;
     const lost = vi.fn(); net.onLeave = lost;
+    const warned = vi.spyOn(console, "warn").mockImplementation(() => {});
     await net.connect({ name: "Pilot" });
     first.callbacks.leave(4010);
     await vi.advanceTimersByTimeAsync(499);
@@ -424,6 +438,12 @@ describe("DOT-137 recovery and menu cleanup", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(client.reconnect).toHaveBeenCalledExactlyOnceWith(first.room.reconnectionToken);
     expect(status).toHaveBeenLastCalledWith("reconnecting");
+    expect(warned).toHaveBeenCalledWith("[reconnect] recovery rejected", expect.objectContaining({
+      name: "MatchMakeError",
+      code: 400,
+      "data?.code": ErrorCode.MATCHMAKE_EXPIRED,
+      message: "reconnection token invalid or expired.",
+    }));
     await vi.advanceTimersByTimeAsync(999);
     expect(client.reconnect).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
@@ -438,12 +458,54 @@ describe("DOT-137 recovery and menu cleanup", () => {
     await net.disconnect();
   });
 
+  it("retries a ServerError 524 onError during the reconnect handshake and recovers the same seat", async () => {
+    const first = makeRoom();
+    const handshake = makeRoom();
+    handshake.room.state.phase = undefined as unknown as string;
+    let rejectHandshake!: (code?: number, message?: string) => void;
+    Object.assign(handshake.room.onStateChange, { once: vi.fn() });
+    Object.assign(handshake.room.onLeave, { once: vi.fn() });
+    Object.assign(handshake.room.onError, { once: vi.fn(cb => { rejectHandshake = cb; }) });
+    const recovered = makeRoom();
+    const { client, handle } = makeClient(first.handle);
+    client.reconnect.mockResolvedValueOnce(handshake.handle).mockResolvedValue(recovered.handle);
+    const net = new NetClient(handle);
+    const status = vi.fn(); net.onConnectionStatus = status;
+    const lost = vi.fn(); net.onLeave = lost;
+    const warned = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await net.connect({ name: "Pilot" });
+    first.callbacks.leave(4010);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(client.reconnect).toHaveBeenCalledExactlyOnceWith(first.room.reconnectionToken);
+    expect(status).toHaveBeenLastCalledWith("reconnecting");
+    rejectHandshake(ErrorCode.MATCHMAKE_EXPIRED, "failed to reconnect");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(warned).toHaveBeenCalledWith("[reconnect] recovery rejected", expect.objectContaining({
+      name: "ServerError",
+      code: ErrorCode.MATCHMAKE_EXPIRED,
+      message: "failed to reconnect",
+    }));
+    expect(status).toHaveBeenLastCalledWith("reconnecting");
+    expect(status).not.toHaveBeenCalledWith("lost");
+    await vi.advanceTimersByTimeAsync(999);
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(client.reconnect).toHaveBeenNthCalledWith(2, first.room.reconnectionToken);
+    expect(status).toHaveBeenLastCalledWith("connected");
+    expect(net.getSessionId()).toBe(first.room.sessionId);
+    expect(client.joinById).not.toHaveBeenCalled();
+    expect(lost).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    await net.disconnect();
+  });
+
   it("bounds repeated pending reconnection rejections to the session retry budget", async () => {
     const first = makeRoom();
     const { client, handle } = makeClient(first.handle);
-    client.reconnect.mockRejectedValue(new MatchMakeError("reconnection token invalid or expired.", ErrorCode.MATCHMAKE_EXPIRED));
+    client.reconnect.mockRejectedValue(sdkHttpReconnectRejection());
     const net = new NetClient(handle);
     const status = vi.fn(); net.onConnectionStatus = status;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     await net.connect({ name: "Pilot" });
     first.callbacks.leave(4010);
     await vi.runAllTimersAsync();
@@ -451,6 +513,32 @@ describe("DOT-137 recovery and menu cleanup", () => {
     expect(status).toHaveBeenLastCalledWith("lost");
     expect(net.getSessionId()).toBeNull();
     expect(client.joinById).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    await net.disconnect();
+  });
+
+  it.each([
+    ["intentional leave", new ServerError(CloseCode.CONSENTED, "consented leave")],
+    ["kick", new ServerError(CloseCode.WITH_ERROR, "kicked")],
+    ["room not found", new MatchMakeError("room not found", ErrorCode.MATCHMAKE_INVALID_ROOM_ID)],
+  ])("ends recovery immediately on %s", async (_label, error) => {
+    const first = makeRoom();
+    const { client, handle } = makeClient(first.handle);
+    client.reconnect.mockRejectedValue(error);
+    const net = new NetClient(handle);
+    const status = vi.fn(); net.onConnectionStatus = status;
+    const lost = vi.fn(); net.onLeave = lost;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    await net.connect({ name: "Pilot" });
+    first.callbacks.leave(4010);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(status).toHaveBeenLastCalledWith("lost");
+    expect(lost).toHaveBeenCalledTimes(1);
+    expect(net.getSessionId()).toBeNull();
+    expect(client.joinById).not.toHaveBeenCalled();
+    await vi.runAllTimersAsync();
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
     await net.disconnect();
   });
@@ -528,6 +616,7 @@ describe("DOT-137 recovery and menu cleanup", () => {
     const net = new NetClient(handle);
     const status = vi.fn(); net.onConnectionStatus = status;
     const rejected = vi.fn(); net.onJoinError = rejected;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     await net.connect({ name: "Pilot" });
     first.callbacks.leave(1006);
     await vi.runAllTimersAsync();
@@ -546,11 +635,12 @@ describe("DOT-137 recovery and menu cleanup", () => {
     client.joinById.mockResolvedValue(second.handle);
     const net = new NetClient(handle);
     const status = vi.fn(); net.onConnectionStatus = status;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     await net.connect({ name: "Pilot" });
     first.callbacks.leave(1006);
     await vi.runAllTimersAsync();
     expect(status).toHaveBeenLastCalledWith("lost");
-    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(client.reconnect).toHaveBeenCalledTimes(MAX_SESSION_RECONNECT_ATTEMPTS);
     expect(client.joinById).not.toHaveBeenCalled();
 
     client.reconnect.mockClear();
