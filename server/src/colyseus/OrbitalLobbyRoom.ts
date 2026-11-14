@@ -97,6 +97,9 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   public maxMessagesPerSecond = 200;
 
   private readonly rejectedTransports = new WeakSet<RoomClient>();
+  // Clients force-closed (4002) by Colyseus because the same reconnection token
+  // came back on a new connection while the old socket still looked alive.
+  private readonly staleTakeovers = new WeakSet<RoomClient>();
   private countdownTimer: ReturnType<typeof setInterval> | null = null;
   private roundTimer: ReturnType<typeof setInterval> | null = null;
   private roundEndTimer: ReturnType<typeof setTimeout> | null = null;
@@ -207,9 +210,21 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.syncLobbyFlow();
   }
 
+  // A reconnect can reach the server before its ping timeout notices the old
+  // socket is dead. Colyseus then force-closes the stale client with 4002 and
+  // expects onDrop to reserve the seat for the incoming connection.
+  public override checkReconnectionToken(reconnectionToken: string): string {
+    const stale = this.clients.find((c) => c.reconnectionToken === reconnectionToken);
+    if (stale) this.staleTakeovers.add(stale);
+    return super.checkReconnectionToken(reconnectionToken);
+  }
+
   public onDrop(client: RoomClient, code: number): void {
     // Validation failures and server kicks still leave immediately.
-    if (this.rejectedTransports.has(client) || ![1001, 1005, 1006, 1011, 1012, 1013, 4010].includes(code)) return;
+    // One-shot: only the 4002 close Colyseus sends for this takeover reserves the seat.
+    const takeover = code === 4002 && this.staleTakeovers.delete(client);
+    if (this.rejectedTransports.has(client)) return;
+    if (!takeover && ![1001, 1005, 1006, 1011, 1012, 1013, 4010].includes(code)) return;
     const member = this.state.members.get(client.sessionId);
     if (!member) return;
     member.connected = false;
@@ -218,7 +233,10 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }
     // Colyseus keeps the seat (including in locked rooms) and calls onLeave
     // on expiry, or onReconnect with the same sessionId on success.
-    this.allowReconnection(client, RECONNECTION_GRACE_SECONDS);
+    // Rejects ("not joined" before the JOIN_ROOM ack, "disposing") must not
+    // become an unhandled rejection: Colyseus treats that as uncaughtException
+    // and shuts the whole process down.
+    void Promise.resolve(this.allowReconnection(client, RECONNECTION_GRACE_SECONDS)).catch(() => {});
   }
 
   public onReconnect(client: RoomClient): void {

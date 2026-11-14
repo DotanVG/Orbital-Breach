@@ -95,8 +95,23 @@ export function installMatchmakeRateLimit(
       res.end(JSON.stringify({ ok: false, error: "rate_limited" }));
       return;
     }
+    if (isMatchmakePath(pathname)) remapCloudflareReservedStatus(res);
     for (const listener of listeners) {
       listener.call(server, req, res);
     }
   });
+}
+
+/**
+ * Colyseus uses its matchmaking ErrorCode (520-524) as the HTTP status. Cloudflare,
+ * in front of Render, reserves 520-527 and replaces those responses with its own
+ * error page (no CORS headers), so browsers only see "Failed to fetch". Keep the
+ * Colyseus code in the JSON body and send a 4xx that Cloudflare passes through.
+ */
+const MATCHMAKE_STATUS_REMAP: Record<number, number> = { 520: 404, 521: 404, 522: 410, 523: 400, 524: 410 };
+function remapCloudflareReservedStatus(res: ServerResponse): void {
+  const writeHead = res.writeHead;
+  res.writeHead = function (this: ServerResponse, statusCode: number, ...rest: unknown[]) {
+    return (writeHead as (...a: unknown[]) => ServerResponse).call(this, MATCHMAKE_STATUS_REMAP[statusCode] ?? statusCode, ...rest);
+  } as typeof res.writeHead;
 }
