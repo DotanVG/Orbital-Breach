@@ -249,6 +249,8 @@ rebuild after a major refactor.
 
 ## Current Codebase Coverage
 
+- Online drops reserve the same player and room for 20 seconds. Token-based reconnection retries with bounded exponential backoff, displays recovery/failure status, and closes the socket on return to the menu. After recovery fails, Retry rejoins by room ID. Disconnected reserved players cannot start or continue a lobby countdown; reconnecting restores their readiness.
+
 Shipped and implemented:
 
 - Page-load CI smoke checks the production build in headless Chromium on desktop and iPhone landscape, including direct welcome and embedded menu entry. Both console errors and uncaught page errors fail the check; unexpected external requests fail rather than being silently blocked. The broken third-party Vibe Jam badge script is removed; arena portals remain available.
