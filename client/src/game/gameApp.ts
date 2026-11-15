@@ -85,6 +85,7 @@ export class App {
   private pendingOnlineRoomSelection: PlaySelection | null = null;
   private onlineMatchConcluding = false;
   private playerUpdateTimer = 0;
+  private resyncAfterReconnect = false;
   private latestOnlineSnapshot: MultiplayerRoomSnapshot | null = null;
   private previousOnlinePhase: MultiplayerRoomSnapshot["phase"] | null = null;
   private onlinePlayerName = DEFAULT_PLAYER_NAME;
@@ -241,6 +242,10 @@ export class App {
     this.net.onStateChange = (snapshot) => {
       if (this.isUserExitingOnline || this.appMode !== "online") return;
       this.latestOnlineSnapshot = snapshot;
+      if (this.resyncAfterReconnect) {
+        this.resyncLocalOnlineActorFromLatestSnapshot();
+        this.resyncAfterReconnect = false;
+      }
 
       const prev = this.previousOnlinePhase;
       this.previousOnlinePhase = snapshot.phase;
@@ -389,6 +394,7 @@ export class App {
       this.connectionNotice.render(status);
       if (this.isUserExitingOnline) return;
       if (this.appMode !== "online") return;
+      if (status === "reconnecting") this.resyncAfterReconnect = true;
       if (status === "connected") this.clearInviteRoomIdFromUrl();
       if (status === "lost") {
         this.input.exitPointerLock();
@@ -1140,6 +1146,7 @@ export class App {
     if (this.matchEndHandle) { clearTimeout(this.matchEndHandle); this.matchEndHandle = null; }
     this.previousOnlinePhase = null;
     this.latestOnlineSnapshot = null;
+    this.resyncAfterReconnect = false;
     this.projectiles.clear();
     this.hud.setVisible(false);
     this.killFeed.setVisible(false);
@@ -1207,6 +1214,7 @@ export class App {
     this.onlineMatchConcluding = false;
     this.pendingOnlineDebrief = null;
     this.latestOnlineSnapshot = null;
+    this.resyncAfterReconnect = false;
     this.previousOnlinePhase = null;
     this.setHelpVisible(false);
     if (this.matchEndHandle) { clearTimeout(this.matchEndHandle); this.matchEndHandle = null; }
@@ -1237,8 +1245,7 @@ export class App {
     const disconnectPromise = this.net.disconnect().catch((error) => {
       console.warn("Multiplayer disconnect raised an error.", error);
     });
-    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));
-    await Promise.race([disconnectPromise, timeout]);
+    await disconnectPromise;
   }
 
   private getInviteRoomId(): string | null {

@@ -1,109 +1,58 @@
-import { MapSchema, Schema, defineTypes } from "@colyseus/schema";
+import { schema, t, type SchemaType } from "@colyseus/schema";
 
-export class LobbyMemberState extends Schema {
-  public id = "";
-  public sessionId = "";
-  public name = "";
-  public team: 0 | 1 = 0;
-  public ready = false;
-  public connected = true;
-  public isBot = false;
-}
+export const LobbyMemberState = schema({
+  id: t.string().default(""),
+  sessionId: t.string().default(""),
+  name: t.string().default(""),
+  team: t.number<0 | 1>().default(0),
+  ready: t.boolean().default(false),
+  connected: t.boolean().default(true),
+  isBot: t.boolean().default(false),
+}, "LobbyMemberState");
+export type LobbyMemberState = SchemaType<typeof LobbyMemberState>;
 
-export class ActorState extends Schema {
-  public id = "";
-  public name = "";
-  public team: 0 | 1 = 0;
-  public isBot = false;
-  public posX = 0;
-  public posY = 0;
-  public posZ = 0;
-  public velX = 0;
-  public velY = 0;
-  public velZ = 0;
-  public yaw = 0;
-  public orientX = 0;
-  public orientY = 0;
-  public orientZ = 0;
-  public orientW = 1;
-  public phase = "BREACH";
-  public frozen = false;
-  public leftArm = false;
-  public rightArm = false;
-  public leftLeg = false;
-  public rightLeg = false;
-  public kills = 0;
-  public deaths = 0;
-  public frozenTimer = 0;
-}
+export const ActorState = schema({
+  id: t.string().default(""),
+  name: t.string().default(""),
+  team: t.number<0 | 1>().default(0),
+  isBot: t.boolean().default(false),
+  posX: t.number().default(0),
+  posY: t.number().default(0),
+  posZ: t.number().default(0),
+  velX: t.number().default(0),
+  velY: t.number().default(0),
+  velZ: t.number().default(0),
+  yaw: t.number().default(0),
+  orientX: t.number().default(0),
+  orientY: t.number().default(0),
+  orientZ: t.number().default(0),
+  orientW: t.number().default(1),
+  phase: t.string().default("BREACH"),
+  frozen: t.boolean().default(false),
+  leftArm: t.boolean().default(false),
+  rightArm: t.boolean().default(false),
+  leftLeg: t.boolean().default(false),
+  rightLeg: t.boolean().default(false),
+  kills: t.number().default(0),
+  deaths: t.number().default(0),
+  frozenTimer: t.number().default(0),
+}, "ActorState");
+export type ActorState = SchemaType<typeof ActorState>;
 
-export class OrbitalLobbyState extends Schema {
-  public roomName = "Orbital Lobby";
-  public visibility = "public";
-  public listing = "quick";
-  public phase = "LOBBY";
-  public matchComplete = false;
-  public countdownRemaining = 0;
-  public roundTimeRemaining = 0;
-  public scoreTeam0 = 0;
-  public scoreTeam1 = 0;
-  public teamSize = 5;
-  public maxPlayers = 10;
-  public roundNumber = 0;
-  public members = new MapSchema<LobbyMemberState>();
-  public actors = new MapSchema<ActorState>();
-}
-
-defineTypes(LobbyMemberState, {
-  id: "string",
-  sessionId: "string",
-  name: "string",
-  team: "number",
-  ready: "boolean",
-  connected: "boolean",
-  isBot: "boolean",
-});
-
-defineTypes(ActorState, {
-  id: "string",
-  name: "string",
-  team: "number",
-  isBot: "boolean",
-  posX: "number",
-  posY: "number",
-  posZ: "number",
-  velX: "number",
-  velY: "number",
-  velZ: "number",
-  yaw: "number",
-  orientX: "number",
-  orientY: "number",
-  orientZ: "number",
-  orientW: "number",
-  phase: "string",
-  frozen: "boolean",
-  leftArm: "boolean",
-  rightArm: "boolean",
-  leftLeg: "boolean",
-  rightLeg: "boolean",
-  kills: "number",
-  deaths: "number",
-  frozenTimer: "number",
-});
-
-defineTypes(OrbitalLobbyState, {
-  roomName: "string",
-  visibility: "string",
-  listing: "string",
-  phase: "string",
-  matchComplete: "boolean",
-  countdownRemaining: "number",
-  roundTimeRemaining: "number",
-  scoreTeam0: "number",
-  scoreTeam1: "number",
-  teamSize: "number",
-  maxPlayers: "number",
-  roundNumber: "number",
-  members: { map: LobbyMemberState },
-  actors: { map: ActorState },
-});
+export const OrbitalLobbyState = schema({
+  roomName: t.string().default("Orbital Lobby"),
+  visibility: t.string().default("public"),
+  listing: t.string().default("quick"),
+  phase: t.string().default("LOBBY"),
+  matchComplete: t.boolean().default(false),
+  countdownRemaining: t.number().default(0),
+  roundTimeRemaining: t.number().default(0),
+  scoreTeam0: t.number().default(0),
+  scoreTeam1: t.number().default(0),
+  teamSize: t.number().default(5),
+  maxPlayers: t.number().default(10),
+  roundNumber: t.number().default(0),
+  members: t.map(LobbyMemberState),
+  actors: t.map(ActorState),
+}, "OrbitalLobbyState");
+export type OrbitalLobbyState = SchemaType<typeof OrbitalLobbyState>;

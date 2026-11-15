@@ -98,7 +98,7 @@ try {
   await page.waitForTimeout(200);
   report.direct = await readEntry(page);
   report.bootFrames = await page.evaluate(() => window.__bootFrames);
-  report.pageErrors = errors.filter((message) => !message.includes('Unexpected identifier'));
+  report.pageErrors = [...errors];
 
   await page.locator('#menu-name').click();
   await page.waitForTimeout(150);
