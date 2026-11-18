@@ -4,6 +4,9 @@ updates:
     directory: "/"
     target-branch: staging
     open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -15,6 +18,9 @@ updates:
       - "/server"
     target-branch: staging
     open-pull-requests-limit: 6
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       colyseus:
         patterns: ["@colyseus/*"]
