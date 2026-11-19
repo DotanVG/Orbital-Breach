@@ -45,6 +45,14 @@ const FINAL_RECONNECT_CODES: readonly number[] = [
   ErrorCode.APPLICATION_ERROR,
 ];
 
+// After the server remaps Colyseus 52x matchmake statuses (520/521 -> 404,
+// 522/524 -> 410), the SDK's MatchMakeError keeps only that HTTP status and
+// drops data.code. HTTP 400 is not listed: the WS "failed to reconnect" path
+// and remapped 523 can also surface as 400, so those stay on the #260 data.code
+// / message path and keep retrying.
+export const HTTP_ROOM_NOT_FOUND = 404;
+export const HTTP_ROOM_GONE = 410;
+
 function numericCode(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
@@ -61,10 +69,22 @@ export function reconnectErrorDataCode(error: unknown): number | undefined {
   return numericCode(data.code);
 }
 
+function hasHttpStatus(error: unknown, status: number): boolean {
+  return reconnectErrorCode(error) === status || reconnectErrorDataCode(error) === status;
+}
+
+/** Room disposed or reconnection token expired, remapped to HTTP 410. */
+export function isReconnectRoomGone(error: unknown): boolean {
+  return hasHttpStatus(error, HTTP_ROOM_GONE);
+}
+
 /** Intentional leave, kick, or room disposed / not found. No message-string matching. */
 export function isFinalReconnectRejection(error: unknown): boolean {
   const code = reconnectErrorCode(error);
   const dataCode = reconnectErrorDataCode(error);
+  if (hasHttpStatus(error, HTTP_ROOM_NOT_FOUND) || hasHttpStatus(error, HTTP_ROOM_GONE)) {
+    return true;
+  }
   return (code !== undefined && FINAL_RECONNECT_CODES.includes(code))
     || (dataCode !== undefined && FINAL_RECONNECT_CODES.includes(dataCode));
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CloseCode, ErrorCode, MatchMakeError, ServerError } from "@colyseus/sdk";
-import { MAX_RECONNECT_ATTEMPTS, MAX_SESSION_RECONNECT_ATTEMPTS, SESSION_RECONNECT_TIMEOUT_MS, sessionReconnectDelay, reconnectDelay } from "../client/src/net/reconnect";
+import { MAX_RECONNECT_ATTEMPTS, MAX_SESSION_RECONNECT_ATTEMPTS, SESSION_RECONNECT_TIMEOUT_MS, sessionReconnectDelay, reconnectDelay, HTTP_ROOM_GONE, HTTP_ROOM_NOT_FOUND, isFinalReconnectRejection, isReconnectRoomGone } from "../client/src/net/reconnect";
 
 vi.mock("../client/src/net/endpoint", () => ({ getColyseusEndpoint: () => null }));
 const { NetClient } = await import("../client/src/net/client");
@@ -627,6 +627,147 @@ describe("DOT-137 recovery and menu cleanup", () => {
     await net.disconnect();
   });
 
+  it("does one fresh lobby joinById after a real-SDK HTTP 410 and recovers as a new session", async () => {
+    const first = makeRoom();
+    const second = makeRoom("room-1", "pilot-2");
+    const { client, handle } = makeClient(first.handle);
+    const gone = new MatchMakeError("room has been disposed.", HTTP_ROOM_GONE);
+    expect(gone).not.toHaveProperty("data");
+    client.reconnect.mockRejectedValueOnce(gone);
+    client.joinById.mockResolvedValue(second.handle);
+    const net = new NetClient(handle);
+    const status = vi.fn(); net.onConnectionStatus = status;
+    const lost = vi.fn(); net.onLeave = lost;
+    const warned = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await net.connect({ name: "Pilot" });
+    first.callbacks.leave(4010);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(warned).toHaveBeenCalledWith("[reconnect] recovery rejected", expect.objectContaining({
+      name: "MatchMakeError",
+      code: HTTP_ROOM_GONE,
+      message: "room has been disposed.",
+    }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.joinById).toHaveBeenCalledExactlyOnceWith("room-1", { name: "Pilot" });
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(status).toHaveBeenLastCalledWith("connected");
+    expect(net.getSessionId()).toBe("pilot-2");
+    expect(status).not.toHaveBeenCalledWith("lost");
+    expect(lost).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    await net.disconnect();
+  });
+
+  it("shows lost if the one fresh lobby joinById after HTTP 410 also fails", async () => {
+    const first = makeRoom();
+    const { client, handle } = makeClient(first.handle);
+    client.reconnect.mockRejectedValue(new MatchMakeError("room has been disposed.", HTTP_ROOM_GONE));
+    client.joinById.mockRejectedValue(new MatchMakeError("room has been disposed.", HTTP_ROOM_GONE));
+    const net = new NetClient(handle);
+    const status = vi.fn(); net.onConnectionStatus = status;
+    const lost = vi.fn(); net.onLeave = lost;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    await net.connect({ name: "Pilot" });
+    first.callbacks.leave(4010);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.joinById).toHaveBeenCalledTimes(1);
+    expect(status).toHaveBeenLastCalledWith("lost");
+    expect(lost).toHaveBeenCalledTimes(1);
+    expect(net.getSessionId()).toBeNull();
+    await vi.runAllTimersAsync();
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(client.joinById).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    await net.disconnect();
+  });
+
+  it("ends recovery immediately on a real-SDK HTTP 404 with no data.code", async () => {
+    const first = makeRoom();
+    const { client, handle } = makeClient(first.handle);
+    const missing = new MatchMakeError("room not found", HTTP_ROOM_NOT_FOUND);
+    expect(missing).not.toHaveProperty("data");
+    client.reconnect.mockRejectedValue(missing);
+    const net = new NetClient(handle);
+    const status = vi.fn(); net.onConnectionStatus = status;
+    const lost = vi.fn(); net.onLeave = lost;
+    const warned = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await net.connect({ name: "Pilot" });
+    first.callbacks.leave(4010);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(warned).toHaveBeenCalledWith("[reconnect] recovery rejected", expect.objectContaining({
+      name: "MatchMakeError",
+      code: HTTP_ROOM_NOT_FOUND,
+      message: "room not found",
+    }));
+    expect(status).toHaveBeenLastCalledWith("lost");
+    expect(lost).toHaveBeenCalledTimes(1);
+    expect(net.getSessionId()).toBeNull();
+    expect(client.joinById).not.toHaveBeenCalled();
+    await vi.runAllTimersAsync();
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    await net.disconnect();
+  });
+
+  it("goes to lost immediately on HTTP 410 mid-match, and Retry then joins by roomId", async () => {
+    const first = makeRoom();
+    first.room.state.phase = "PLAYING";
+    const second = makeRoom("room-1", "pilot-2");
+    const { client, handle } = makeClient(first.handle);
+    client.reconnect.mockRejectedValue(new MatchMakeError("room has been disposed.", HTTP_ROOM_GONE));
+    client.joinById.mockResolvedValue(second.handle);
+    const net = new NetClient(handle);
+    const status = vi.fn(); net.onConnectionStatus = status;
+    const lost = vi.fn(); net.onLeave = lost;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    await net.connect({ name: "Pilot" });
+    first.callbacks.leave(4010);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(client.joinById).not.toHaveBeenCalled();
+    expect(status).toHaveBeenLastCalledWith("lost");
+    expect(lost).toHaveBeenCalledTimes(1);
+    expect(net.getSessionId()).toBeNull();
+    await vi.runAllTimersAsync();
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(client.joinById).not.toHaveBeenCalled();
+
+    client.reconnect.mockClear();
+    net.retry();
+    await vi.runAllTimersAsync();
+    expect(client.joinById).toHaveBeenCalledExactlyOnceWith("room-1", { name: "Pilot" });
+    expect(client.reconnect).not.toHaveBeenCalled();
+    expect(status).toHaveBeenLastCalledWith("connected");
+    expect(net.getSessionId()).toBe("pilot-2");
+    await net.disconnect();
+  });
+
+  it("also goes to lost immediately on HTTP 410 during countdown", async () => {
+    const first = makeRoom();
+    first.room.state.phase = "COUNTDOWN";
+    const { client, handle } = makeClient(first.handle);
+    client.reconnect.mockRejectedValue(new MatchMakeError("room has been disposed.", HTTP_ROOM_GONE));
+    const net = new NetClient(handle);
+    const status = vi.fn(); net.onConnectionStatus = status;
+    const lost = vi.fn(); net.onLeave = lost;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    await net.connect({ name: "Pilot" });
+    first.callbacks.leave(4010);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(client.joinById).not.toHaveBeenCalled();
+    expect(status).toHaveBeenLastCalledWith("lost");
+    expect(lost).toHaveBeenCalledTimes(1);
+    await vi.runAllTimersAsync();
+    expect(client.joinById).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    await net.disconnect();
+  });
+
   it("retries by roomId after an expired reservation reaches lost", async () => {
     const first = makeRoom();
     const second = makeRoom("room-1", "pilot-2");
@@ -651,5 +792,29 @@ describe("DOT-137 recovery and menu cleanup", () => {
     expect(status).toHaveBeenLastCalledWith("connected");
     expect(net.getSessionId()).toBe("pilot-2");
     await net.disconnect();
+  });
+});
+
+describe("isFinalReconnectRejection SDK shapes", () => {
+  it("treats MatchMakeError HTTP 410 and 404 with no data.code as final", () => {
+    const gone = new MatchMakeError("room has been disposed.", HTTP_ROOM_GONE);
+    const missing = new MatchMakeError("room not found", HTTP_ROOM_NOT_FOUND);
+    expect(gone).not.toHaveProperty("data");
+    expect(missing).not.toHaveProperty("data");
+    expect(isFinalReconnectRejection(gone)).toBe(true);
+    expect(isReconnectRoomGone(gone)).toBe(true);
+    expect(isFinalReconnectRejection(missing)).toBe(true);
+    expect(isReconnectRoomGone(missing)).toBe(false);
+  });
+
+  it("does not treat ServerError 524 'failed to reconnect' or HTTP 400 + data.code 524 as final", () => {
+    const handshake = new ServerError(ErrorCode.MATCHMAKE_EXPIRED, "failed to reconnect");
+    const http400 = Object.assign(new MatchMakeError("reconnection token invalid or expired.", 400), {
+      data: { code: ErrorCode.MATCHMAKE_EXPIRED, error: "reconnection token invalid or expired." },
+    });
+    expect(isFinalReconnectRejection(handshake)).toBe(false);
+    expect(isReconnectRoomGone(handshake)).toBe(false);
+    expect(isFinalReconnectRejection(http400)).toBe(false);
+    expect(isReconnectRoomGone(http400)).toBe(false);
   });
 });
