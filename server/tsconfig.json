@@ -2,9 +2,8 @@
   "compilerOptions": {
     "target": "ESNext",
     "useDefineForClassFields": false,
-    "module": "CommonJS",
-    "moduleResolution": "Node",
-    "ignoreDeprecations": "5.0",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
