@@ -5,9 +5,11 @@
 
 const CSS = `
   .wc-root {
-    position: relative; z-index: 20;
+    position: fixed; inset: 0; z-index: 20;
     background: #04060e;
+    overflow: hidden;
     cursor: none;
+    touch-action: none;
     animation: wc-fade-in .6s ease both;
   }
   @media (pointer: coarse) { .wc-root { cursor: auto; } }
@@ -15,6 +17,8 @@ const CSS = `
   @keyframes wc-fade-in  { from { opacity: 0; } to { opacity: 1; } }
   @keyframes wc-fade-out { from { opacity: 1; } to { opacity: 0; } }
   .wc-root.wc-fadeout { animation: wc-fade-out .3s ease forwards; }
+
+  .wc-stage { position: fixed; inset: 0; overflow: hidden; }
 
   .wc-layer {
     position: absolute;
@@ -28,8 +32,10 @@ const CSS = `
 
   /* ── Bottom UI bar ── */
   .wc-ui {
-    position: relative;
-    margin: 1.5rem 0;
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; align-items: flex-end; justify-content: center;
+    padding-bottom: clamp(48px, 22vh, 160px);
+    pointer-events: none;
   }
 
   /* ── BREACH button ── */
@@ -82,6 +88,23 @@ const CSS = `
 
   .wc-btn:active { transform: scale(0.975); }
 
+  /* Corner tick marks */
+  .wc-c {
+    position: absolute; width: 8px; height: 8px;
+    border: 1px solid rgba(255,255,255,.45);
+    transition: width .3s, height .3s, border-color .3s;
+  }
+  .wc-btn:hover .wc-c { width: 13px; height: 13px; border-color: #fff; }
+  .wc-c.tl { top:    4px; left:  4px; border-right: none; border-bottom: none; }
+  .wc-c.tr { top:    4px; right: 4px; border-left:  none; border-bottom: none; }
+  .wc-c.bl { bottom: 4px; left:  4px; border-right: none; border-top:    none; }
+  .wc-c.br { bottom: 4px; right: 4px; border-left:  none; border-top:    none; }
+
+  .wc-btn-label {
+    position: relative; z-index: 1;
+    display: flex; align-items: center; gap: 12px;
+  }
+
   .wc-arrow {
     font-size: 1.3em; letter-spacing: 0;
     transition: transform .3s cubic-bezier(.2,.8,.2,1);
@@ -99,45 +122,48 @@ export function injectWelcomeStyle(): void {
 }
 
 export interface WelcomeElements {
-  root: HTMLElement;
+  root: HTMLDivElement;
   layer: HTMLDivElement;
   btn: HTMLButtonElement;
 }
 
 export function createWelcomeView(): WelcomeElements {
-  const root = document.querySelector<HTMLElement>('#landing')!;
-  root.classList.add('wc-root');
+  const root = document.createElement('div');
+  root.className = 'wc-root';
+  root.innerHTML = `
+    <div class="wc-stage">
+      <div class="wc-layer" id="wc-layer" data-depth="0.012"></div>
+    </div>
+    <div class="wc-ui">
+      <button class="wc-btn" id="wc-btn">
+        <span class="wc-c tl"></span>
+        <span class="wc-c tr"></span>
+        <span class="wc-c bl"></span>
+        <span class="wc-c br"></span>
+        <span class="wc-btn-label">Click to BREACH <span class="wc-arrow">→</span></span>
+      </button>
+    </div>
+  `;
+  document.body.appendChild(root);
 
   const layer = root.querySelector<HTMLDivElement>('#wc-layer')!;
   const btn   = root.querySelector<HTMLButtonElement>('#wc-btn')!;
-  btn.disabled = false;
-  root.querySelector<HTMLElement>('#landing-status')!.hidden = true;
   return { root, layer, btn };
 }
 
 export function startWelcomeEffects(
-  root: HTMLElement,
+  root: HTMLDivElement,
   layer: HTMLDivElement,
   btn: HTMLButtonElement,
 ): () => void {
   const depth = parseFloat(layer.dataset['depth'] ?? '0.012');
   let mouseNx = 0;
   let mouseNy = 0;
-  let gyroX = 0;
-  let gyroY = 0;
-  let usingGyro = false;
   let rafId = 0;
 
   const onMove = (e: MouseEvent) => {
     mouseNx = (e.clientX / window.innerWidth  - 0.5) * 2;
     mouseNy = (e.clientY / window.innerHeight - 0.5) * 2;
-  };
-
-  const onGyro = (e: DeviceOrientationEvent) => {
-    if (e.gamma == null) return;
-    usingGyro = true;
-    gyroX = Math.max(-12, Math.min(12, e.gamma)) / 12;
-    gyroY = Math.max(-10, Math.min(10, (e.beta ?? 0) - 30)) / 10;
   };
 
   const onBtnMove = (e: MouseEvent) => {
@@ -147,15 +173,12 @@ export function startWelcomeEffects(
   };
 
   window.addEventListener('mousemove', onMove);
-  window.addEventListener('deviceorientation', onGyro);
   btn.addEventListener('mousemove', onBtnMove);
 
   const tick = () => {
     if (!root.isConnected) return;
-    const px = usingGyro ? gyroX : mouseNx;
-    const py = usingGyro ? gyroY : mouseNy;
-    const ox = px * depth * window.innerWidth;
-    const oy = py * depth * window.innerHeight;
+    const ox = mouseNx * depth * window.innerWidth;
+    const oy = mouseNy * depth * window.innerHeight;
     layer.style.transform = `translate(${ox}px,${oy}px)`;
     rafId = requestAnimationFrame(tick);
   };
@@ -164,7 +187,6 @@ export function startWelcomeEffects(
   return () => {
     cancelAnimationFrame(rafId);
     window.removeEventListener('mousemove', onMove);
-    window.removeEventListener('deviceorientation', onGyro);
     btn.removeEventListener('mousemove', onBtnMove);
   };
 }

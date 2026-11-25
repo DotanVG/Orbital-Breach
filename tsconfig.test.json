@@ -9,7 +9,8 @@
     "noEmit": true,
     "types": ["vitest/globals", "node", "vite/client"],
     "paths": {
-      "three": ["./client/node_modules/@types/three"]
+      "three": ["./client/node_modules/@types/three"],
+      "@colyseus/sdk": ["./client/node_modules/@colyseus/sdk"]
     }
   },
   "include": ["tests/**/*.ts", "shared/**/*.ts"]

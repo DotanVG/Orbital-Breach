@@ -36,9 +36,10 @@ export class ArenaQueryAdapter implements SharedArenaQuery {
   }
 
   public getNearestBar(pos: Vec3, radius: number): BarGrabPoint | null {
-    const bar = this.arena.getNearestBar(this.toThree(pos), radius);
+    const normal = new THREE.Vector3();
+    const bar = this.arena.getNearestBar(this.toThree(pos), radius, undefined, normal);
     if (!bar) return null;
-    return { pos: { x: bar.x, y: bar.y, z: bar.z } };
+    return { pos: { x: bar.x, y: bar.y, z: bar.z }, normal: { x: normal.x, y: normal.y, z: normal.z } };
   }
 
   private toThree(vec: Vec3) {

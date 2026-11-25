@@ -85,6 +85,7 @@ function createRig(names: PoseBoneName[]): AnimatedRig {
     breathingBasePositions: {},
     frozenJumpRightArmPose: {},
     floatReferenceRightArmPose: {},
+    standingReferencePose: {},
   };
 }
 

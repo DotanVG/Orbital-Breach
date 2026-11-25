@@ -1,3 +1,4 @@
+import { holdBootCoverUntilMenuPresented } from './bootCover';
 import { createMenuView, injectMenuStyle, type MenuElements } from './menu/menuView';
 import { isTouchDevice } from '../platform';
 import { isMatchTeamSize, type MatchTeamSize } from '../../../shared/match';
@@ -40,6 +41,7 @@ export class MainMenu {
       isMatchTeamSize(savedSize) ? savedSize : 1,
     );
     this.menu = elements;
+    holdBootCoverUntilMenuPresented(elements.root);
     const listenerAbort = new AbortController();
     this.menuListenerAbort = listenerAbort;
     const listenerOptions = { signal: listenerAbort.signal };

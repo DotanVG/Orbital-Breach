@@ -17,6 +17,11 @@ All commands run from the **repo root** unless noted. Use the local
 npm test                   # single run, CI-style
 npm run test:watch         # watch mode
 
+# Production page-load smoke (headless Chromium: desktop + iPhone landscape)
+node_modules/.bin/playwright install chromium  # first run; add --with-deps on Linux CI
+npm run build --prefix client
+npm run test:page-load
+
 # TypeScript typecheck (run before any commit)
 cd client && node_modules/.bin/tsc --noEmit
 cd server && node_modules/.bin/tsc --noEmit
@@ -42,12 +47,12 @@ Config at the repo root:
   `client/node_modules/three/build/three.module.js`.
 - `tsconfig.test.json` — TypeScript scope for the test compile.
 
-### Root harness package.json (gitignored — recreate on fresh clones)
+### Root harness package.json
 
-The root `package.json` is deliberately **gitignored** (root-level dev tooling,
-not part of deployable code — Vercel builds from `client/` only, see
-`vercel.json`). A fresh clone therefore cannot run `npm test` until it exists.
-Recreate it with exactly this content, then `npm install`:
+The root `package.json` is the Vitest harness (`npm test`) and the `dev`
+script. It is tracked so a fresh clone and CI can install and run the suite.
+`vercel.json` pins `installCommand` and `buildCommand` to `client/`, so Vercel
+does not build this harness. Contents:
 
 ```json
 {
@@ -56,21 +61,22 @@ Recreate it with exactly this content, then `npm install`:
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:page-load": "node scripts/qa/page-load.mjs",
     "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\""
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@vitest/coverage-v8": "^3.2.4",
     "concurrently": "^9.1.0",
+    "playwright": "1.58.2",
     "vitest": "^3.2.4"
   }
 }
 ```
 
-Claude Code on the web does this automatically via the SessionStart hook
-(`.claude/hooks/session-start.mjs`), which also installs `client/` and
-`server/` dependencies. If you change the harness deps, update both this
-section and the hook — they must stay in sync.
+Claude Code on the web installs root, client, and server dependencies via the
+SessionStart hook (`.claude/hooks/session-start.mjs`). If you change the
+harness deps, update both this section and the hook — they must stay in sync.
 
 Conventions:
 - Explicit imports — `import { describe, it, expect } from 'vitest';`
@@ -100,7 +106,7 @@ For these, rely on the manual smoke checklist below.
 
 ---
 
-## Current coverage (42 test files, 243 tests)
+## Current coverage (70 test files, 452 tests)
 
 The suite covers physics, arena generation, diamond obstacle invariants, both
 win paths, bot AI, online reconciliation, portal placement, debrief stats,
@@ -183,7 +189,11 @@ these paths.
 
 ### Desktop browser (Chrome + Firefox at minimum)
 
-- [ ] Boot loads, welcome / call-sign capture works on first visit.
+- [ ] `npm run test:page-load` passes for the built app: direct welcome and embedded
+      menu loads on desktop and iPhone landscape produce zero console errors and
+      zero uncaught page errors. CI runs this automatically after building. Hosted
+      analytics loaders and font CSS are stubbed; unexpected external requests fail.
+- [ ] Boot opens directly on the main menu (call sign lives there). No page appears before that menu. Audio and fullscreen wait for a menu click.
 - [ ] Solo: 1v1, 2v2, 5v5, 10v10, 20v20 — bots fill empty seats; LMB fires; E
       grabs; Space launches with mouse-Y aim power.
 - [ ] **Win path A — Breach**: float through enemy portal while at least one

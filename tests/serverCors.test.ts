@@ -74,4 +74,16 @@ describe('buildCorsHeaders', () => {
     expect(buildCorsHeaders('https://evil.com', allow)).toEqual({ Vary: 'Origin' });
     expect(buildCorsHeaders(null, allow)).toEqual({ Vary: 'Origin' });
   });
+
+  it('reflects the null origin without credentials', () => {
+    const headers = buildCorsHeaders('null', allow);
+    expect(headers).toEqual({
+      Vary: 'Origin',
+      'Access-Control-Allow-Origin': 'null',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Accept',
+      'Access-Control-Max-Age': '86400',
+    });
+    expect(headers['Access-Control-Allow-Credentials']).toBeUndefined();
+  });
 });

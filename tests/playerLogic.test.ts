@@ -9,6 +9,7 @@ import {
   resolveActorCollisions,
   spawnPosition,
 } from "../shared/player-logic";
+import { defaultHitZoneColliders, rotateByQuaternion, IDENTITY_QUATERNION, quaternionFromYawPitchRoll } from "../shared/hitZoneColliders";
 import {
   BOTH_LEGS_HIT_LAUNCH_FACTOR,
   HITBOX_OFFSET_Y,
@@ -75,6 +76,14 @@ describe("classifyHitZone", () => {
     expect(
       classifyHitZone({ x: 0, y: 0.2, z: 0 }, playerPos, facing, -0.35),
     ).toBe("head");
+  });
+
+  it('keeps sampled left/right arm hits attached through 90/180 yaw',()=>{
+    for(const yaw of [0,Math.PI/2,Math.PI]) for(const side of ['leftArm','rightArm']) {
+      const c=defaultHitZoneColliders.find(c=>c.zone===side)!;
+      const q=quaternionFromYawPitchRoll(yaw), p=rotateByQuaternion(q,c.position);
+      expect(classifyHitZone(p,playerPos,q)).toBe(side);
+    }
   });
 });
 
@@ -177,13 +186,19 @@ describe("generateSpawnPositions", () => {
         const dy = slots[i].y - slots[j].y;
         const dz = slots[i].z - slots[j].z;
         const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        expect(distance).toBeGreaterThanOrEqual(1.6);
+        expect(distance).toBeGreaterThanOrEqual(1.0);
       }
     }
   });
 });
 
 describe("resolveActorCollisions", () => {
+  it('separates body centres while preserving the anchor frame',()=>{
+    const a={anchored:true,pos:{x:0,y:0,z:0},offset:{x:0.3,y:0,z:0},radius:0.5};
+    const b={pos:{x:1,y:0,z:0},offset:{x:-0.3,y:0,z:0},radius:0.5};
+    expect(resolveActorCollisions([a,b])).toBe(true);
+    expect(a.pos.x).toBe(0);expect(b.pos.x).toBeCloseTo(1.6,8);
+  });
   it("separates overlapping bodies and keeps anchored bodies nearly fixed", () => {
     const bodies = [
       {

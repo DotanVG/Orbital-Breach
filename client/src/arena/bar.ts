@@ -37,11 +37,23 @@ export class BarObject {
     return this.worldPos.clone();
   }
 
-  public getGrabPoint(): THREE.Vector3 {
+  public getDirection(target: THREE.Vector3): THREE.Vector3 {
+    return target.copy(this.direction);
+  }
+
+  public getGrabPoint(target = new THREE.Vector3()): THREE.Vector3 {
     // Grab the exposed tip rather than the bar center so the hand reads as
     // holding the bar instead of intersecting it.
     const tipOffset = BAR_LENGTH * 0.5 - BAR_RADIUS * 0.25;
-    return this.worldPos.clone().addScaledVector(this.direction, tipOffset);
+    return target.copy(this.worldPos).addScaledVector(this.direction, tipOffset);
+  }
+
+  /** DEV close-ups: retract the exposed 12 cm of this single-cylinder bar. */
+  public setGrabTipVisible(visible: boolean): void {
+    if (!import.meta.env.DEV) return;
+    const hiddenLength = visible ? 0 : 0.12;
+    this.mesh.scale.y = (BAR_LENGTH - hiddenLength) / BAR_LENGTH;
+    this.mesh.position.copy(this.worldPos).addScaledVector(this.direction, -hiddenLength / 2);
   }
 
   /** Call once per frame to animate the pulsing emissive glow. */

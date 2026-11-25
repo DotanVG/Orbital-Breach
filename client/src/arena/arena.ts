@@ -8,6 +8,8 @@ import {
   PLAYER_DIAMOND_AABB_INSET,
 } from '../../../shared/constants';
 import { type PhysicsState } from '../physics';
+import { advanceBodyWorld, bodyClearsDiamond } from '../../../shared/bodyCollider';
+import type { QuaternionLike } from '../../../shared/hitZoneColliders';
 import { GoalPlane, type GoalDef } from './goal';
 import { BarObject } from './bar';
 import { type GeneratedLayout } from './states';
@@ -65,6 +67,7 @@ export class Arena {
   private breachRooms: BreachRoom[] = [];
   private energyWalls: PortalEnergyWall[] = [];
   private currentLayout: GeneratedLayout | null = null;
+  private readonly grabPointScratch = new THREE.Vector3();
 
   public constructor(private scene: THREE.Scene) {
     const cubeGeo = new THREE.BoxGeometry(ARENA_SIZE, ARENA_SIZE, ARENA_SIZE);
@@ -195,8 +198,9 @@ export class Arena {
     return isDeepInBreachRoom(pos, { center: room.center, openAxis: room.openAxis }, minDepth);
   }
 
-  public getBreachRoomCenter(team: 0 | 1): THREE.Vector3 {
-    return this.breachRooms[team]?.center.clone() ?? new THREE.Vector3(0, 0, team === 0 ? -23 : 23);
+  public getBreachRoomCenter(team: 0 | 1, target = new THREE.Vector3()): THREE.Vector3 {
+    const center = this.breachRooms[team]?.center;
+    return center ? target.copy(center) : target.set(0, 0, team === 0 ? -23 : 23);
   }
 
   public getBreachOpenAxis(team: 0 | 1): 'x' | 'y' | 'z' {
@@ -207,15 +211,16 @@ export class Arena {
     return this.breachRooms[team]?.openSign ?? (team === 0 ? 1 : -1);
   }
 
-  public getNearestBar(pos: THREE.Vector3, radius: number): THREE.Vector3 | null {
+  public getNearestBar(pos: THREE.Vector3, radius: number, target?: THREE.Vector3, directionTarget?: THREE.Vector3): THREE.Vector3 | null {
     let nearest: THREE.Vector3 | null = null;
     let best = radius * radius;
     for (const bar of this.barObjects) {
-      const grabPoint = bar.getGrabPoint();
+      const grabPoint = bar.getGrabPoint(this.grabPointScratch);
       const d2 = pos.distanceToSquared(grabPoint);
       if (d2 < best) {
         best = d2;
-        nearest = grabPoint;
+        nearest = (nearest ?? target ?? new THREE.Vector3()).copy(grabPoint);
+        if (directionTarget) bar.getDirection(directionTarget);
       }
     }
     return nearest;
@@ -225,8 +230,25 @@ export class Arena {
     return this.barObjects.map((bar) => bar.getGrabPoint());
   }
 
-  public bounceObstacles(state: PhysicsState): void {
-    bounceAgainstBoxes(state, this.playerCollisionBoxes);
+  public setBarGrabTipsVisible(visible: boolean): void {
+    if (!import.meta.env.DEV) return;
+    for (const bar of this.barObjects) bar.setGrabTipVisible(visible);
+  }
+
+  public advancePlayer(state: PhysicsState, dt: number, orientation: QuaternionLike, phase: string): void {
+    const axis=this.getBreachOpenAxis(0);
+    const positiveTeam=this.getBreachOpenSign(0) === -1 ? 0 : 1;
+    const faces={positive:this.isGoalDoorOpen(positiveTeam),negative:this.isGoalDoorOpen(positiveTeam === 0 ? 1 : 0)};
+    // Edge-mounted rails sit in empty corners of the diamond's inset AABB.
+    // A constrained hold must test the real faces before cancelling the grab.
+    const boxes = phase === 'GRABBING' || phase === 'AIMING'
+      ? this.playerCollisionBoxes.filter((_, i) => !bodyClearsDiamond(state.pos, orientation, phase, this.physicsBoxes[i]))
+      : this.playerCollisionBoxes;
+    advanceBodyWorld(state,dt,orientation,phase,boxes,phase === 'FROZEN' ? undefined : axis,faces);
+  }
+
+  public bounceObstacles(state: PhysicsState, orientation?: QuaternionLike, phase = 'BREACH'): void {
+    bounceAgainstBoxes(state, this.playerCollisionBoxes, orientation, phase);
   }
 
   /** Full AABBs — used for camera collision. */

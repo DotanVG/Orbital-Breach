@@ -117,6 +117,7 @@ Prerequisites: Node 22.x (see .nvmrc) and npm.
 Install dependencies:
 
 ```bash
+npm install
 npm install --prefix client
 npm install --prefix server
 ```
@@ -136,10 +137,8 @@ Open [http://localhost:5173](http://localhost:5173). In development, the Vite se
 Useful commands:
 
 ```bash
-# test suite — run from the repo root
-# (the one-time install lands in a gitignored root package.json)
-npm install vitest
-npx vitest run
+# test suite — run from the repo root after `npm install`
+npm test
 
 # client build + typecheck
 npm run build --prefix client
@@ -148,9 +147,14 @@ npm run build --prefix client
 npm run build --prefix server
 ```
 
-Production online multiplayer requires `VITE_COLYSEUS_ENDPOINT` on the client. The server accepts `PORT`, `CLIENT_ORIGIN`, `PUBLIC_ADDRESS`, and `NODE_ENV`.
+Production online multiplayer requires `VITE_COLYSEUS_ENDPOINT` on the client. The server accepts `PORT`, `CLIENT_ORIGIN`, `PUBLIC_ADDRESS`, `NODE_ENV`, and `TRUST_PROXY_HOPS` (reverse proxies to trust for client IP; unset means 1 in production and 0 in development).
 
 ## Development Tooling
+
+### DEV collider debugging
+
+- `[` toggles body boxes, hit zones and grab reach; `]` toggles the pose collider editor.
+- `\` toggles the exposed 12 cm of grab bars for palm close-ups, retaining the shaft. Grip points and collision stay fixed. QA can call `debugOverlays.setBarGrabTipsVisible(false)` (or `true` to restore); the key and visibility mutations are guarded by `import.meta.env.DEV` and inactive in production.
 
 This repo uses an AI-assisted workflow driven by [Symphony](https://github.com/openai/symphony), [Claude Code](https://docs.anthropic.com/claude-code), and Codex-compatible repo-local skills.
 
@@ -233,7 +237,7 @@ rebuild after a major refactor.
 - `client/src/player/` contains local-player movement, animation, combat, spawn helpers, and third-person presentation.
 - `client/src/arena/` contains procedural arena layout, breach-room queries, portal barriers, and obstacle collision helpers.
 - `client/src/render/` contains the Three.js scene manager, HUD renderers, materials, and player-facing overlays.
-- `client/src/ui/` contains the DOM UI stack: menu, welcome flow, room browser, multiplayer lobby, mobile controls, session menu, credits, instructions, and debrief.
+- `client/src/ui/` contains the DOM UI stack: menu, room browser, multiplayer lobby, mobile controls, session menu, credits, instructions, and debrief.
 - `client/src/net/` contains Colyseus client wiring, endpoint resolution, room-directory polling, reconciliation helpers, and backend wake-up support.
 - `client/src/audio/` and `client/src/analytics/` contain sound playback and Vercel analytics wrappers.
 - `server/src/colyseus/` contains the production multiplayer runtime: authoritative room lifecycle, state schema, damage handling, and room directory.
@@ -245,14 +249,39 @@ rebuild after a major refactor.
 
 ## Current Codebase Coverage
 
+- Online drops reserve the same player and room for 20 seconds. Token-based reconnection retries with bounded exponential backoff, displays recovery/failure status, and closes the socket on return to the menu. After recovery fails, Retry rejoins by room ID. Disconnected reserved players cannot start or continue a lobby countdown; reconnecting restores their readiness.
+
 Shipped and implemented:
+
+- Page-load CI smoke checks the production build in headless Chromium on desktop and iPhone landscape, including direct welcome and embedded menu entry. Both console errors and uncaught page errors fail the check; unexpected external requests fail rather than being silently blocked. The broken third-party Vibe Jam badge script is removed; arena portals remain available.
+
+- Projectile damage uses exact body/helmet triangle first contact. Four-triangle flat bone-local BVHs retain tight per-node runtime deformation certificates; the loose whole-bone hit pad is removed. Far projectile misses keep the checked all-rotation actor envelope and skip hierarchy signatures/live pose AABBs. Near queries carry the closest contact across trees, use tight per-tree world rejects with lazy axis bounds, and refine roots in entry order before preparing their skin/inverse palettes and bone-space rays. Reusable candidate flags deduplicate triangles. Integer root-sort results avoid fractional comparator allocations. Actual asset clips are sampled on a detached rig at load (4 Hz, per-node displacement plus margin); analytically rigid nodes record a sampled pad, but it is only counted for diagnostics (sampledPadNodeCount); their candidate bounds use the exact rigid bind box, so sampled pads do not change candidate selection. Blended nodes keep runtime certificates. Exceptional transforms and hierarchy changes retain fallback invalidation. Only candidate vertices are CPU-skinned, with original mesh/triangle tie ordering. Head damage, helmets and zone mapping are unchanged. The online server validates reported zones and plausibility without loading or skinning meshes.
 
 - Browser-playable zero-G FPS with solo bot matches and Colyseus-backed online multiplayer.
 - Quick match, room browser, private/public room creation, invite URLs, native share, and QR joins.
+- Transport failures before a match trigger up to eight reconnect attempts with jittered exponential backoff (30 second cap). Mid-match drops get one attempt with a five-second deadline. Connection lost offers Retry and Back to menu; server/join rejections fail fast, successful retries clear invite URLs, and the status chip leaves space for phone HUD/menu controls. Rejoins target the same room with no seat reservation.
+- Matchmaking gateway failures (HTTP 502/503/504) use that retry budget. Recoverable room message errors keep the current session; known fatal session errors still disconnect. Reconnect browser QA uses stable test IDs and button roles.
 - Mobile touch controls, embed support for itch.io, and Vibe Jam portal handoff/return flow.
+- Entering the game never requests motion or orientation permission. Mobile gameplay uses the existing touch controls.
+- Local-player frame math reuses Vector3/Quaternion/Euler scratch objects; regression tests cover allocations and the previous facing/grip results. Pointer-lock helpers tolerate missing APIs, legacy void results, and rejected promises.
+- Bar holds place only the left palm outside the bar surface (0-3 cm gap), with a reclined torso keeping the head and helmet clear; the right hand retains the aiming pistol. A bar-aligned frame supports vertical and diagonal bars while preserving the preferred up direction. CPU-skinned body/helmet tests guard mesh clearance, left-palm contact, right-hand clearance and fitted hang colliders. Attached poses test the actual diamond faces before rejecting an inset-box corner contact, so the first Grab/E press works on edge rails. Repeated presses cannot detach or queue a regrab; mobile shows GRABBED until launch. Solid-world obstructions still release the hold.
+- Responsive main menu: tablet and phone mode grids, wrapping utilities, scrollable secondary actions, and an initially visible solo launcher on short landscape screens. Built-app headless QA covers ten phone/tablet/desktop viewports.
+- Visual first-flight onboarding: rail/launch/freeze/gate highlights, named gate and rail distance markers, a brief dismissible intro, and an Instructions button (`H`, close with `H`/`Esc`). Reduced motion keeps highlights static; completed actions are remembered across rounds and the completed guide across visits.
+- Gate/rail markers and control hints stay visible throughout onboarding, Tutorial replay, and the first full match. Later normal matches show four seconds of guidance, two short attention pulses, then a 1.25-second ease-out fade; reduced motion skips the pulses. Full-match completion uses the guarded local onboarding store and survives revisits.
+- Replay the entire guide and intro from **Tutorial** on the main menu (during a match: `Esc` → **Main Menu** → **Tutorial**; if Instructions is open, close it first). This resets onboarding and starts the existing empty arena with bots off. Instructions stay closed by default; the ordinary intro appears only once per browser origin.
+- Closing Instructions blurs its controls; Space cannot activate the launcher (use `H`, pointer, or Enter). H is ignored in menus, lobbies, match-end celebrations, and debriefs without changing input state.
 - Post-match debrief stats, awards, credits, analytics, and Speed Insights instrumentation.
-- Crawlable landing content with VideoGame/WebApplication schema and an on-demand gameplay screenshot.
+- A local victory stage keeps the winning team's dance and camera running beneath interactive statistics without ticking combat. WINS sits 27.5% from the top; reduced motion holds the pose and camera still.
+- Normal visits open on the original full-screen art and **Click to BREACH** button before the main menu; embed and portal visits skip it. Audio unlocks on a user gesture, and automatic fullscreen entry is limited to the welcome click when enabled. Title, description, Open Graph, and VideoGame/WebApplication JSON-LD stay in the document head, with no SEO body text or separate landing page.
 - AI bot fill, ready checks, stale-player seat cleanup, and authoritative round/match scoring.
+- Multiplayer server payload validation, WebSocket origin checks, a 200-frame/second client cap, and loopback adversarial tests for malformed traffic and disconnect cleanup.
+- GitHub Actions typechecks the client and server and runs the Vitest suite on push and pull request. Lobby messages and `/matchmake` are rate-limited; the enforced content security policy frames the game for this origin and itch embedders.
+- Damage tests use first contact with the current CPU-skinned body and helmet triangles, classified by dominant bone and stable triangle seams. No enclosing sphere or nearest-part fallback can turn empty space into a hit. Existing freeze/limb effects remain; measured exposure shares prioritize mesh accuracy over balance targets.
+- World collision uses a shared six-part head/torso/limb compound fitted to CPU-skinned swim, hold and freeze poses. Oriented part tests leave empty envelope corners clear; wall/portal supports come from the compound. A swept compound AABB permits one step in clear space and skips complete fine intervals before possible contact; potential contacts retain smallest-part spacing, with bounds and SAT supports reused during translation. Per-part maximum-speed tests cover zero-thickness walls (arena clamp and SAT) and the thinnest real inset obstacle (2.8 m). The DEV collision overlay shows the physical parts separately from damage zones. Client prediction, server bots and stale actors share wall/portal/obstacle contacts and bounded-displacement substeps, including launch clearance. Spawn feet rest on the breach floor.
+- The swimming box uses asymmetric sampled supports to close the pistol-side wall gap, with at most 3 cm of swinging limb graze. CPU-skinned face-contact tests cover the full swim cycle and freeze transitions, exact obstacle separation, and thin-wall parity at maximum speed. The frozen box conservatively encloses upright, swimming and hanging crossfades.
+- Damage surfaces follow live animation, recoil, helmet geometry and frozen transitions. Shared segment/triangle math is engine independent; online damage still uses the existing client-reported zone contract, with server validation and consequences unchanged. Actor separation follows the rotated body centre. F1 model laterality and L1 yaw fallback remain guarded.
+- DEV `[` shows the green compound world boxes, coloured current damage triangles and a faint yellow 3 m grab reach; `]` edits the legacy diagnostic pose table (not runtime damage geometry); `\` hides exposed bar tips for palm inspection. The 377-orientation guard also checks independent GLB joint/mesh projections and grip alignment.
+
 
 Pending or transitional:
 
@@ -271,6 +300,48 @@ Audio by **Noam Ouzana**: main theme, hit SFX, laser shots, and countdown audio.
   [quaternius.com/packs/scifigun.html](https://quaternius.com/packs/scifigun.html)
 
 ## More Docs
+
+Headless page-load smoke (Node 22+, after installing root and client dependencies):
+
+```powershell
+& node_modules/.bin/playwright.cmd install chromium
+npm.cmd run build --prefix client
+npm.cmd run test:page-load
+```
+
+CI runs the same smoke after the client production build and installs Chromium
+with its Linux dependencies. The check serves `client/dist` on a free loopback
+port and closes its browser and server on success or failure. It requires the
+welcome button or solo menu button to become visible, then checks for zero console
+errors and zero `pageerror` events through a one-second settling period. Only
+Vercel's two hosted analytics loaders and Google Fonts CSS are stubbed; other
+external requests fail the check. This does not verify hosted analytics, remote
+fonts, deployment headers, real iOS Safari, or gameplay.
+
+Headless menu QA (Node 22+, after installing client dependencies):
+
+```powershell
+# <qa-dir>: any folder outside the repo for Playwright and its browser downloads.
+# <artifact-dir>: where screenshots and results are written.
+npm install --prefix <qa-dir> playwright
+$env:NODE_PATH = '<qa-dir>\node_modules'
+$env:PLAYWRIGHT_BROWSERS_PATH = '<qa-dir>\browsers'
+& <qa-dir>\node_modules\.bin\playwright.cmd install webkit chromium
+npm run build --prefix client
+node scripts/qa/menu-responsive.mjs --out <artifact-dir>
+```
+
+The script resolves Playwright from the repo or `NODE_PATH`, serves only the built
+app on a free loopback port, and closes its headless browser and preview server.
+It prefers WebKit device descriptors with exact viewport overrides and reports
+Chromium fallback if WebKit cannot run the build. JSON/Markdown results include
+document, body and menu overflow, initial solo visibility, button bounds,
+scroll reachability, center hit tests, text bounds and 40px touch targets.
+Viewport PNGs capture the initial menu; secondary controls may require vertical
+scrolling. On viewports wider than 960px the footer (`.ob-bottombar`) must also stay
+`position: fixed` and fully inside the viewport. Any failed check exits nonzero. Use `--dist <directory>` to check an
+existing build (including a baseline). Google Fonts must be reachable; backend,
+analytics and external widgets are blocked. Emulation does not verify real Safari.
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Testing](docs/TESTING.md)

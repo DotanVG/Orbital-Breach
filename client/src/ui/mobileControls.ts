@@ -279,14 +279,16 @@ export class MobileControls {
     this.jumpBtn.style.display = showJump ? 'flex' : 'none';
     this.jumpBtn.textContent = onBar ? 'LAUNCH' : 'JUMP';
     if (onBar) {
-      this.grabBtn.style.display = 'none';
       this.grabBtn.classList.remove('mob-pressed');
     }
   }
 
   /** Called every frame — show GRAB button only when the player can grab a nearby bar. */
   public setNearBar(near: boolean, canGrab: boolean): void {
-    const showGrab = near && canGrab && !isAttachedToBar(this.phase);
+    const attached = isAttachedToBar(this.phase);
+    const showGrab = canGrab && (near || attached);
+    this.grabBtn.textContent = attached ? 'GRABBED' : 'GRAB';
+    this.grabBtn.setAttribute('aria-pressed', String(attached));
     this.grabBtn.style.display = showGrab ? 'flex' : 'none';
     if (!showGrab) {
       this.grabBtn.classList.remove('mob-pressed');

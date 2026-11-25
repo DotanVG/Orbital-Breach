@@ -8,20 +8,12 @@ import { enterFullscreen } from './fullscreen';
 
 export class WelcomeScreen {
   public onBreach: (() => void) | null = null;
-  public onPrepare: (() => Promise<void>) | null = null;
-  public onLoadError: (() => void) | null = null;
   public fullscreenOnClick = false;
 
-  private root: HTMLElement | null = null;
+  private root: HTMLDivElement | null = null;
   private stopEffects: (() => void) | null = null;
   private active = false;
-
-  // Capture even BODY-targeted navigation before the game's global listener.
-  private readonly handleNavigationKeyDown = (event: KeyboardEvent): void => {
-    if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.code)) {
-      event.stopPropagation();
-    }
-  };
+  private cancelFade: (() => void) | null = null;
 
   constructor(private readonly cursor: GlobalCursor) {}
 
@@ -33,53 +25,47 @@ export class WelcomeScreen {
     this.active = true;
     this.stopEffects = startWelcomeEffects(root, layer, btn);
 
-    window.addEventListener('keydown', this.handleNavigationKeyDown, true);
-
     btn.addEventListener('mouseenter', () => this.cursor.setHot(true));
     btn.addEventListener('mouseleave', () => this.cursor.setHot(false));
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      btn.setAttribute('aria-busy', 'true');
-      btn.textContent = 'Loading…';
-      const status = root.querySelector<HTMLElement>('#landing-status')!;
-      status.hidden = false;
-      status.textContent = 'Loading the game, models and audio…';
-      try {
-        // Prime audio before fullscreen or orientation permission consumes activation.
-        const preparation = this.onPrepare?.();
-        if (this.fullscreenOnClick) enterFullscreen();
-        if (
-          typeof DeviceOrientationEvent !== 'undefined' &&
-          'requestPermission' in DeviceOrientationEvent &&
-          typeof (DeviceOrientationEvent as { requestPermission?: () => Promise<string> }).requestPermission === 'function'
-        ) {
-          (DeviceOrientationEvent as { requestPermission: () => Promise<string> })
-            .requestPermission()
-            .catch(() => {});
-        }
-        await preparation;
-      } catch {
-        this.onLoadError?.();
-        return;
-      }
+    let breached = false;
+    btn.addEventListener('click', () => {
+      if (breached) return;
+      breached = true;
+      if (this.fullscreenOnClick) enterFullscreen();
       this.fadeOut(() => {
         this.hide();
-        document.body.classList.add('game-active');
         this.onBreach?.();
       });
-    }, { once: true });
-    btn.focus({ preventScroll: true });
+    });
   }
 
   fadeOut(cb: () => void): void {
-    if (!this.root) { cb(); return; }
+    this.cancelFade?.();
+    if (!this.root || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      cb();
+      return;
+    }
     const root = this.root;
-    root.addEventListener('animationend', () => cb(), { once: true });
+    let completed = false;
+    const finish = () => {
+      if (completed) return;
+      cancel();
+      cb();
+    };
+    const timer = setTimeout(finish, 450); // 300 ms CSS fade + 150 ms margin.
+    const cancel = () => {
+      completed = true;
+      clearTimeout(timer);
+      root.removeEventListener('animationend', finish);
+      this.cancelFade = null;
+    };
+    this.cancelFade = cancel;
+    root.addEventListener('animationend', finish, { once: true });
     root.classList.add('wc-fadeout');
   }
 
   hide(): void {
-    window.removeEventListener('keydown', this.handleNavigationKeyDown, true);
+    this.cancelFade?.();
     this.stopEffects?.();
     this.stopEffects = null;
     this.root?.remove();

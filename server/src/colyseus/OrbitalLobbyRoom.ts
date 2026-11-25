@@ -1,3 +1,4 @@
+import { bodyWorldBounds, breachFloorAnchorY, type CollisionBox } from '../../../shared/bodyCollider';
 import { Room, type Client } from "@colyseus/core";
 import {
   buildBotName,
@@ -29,6 +30,11 @@ import type { MatchTeamSize } from "../../../shared/match";
 import { findMatchWinner } from "../../../shared/match-flow";
 import { DEFAULT_PLAYER_NAME } from "../../../shared/callSigns";
 import { generateArenaLayout } from "../../../shared/arena-gen";
+import {
+  normalizeQuaternion,
+  orientationFromSnapshot,
+  quaternionFromYawPitchRoll,
+} from "../../../shared/hitZoneColliders";
 import { isCallSignClean } from "../../../shared/profanity";
 import {
   ACTOR_COLLISION_RADIUS,
@@ -39,24 +45,31 @@ import {
   MATCH_POINT_TARGET,
   MAX_LAUNCH_SPEED,
   MAX_SPEED,
-  PLAYER_RADIUS,
+  PLAYER_DIAMOND_AABB_INSET,
 } from "../../../shared/constants";
 import type { PlayerPhase } from "../../../shared/schema";
 import { generateSpawnPositions, resolveActorCollisions, type CollisionBody, type HitZone } from "../../../shared/player-logic";
 import { applyHitToOnlineActor, isHitZone, normalizeAuthoritativePhase } from "./actorDamage";
 import { BotController, botIdHash, botPersonality, type BotCombatHooks } from "./botAI";
 import {
-  bounceActorInArena,
   breachRoomCenter,
-  integrateZeroGActor,
+  stepActorWorld,
   isActorInEnemyBreachRoom,
   isHitReportDistancePlausible,
   shouldServerSimulateHumanActor,
 } from "./onlineActorSimulation";
+import {
+  createMessageLimiter,
+  LOBBY_ACTION_LIMIT_PER_SECOND,
+  SHOT_EVENT_LIMIT_PER_SECOND,
+  type SlidingWindowLimiter,
+} from "./messageRateLimit";
 import type { OrbitalRoomMetadata } from "./roomDirectory";
 import { ActorState, LobbyMemberState, OrbitalLobbyState } from "./state";
 
 type RoomClient = Client;
+
+export const RECONNECTION_GRACE_SECONDS = 20;
 
 const MATCH_TICK_MS = 50;
 const BOT_RESPAWN_SECONDS = 5;
@@ -79,10 +92,18 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   public maxClients = 32;
   public autoDispose = true;
   public patchRate = 50;
+  // Covers every frame, including pings, before decoding/dispatch. Normal input
+  // is ~25 updates/s plus shots/reports; retain ample room for short bursts.
+  public maxMessagesPerSecond = 200;
 
+  private readonly rejectedTransports = new WeakSet<RoomClient>();
+  // Clients force-closed (4002) by Colyseus because the same reconnection token
+  // came back on a new connection while the old socket still looked alive.
+  private readonly staleTakeovers = new WeakSet<RoomClient>();
   private countdownTimer: ReturnType<typeof setInterval> | null = null;
   private roundTimer: ReturnType<typeof setInterval> | null = null;
   private roundEndTimer: ReturnType<typeof setTimeout> | null = null;
+  private roundResolveTimer: ReturnType<typeof setTimeout> | null = null;
   private matchTick: ReturnType<typeof setInterval> | null = null;
   private botCounters: Record<LobbyTeam, number> = { 0: 0, 1: 0 };
   private botSpawnYaw: Record<LobbyTeam, number> = { 0: 0, 1: 0 };
@@ -100,6 +121,11 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   private lastPlayerUpdate = new Map<string, number>();
   private lastHitReport = new Map<string, number>();
   private lastBreachReport = new Map<string, number>();
+  private readonly shotEvents: SlidingWindowLimiter = createMessageLimiter(SHOT_EVENT_LIMIT_PER_SECOND);
+  private readonly readyActions: SlidingWindowLimiter = createMessageLimiter(LOBBY_ACTION_LIMIT_PER_SECOND);
+  private readonly switchTeamActions: SlidingWindowLimiter = createMessageLimiter(LOBBY_ACTION_LIMIT_PER_SECOND);
+  private readonly teamSizeActions: SlidingWindowLimiter = createMessageLimiter(LOBBY_ACTION_LIMIT_PER_SECOND);
+  private readonly fillBotsActions: SlidingWindowLimiter = createMessageLimiter(LOBBY_ACTION_LIMIT_PER_SECOND);
   private listing: MultiplayerRoomListing = "quick";
   private visibility: MultiplayerRoomVisibility = "public";
 
@@ -118,25 +144,29 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     void this.setPrivate(this.visibility === "private");
     void this.refreshRoomMetadata();
 
-    this.onMessage("ready", (client, message: SetReadyMessage) => {
+    this.onMessage<SetReadyMessage>("ready", messageSchema<SetReadyMessage>(m => typeof m.ready === "boolean"), (client, message) => {
       this.handleReadyMessage(client, message);
     });
-    this.onMessage("switch_team", (client, message: SwitchTeamMessage) => {
+    this.onMessage<SwitchTeamMessage>("switch_team", messageSchema<SwitchTeamMessage>(m => m.team === 0 || m.team === 1), (client, message) => {
       this.handleSwitchTeamMessage(client, message);
     });
-    this.onMessage("set_team_size", (client, message: SetTeamSizeMessage) => {
+    this.onMessage<SetTeamSizeMessage>("set_team_size", messageSchema<SetTeamSizeMessage>(m => typeof m.teamSize === "number" && isMatchTeamSizeValue(m.teamSize)), (client, message) => {
       this.handleSetTeamSizeMessage(client, message);
     });
-    this.onMessage("fill_bots", (_client, message: FillBotsMessage) => {
-      this.handleFillBotsMessage(message);
+    this.onMessage<FillBotsMessage>("fill_bots", messageSchema<FillBotsMessage>(m => typeof m.fill === "boolean"), (client, message) => {
+      this.handleFillBotsMessage(client, message);
     });
-    this.onMessage("player_update", (client, message: PlayerUpdateMessage) => {
+    this.onMessage<PlayerUpdateMessage>("player_update", messageSchema<PlayerUpdateMessage>(m =>
+      [m.posX, m.posY, m.posZ, m.velX, m.velY, m.velZ, m.yaw].every(v => typeof v === "number" && Number.isFinite(v))
+      && optionalQuaternionOk([m.orientX, m.orientY, m.orientZ, m.orientW])
+      && typeof m.phase === "string"), (client, message) => {
       this.handlePlayerUpdateMessage(client, message);
     });
-    this.onMessage("shot_event", (client, message: ShotEventMessage) => {
+    this.onMessage<ShotEventMessage>("shot_event", messageSchema<ShotEventMessage>(m =>
+      [m.originX, m.originY, m.originZ, m.dirX, m.dirY, m.dirZ].every(v => typeof v === "number" && Number.isFinite(v))), (client, message) => {
       this.handleShotEventMessage(client, message);
     });
-    this.onMessage("hit_report", (client, message: HitReportMessage) => {
+    this.onMessage<HitReportMessage>("hit_report", messageSchema<HitReportMessage>(m => typeof m.targetId === "string" && isHitZone(m.zone)), (client, message) => {
       this.handleHitReportMessage(client, message);
     });
     this.onMessage("breach_report", (client) => {
@@ -171,11 +201,48 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     member.connected = true;
     member.isBot = false;
 
+    this.trackTransportErrors(client);
     this.state.members.set(client.sessionId, member);
     this.broadcast("lobby_event", {
       type: "info",
       text: `${member.name} joined the room.`,
     });
+    this.syncLobbyFlow();
+  }
+
+  // A reconnect can reach the server before its ping timeout notices the old
+  // socket is dead. Colyseus then force-closes the stale client with 4002 and
+  // expects onDrop to reserve the seat for the incoming connection.
+  public override checkReconnectionToken(reconnectionToken: string): string {
+    const stale = this.clients.find((c) => c.reconnectionToken === reconnectionToken);
+    if (stale) this.staleTakeovers.add(stale);
+    return super.checkReconnectionToken(reconnectionToken);
+  }
+
+  public onDrop(client: RoomClient, code: number): void {
+    // Validation failures and server kicks still leave immediately.
+    // One-shot: only the 4002 close Colyseus sends for this takeover reserves the seat.
+    const takeover = code === 4002 && this.staleTakeovers.delete(client);
+    if (this.rejectedTransports.has(client)) return;
+    if (!takeover && ![1001, 1005, 1006, 1011, 1012, 1013, 4010].includes(code)) return;
+    const member = this.state.members.get(client.sessionId);
+    if (!member) return;
+    member.connected = false;
+    if (this.state.phase === "LOBBY" || this.state.phase === "COUNTDOWN") {
+      this.syncLobbyFlow();
+    }
+    // Colyseus keeps the seat (including in locked rooms) and calls onLeave
+    // on expiry, or onReconnect with the same sessionId on success.
+    // Rejects ("not joined" before the JOIN_ROOM ack, "disposing") must not
+    // become an unhandled rejection: Colyseus treats that as uncaughtException
+    // and shuts the whole process down.
+    void Promise.resolve(this.allowReconnection(client, RECONNECTION_GRACE_SECONDS)).catch(() => {});
+  }
+
+  public onReconnect(client: RoomClient): void {
+    this.trackTransportErrors(client);
+    const member = this.state.members.get(client.sessionId);
+    if (member) member.connected = true;
     this.syncLobbyFlow();
   }
 
@@ -215,6 +282,14 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.syncLobbyFlow();
   }
 
+  private trackTransportErrors(client: RoomClient): void {
+    // ws reports parser/max-payload failures as 1006 on this side, even though
+    // it sends 1009 to the peer. Do not reserve seats for rejected frames.
+    client.ref?.once("error", (error: { code?: string }) => {
+      if (error.code?.startsWith("WS_ERR_")) this.rejectedTransports.add(client);
+    });
+  }
+
   public onDispose(): void {
     this.clearTimers();
   }
@@ -222,6 +297,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   // ── Lobby message handlers ──────────────────────────────────────────────────
 
   private handleReadyMessage(client: RoomClient, message: SetReadyMessage): void {
+    if (!this.readyActions.allow(client.sessionId, Date.now())) return;
     if (this.state.phase !== "LOBBY" && this.state.phase !== "COUNTDOWN") {
       this.sendInfo(client, "Ready state can only change from the lobby.");
       return;
@@ -237,6 +313,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   }
 
   private handleSwitchTeamMessage(client: RoomClient, message: SwitchTeamMessage): void {
+    if (!this.switchTeamActions.allow(client.sessionId, Date.now())) return;
     if (this.state.phase !== "LOBBY") {
       this.sendInfo(client, "Switch teams before the countdown starts.");
       return;
@@ -266,6 +343,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
   }
 
   private handleSetTeamSizeMessage(client: RoomClient, message: SetTeamSizeMessage): void {
+    if (!this.teamSizeActions.allow(client.sessionId, Date.now())) return;
     if (this.state.phase !== "LOBBY") {
       this.sendInfo(client, "Change the lobby size before the round starts.");
       return;
@@ -292,7 +370,8 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.syncLobbyFlow();
   }
 
-  private handleFillBotsMessage(message: FillBotsMessage): void {
+  private handleFillBotsMessage(client: RoomClient, message: FillBotsMessage): void {
+    if (!this.fillBotsActions.allow(client.sessionId, Date.now())) return;
     if (this.state.phase !== "LOBBY") {
       return;
     }
@@ -325,6 +404,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     actor.velY = clampFinite(Number(message.velY), -VEL_CLAMP, VEL_CLAMP);
     actor.velZ = clampFinite(Number(message.velZ), -VEL_CLAMP, VEL_CLAMP);
     actor.yaw = clampFinite(Number(message.yaw), -Math.PI * 2, Math.PI * 2);
+    setActorOrientation(actor, orientationFromPlayerUpdate(message, actor.yaw));
     const rawPhase = String(message.phase ?? "");
     const prevPhase = actor.phase;
     actor.phase = normalizeAuthoritativePhase(rawPhase, actor);
@@ -373,6 +453,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       dirY: direction.y,
       dirZ: direction.z,
     };
+    if (!this.shotEvents.allow(client.sessionId, Date.now())) return;
     this.broadcast("shot_event", shotEvent);
   }
 
@@ -452,6 +533,14 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
   // ── Round flow ──────────────────────────────────────────────────────────────
 
+  private canStartLobbyRound(): boolean {
+    // Reserved seats still count for joining and balance, but cannot start play.
+    return canStartLobbyRound(
+      this.getMemberSnapshots().filter((member) => member.connected),
+      this.state.teamSize as MatchTeamSize,
+    );
+  }
+
   private syncLobbyFlow(): void {
     void this.refreshRoomMetadata();
 
@@ -460,7 +549,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }
 
     if (this.state.phase === "COUNTDOWN") {
-      if (!canStartLobbyRound(this.getMemberSnapshots(), this.state.teamSize as MatchTeamSize)) {
+      if (!this.canStartLobbyRound()) {
         this.cancelCountdown();
       }
       return;
@@ -468,7 +557,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
     if (
       this.state.phase === "LOBBY"
-      && canStartLobbyRound(this.getMemberSnapshots(), this.state.teamSize as MatchTeamSize)
+      && this.canStartLobbyRound()
     ) {
       this.startCountdown();
     }
@@ -569,7 +658,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
       if (
         matchWinner === null
-        && canStartLobbyRound(this.getMemberSnapshots(), this.state.teamSize as MatchTeamSize)
+        && this.canStartLobbyRound()
       ) {
         this.startCountdown();
         return;
@@ -664,17 +753,25 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     }
     this.broadcast("round_result_event", resultEvent);
 
-    setTimeout(() => {
+    this.clearRoundResolveTimer();
+    this.roundResolveTimer = setTimeout(() => {
+      this.roundResolveTimer = null;
       this.finishRound(matchWinner);
     }, 3000);
   }
 
   // ── Actor management ────────────────────────────────────────────────────────
 
+  private botCollisionBoxes: CollisionBox[] = [];
+
   private spawnActors(): void {
     this.clearActors();
 
     const layout = generateArenaLayout(this.state.roundNumber);
+    this.botCollisionBoxes = layout.obstacles.map(o => ({
+      min: { x: o.pos.x-o.size.x*PLAYER_DIAMOND_AABB_INSET/2, y: o.pos.y-o.size.y*PLAYER_DIAMOND_AABB_INSET/2, z: o.pos.z-o.size.z*PLAYER_DIAMOND_AABB_INSET/2 },
+      max: { x: o.pos.x+o.size.x*PLAYER_DIAMOND_AABB_INSET/2, y: o.pos.y+o.size.y*PLAYER_DIAMOND_AABB_INSET/2, z: o.pos.z+o.size.z*PLAYER_DIAMOND_AABB_INSET/2 },
+    }));
     const { goalAxis, goalSigns } = layout;
     this.botGoalAxis = goalAxis as "x" | "z";
     this.botGoalSigns = goalSigns;
@@ -695,8 +792,8 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     const slots1 = generateSpawnPositions(1, team1Count, arenaQuery, roundSeed * 17 + 13);
     const center0 = arenaQuery.getBreachRoomCenter(0);
     const center1 = arenaQuery.getBreachRoomCenter(1);
-    const floorY0 = center0.y - BREACH_ROOM_H / 2 + PLAYER_RADIUS + 0.08;
-    const floorY1 = center1.y - BREACH_ROOM_H / 2 + PLAYER_RADIUS + 0.08;
+    const floorY0 = breachFloorAnchorY(center0.y);
+    const floorY1 = breachFloorAnchorY(center1.y);
 
     let team0Index = 0;
     let team1Index = 0;
@@ -716,6 +813,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
       actor.kills = 0;
       actor.deaths = 0;
       actor.yaw = this.botSpawnYaw[member.team];
+      setActorOrientation(actor, quaternionFromYawPitchRoll(actor.yaw));
 
       if (member.team === 0) {
         const slot = slots0[team0Index] ?? slots0[slots0.length - 1] ?? center0;
@@ -753,12 +851,21 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.lastPlayerUpdate.delete(id);
     this.lastHitReport.delete(id);
     this.lastBreachReport.delete(id);
+    this.forgetMessageRates(id);
+  }
+
+  private forgetMessageRates(id: string): void {
+    this.shotEvents.forget(id);
+    this.readyActions.forget(id);
+    this.switchTeamActions.forget(id);
+    this.teamSizeActions.forget(id);
+    this.fillBotsActions.forget(id);
   }
 
 
   private tickBots(dt: number): void {
     if (this.state.phase !== "PLAYING") return;
-    this.bots.tick(dt, this.state.actors.values(), this.botGoalAxis, this.botGoalSigns, this.botHooks);
+    this.bots.tick(dt, this.state.actors.values(), this.botGoalAxis, this.botGoalSigns, this.botHooks, this.botCollisionBoxes);
   }
 
   private tickStaleHumanActors(dt: number): void {
@@ -771,8 +878,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
         continue;
       }
 
-      integrateZeroGActor(actor, dt);
-      bounceActorInArena(actor, this.botGoalAxis);
+      stepActorWorld(actor, dt, this.botGoalAxis, this.botCollisionBoxes);
 
       if (!this.roundResolved && isActorInEnemyBreachRoom(actor, this.botGoalAxis, this.botGoalSigns)) {
         actor.phase = "BREACH";
@@ -791,6 +897,7 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
         id: actor.id,
         isBot: actor.isBot,
         pos: { x: actor.posX, y: actor.posY, z: actor.posZ },
+        offset: bodyWorldBounds({x:0,y:0,z:0}, actor.phase === "BREACH" ? quaternionFromYawPitchRoll(actor.yaw) : orientationFromSnapshot(actor),actor.phase).center,
         vel: actor.isBot ? { x: actor.velX, y: actor.velY, z: actor.velZ } : undefined,
         radius: ACTOR_COLLISION_RADIUS,
         anchored: !actor.isBot,
@@ -946,9 +1053,17 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
     this.clearCountdownTimer();
     this.clearRoundTimer();
     this.clearMatchTick();
+    this.clearRoundResolveTimer();
     if (this.roundEndTimer) {
       clearTimeout(this.roundEndTimer);
       this.roundEndTimer = null;
+    }
+  }
+
+  private clearRoundResolveTimer(): void {
+    if (this.roundResolveTimer) {
+      clearTimeout(this.roundResolveTimer);
+      this.roundResolveTimer = null;
     }
   }
 
@@ -1005,6 +1120,23 @@ export class OrbitalLobbyRoom extends Room<{ state: OrbitalLobbyState }> {
 
 // ── Pure geometry helpers ───────────────────────────────────────────────────
 
+// Use Colyseus's Standard Schema hook: invalid payloads close only the sender
+// with WITH_ERROR before a handler can dereference/coerce untrusted values.
+// Validate fields consumed by the server; ignored client claims remain ignored.
+function messageSchema<T>(check: (message: Record<string, unknown>) => boolean) {
+  return {
+    "~standard": {
+      version: 1 as const,
+      vendor: "orbital-breach",
+      validate(input: unknown) {
+        return input !== null && typeof input === "object" && !Array.isArray(input) && check(input as Record<string, unknown>)
+          ? { value: input as T }
+          : { issues: [{ message: "Invalid message payload" }] };
+      },
+    },
+  };
+}
+
 function sanitizePlayerName(rawName?: string): string {
   const trimmed = rawName?.trim().replace(/[^\x20-\x7E]/g, "").slice(0, 16);
   if (!trimmed || trimmed.length === 0) return DEFAULT_PLAYER_NAME;
@@ -1028,6 +1160,43 @@ function normalizeDirection(
     y: y / length,
     z: z / length,
   };
+}
+
+function optionalQuaternionOk(values: unknown[]): boolean {
+  const present = values.filter((value) => value !== undefined);
+  if (present.length === 0) return true;
+  return present.length === values.length
+    && present.every((value) => typeof value === "number" && Number.isFinite(value));
+}
+
+function orientationFromPlayerUpdate(
+  message: PlayerUpdateMessage,
+  yaw: number,
+): { x: number; y: number; z: number; w: number } {
+  if (
+    typeof message.orientX === "number"
+    && typeof message.orientY === "number"
+    && typeof message.orientZ === "number"
+    && typeof message.orientW === "number"
+  ) {
+    return normalizeQuaternion({
+      x: message.orientX,
+      y: message.orientY,
+      z: message.orientZ,
+      w: message.orientW,
+    });
+  }
+  return quaternionFromYawPitchRoll(yaw);
+}
+
+function setActorOrientation(
+  actor: Pick<ActorState, "orientX" | "orientY" | "orientZ" | "orientW">,
+  orientation: { x: number; y: number; z: number; w: number },
+): void {
+  actor.orientX = orientation.x;
+  actor.orientY = orientation.y;
+  actor.orientZ = orientation.z;
+  actor.orientW = orientation.w;
 }
 
 function breachExitYaw(axis: "x" | "y" | "z", openSign: 1 | -1): number {

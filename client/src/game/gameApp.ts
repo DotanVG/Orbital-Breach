@@ -13,6 +13,7 @@ import { Arena } from "../arena/arena";
 import { CameraController } from "../camera";
 import { FEATURE_FLAGS } from "../featureFlags";
 import { InputManager } from "../input";
+import { canOpenInstructions } from "../input/instructionsInput";
 import { LocalMatch } from "../match/localMatch";
 import { OnlineMatch } from "../match/onlineMatch";
 import { isTouchDevice } from "../platform";
@@ -24,10 +25,13 @@ import { SceneManager } from "../render/scene";
 import { isEmbedMode } from "../embed";
 import { KillFeed } from "../ui/kill-feed";
 import { initGlobalCursor, type GlobalCursor } from "../ui/globalCursor";
+import { revealBootCoverNow } from "../ui/bootCover";
+import { armMenuEntryGesture } from "../ui/entryGesture";
 import { isApparentFullscreen, isFullscreen, leaveFullscreen, requestFullscreen } from "../ui/fullscreen";
 import { MainMenu } from "../ui/menu";
 import { MobileControls } from "../ui/mobileControls";
 import { RoomBrowser } from "../ui/roomBrowser";
+import { WelcomeScreen } from "../ui/welcome";
 import { SessionMenu, type SessionSettings } from "../ui/sessionMenu";
 import { SoundEngine } from "../audio/SoundEngine";
 import {
@@ -45,9 +49,12 @@ import { tickSoloGame } from "./soloTick";
 import { shouldShowDesktopOverlayCursor } from "./overlayCursor";
 import type { GameTickContext } from "./tickContext";
 import { NetClient } from "../net/client";
+import { ConnectionNotice } from "../ui/connectionStatus";
 import { MultiplayerLobby } from "../ui/multiplayerLobby";
 import type { PlaySelection } from "../ui/menu";
 import { DebriefScreen, type DebriefData, type DebriefPlayer } from "../ui/debrief";
+import { VictoryPresentation } from "../ui/victoryPresentation";
+import { shouldTickCombat } from "./victoryPresentationState";
 import { showConfirmDialog } from "../ui/confirmDialog";
 import { getScoreboardCursorTransition } from "./scoreboardCursor";
 import { MatchStatsTracker, type ObservedMatchPlayer } from "./matchStatsTracker";
@@ -78,6 +85,7 @@ export class App {
   private pendingOnlineRoomSelection: PlaySelection | null = null;
   private onlineMatchConcluding = false;
   private playerUpdateTimer = 0;
+  private resyncAfterReconnect = false;
   private latestOnlineSnapshot: MultiplayerRoomSnapshot | null = null;
   private previousOnlinePhase: MultiplayerRoomSnapshot["phase"] | null = null;
   private onlinePlayerName = DEFAULT_PLAYER_NAME;
@@ -99,6 +107,7 @@ export class App {
   private lastTime = 0;
   private match: LocalMatch;
   private menu: MainMenu;
+  private welcome: WelcomeScreen;
   private readonly matchStats = new MatchStatsTracker();
   private roomBrowser = new RoomBrowser();
   private debrief = new DebriefScreen();
@@ -107,6 +116,10 @@ export class App {
   private readonly mobile = isTouchDevice();
   private mobileControls: MobileControls | null = null;
   private net = new NetClient();
+  private connectionNotice = new ConnectionNotice(
+    () => this.net.retry(),
+    () => { void this.requestLeaveOnline("server_disconnect"); },
+  );
   private portalParams: PortalParams;
   private player: LocalPlayer;
   private projectiles: ProjectileSystem;
@@ -119,6 +132,7 @@ export class App {
   private thirdPerson = false;
   private selectedCameraViewMode: CameraViewMode;
   private victoryOrbitAngle = 0;
+  private victoryPresentation: VictoryPresentation | null = null;
   private tutorial = new FirstTimeTutorial();
 
   public constructor(cursor = initGlobalCursor()) {
@@ -137,8 +151,11 @@ export class App {
     this.player = new LocalPlayer(this.sceneMgr.getScene());
     this.player.onFullyFrozen = () => this.sound.playHit();
     this.hud = new HUD();
+    this.hud.onHelpToggle = () => this.setHelpVisible(!this.helpVisible);
+    this.hud.onIntroDismiss = () => this.tutorial.dismissIntro();
     this.menu = new MainMenu();
     this.cursor = cursor;
+    this.welcome = new WelcomeScreen(this.cursor);
     this.projectiles = new ProjectileSystem(this.sceneMgr.getScene());
     this.match = new LocalMatch(this.sceneMgr.getScene());
     this.onlineMatch = new OnlineMatch(this.sceneMgr.getScene());
@@ -225,18 +242,17 @@ export class App {
     this.net.onStateChange = (snapshot) => {
       if (this.isUserExitingOnline || this.appMode !== "online") return;
       this.latestOnlineSnapshot = snapshot;
+      if (this.resyncAfterReconnect) {
+        this.resyncLocalOnlineActorFromLatestSnapshot();
+        this.resyncAfterReconnect = false;
+      }
 
       const prev = this.previousOnlinePhase;
       this.previousOnlinePhase = snapshot.phase;
 
       if (this.onlineMatchConcluding) {
         this.onlineRoundActive = false;
-        if (this.onlineGameActive) {
-          this.syncLocalOnlineActor(snapshot);
-          this.arena.setPortalDoorsOpen(snapshot.phase === "PLAYING");
-          this.onlineMatch.applySnapshot(snapshot.actors, snapshot.sessionId);
-          this.matchStats.observePlayers(this.getOnlineMatchStatsActors(snapshot), { accumulateTravel: false });
-        }
+        // Keep the lobby snapshot for Return To Lobby; the celebration is local.
         return;
       }
 
@@ -289,6 +305,7 @@ export class App {
 
     this.net.onRoundResultEvent = (event) => {
       if (this.isUserExitingOnline || this.appMode !== "online") return;
+      if (this.onlineMatchConcluding) return;
       if (!this.onlineGameActive) return;
 
       if (event.reason === "breach") {
@@ -310,8 +327,10 @@ export class App {
       }
 
       if (event.matchWinner !== null && event.finalScore) {
+        if (this.helpVisible) this.setHelpVisible(false);
         this.setCelebratingTeam(event.matchWinner);
         this.onlineMatchConcluding = true;
+        this.tutorial.completeMatch();
         this.pendingOnlineDebrief = this.buildOnlineDebrief(event.matchWinner, event.finalScore);
         this.sessionMenu.close();
         this.hud.showRoundEnd(
@@ -371,10 +390,23 @@ export class App {
       this.sound.playRemoteShot(new THREE.Vector3(event.originX, event.originY, event.originZ));
     };
 
-    this.net.onLeave = () => {
+    this.net.onConnectionStatus = (status) => {
+      this.connectionNotice.render(status);
       if (this.isUserExitingOnline) return;
       if (this.appMode !== "online") return;
-      void this.requestLeaveOnline("server_disconnect");
+      if (status === "reconnecting") this.resyncAfterReconnect = true;
+      if (status === "connected") this.clearInviteRoomIdFromUrl();
+      if (status === "lost") {
+        this.input.exitPointerLock();
+        this.cursor.show();
+      }
+    };
+    this.net.onJoinError = (error) => { void this.handleOnlineJoinError(error); };
+    this.net.onServerDisconnect = () => {
+      if (this.isUserExitingOnline || this.appMode !== "online") return;
+      void this.requestLeaveOnline("server_disconnect").then(() => {
+        this.connectionNotice.showMessage("The server closed the connection.");
+      });
     };
 
     this.multiplayer.onLeaveLobby = () => {
@@ -422,7 +454,7 @@ export class App {
       };
     } else {
       this.sceneMgr.getRenderer().domElement.addEventListener("mousedown", () => {
-        if (this.menu.isVisible() || this.input.isLocked() || this.sessionMenu.isOpen()) return;
+        if (this.menu.isVisible() || this.input.isLocked() || this.sessionMenu.isOpen() || this.helpVisible) return;
         if (this.appMode === "solo" && this.round.getPhase() === "LOBBY") return;
         if (this.appMode === "online" && !this.onlineGameActive) return;
         this.input.lockPointer(this.sceneMgr.getRenderer().domElement);
@@ -432,7 +464,7 @@ export class App {
     this.tickCtx = this.createTickContext();
   }
 
-  public start(audioPrimed = false): void {
+  public start(): void {
     this.menu.onPlaySolo = (selection) => {
       this.startSoloMatch(selection);
     };
@@ -466,27 +498,29 @@ export class App {
         teamSize: 1,
         noBots: true,
       });
+      revealBootCoverNow();
     } else if (this.embedMode) {
       this.cleanEmbedUrl();
       this.menu.show();
     } else {
-      this.menu.show();
+      this.welcome.onBreach = () => { this.menu.show(); };
+      this.welcome.fullscreenOnClick = this.fullscreenPreference;
+      this.welcome.show();
     }
 
-    const unlockAudio = (): void => {
-      void this.sound.unlock().then(() => {
-        this.sound.startMusic();
-        document.removeEventListener('pointerdown', unlockAudio);
-        document.removeEventListener('keydown', unlockAudio);
-        document.removeEventListener('touchstart', unlockAudio);
-      }).catch((err) => {
-        console.warn("[GameApp] Audio unlock failed:", err);
-      });
-    };
-    document.addEventListener('pointerdown', unlockAudio);
-    document.addEventListener('keydown', unlockAudio);
-    document.addEventListener('touchstart', unlockAudio, { passive: true });
-    if (audioPrimed) unlockAudio();
+    const unlockAudio = (): Promise<void> => this.sound.unlock().then(() => {
+      this.sound.startMusic();
+    }).catch((err: unknown) => {
+      console.warn("[GameApp] Audio unlock failed:", err);
+      throw err;
+    });
+    armMenuEntryGesture({
+      // The welcome button owns fullscreen; all routes still unlock audio on a gesture.
+      requestFullscreenOnGesture: false,
+      isMenuVisible: () => this.menu.isVisible(),
+      unlockAudio,
+      requestFullscreen: () => requestFullscreen(),
+    });
 
     // Resume music when user returns to tab/app (AudioContext suspends on hide)
     document.addEventListener('visibilitychange', () => {
@@ -503,7 +537,7 @@ export class App {
     requestAnimationFrame((timestamp) => this.loop(timestamp));
   }
 
-  // ── Main loop ───────────────────────────────────────────────────────────────
+  // â”€â”€ Main loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private loop(timestamp: number): void {
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.033);
@@ -511,7 +545,9 @@ export class App {
     const gameplayActive = this.isGameplaySceneActive();
 
     if (this.input.consumeMenuToggle()) {
-      if (this.sessionMenu.isOpen()) {
+      if (this.helpVisible) {
+        this.setHelpVisible(false);
+      } else if (this.sessionMenu.isOpen()) {
         this.closeSessionMenu();
       } else if (this.appMode !== "menu") {
         this.openSessionMenu();
@@ -519,7 +555,7 @@ export class App {
     }
 
     if (this.input.consumeHelpPressed() && this.appMode !== "menu") {
-      this.helpVisible = !this.helpVisible;
+      this.setHelpVisible(!this.helpVisible);
     }
 
     if (gameplayActive && this.appMode === "solo") {
@@ -530,7 +566,11 @@ export class App {
 
     this.syncCombatPresentation(gameplayActive);
     this.syncDesktopOverlayCursor(gameplayActive);
-    this.sceneMgr.render();
+    if (this.victoryPresentation) {
+      this.victoryPresentation.render(this.sceneMgr.getRenderer(), dt);
+    } else {
+      this.sceneMgr.render();
+    }
     requestAnimationFrame((nextTimestamp) => this.loop(nextTimestamp));
   }
 
@@ -545,14 +585,16 @@ export class App {
   }
 
 
-  // ── Online game lifecycle ───────────────────────────────────────────────────
+  // â”€â”€ Online game lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private beginOnlineRound(snapshot: MultiplayerRoomSnapshot): void {
     if (this.onlineMatchConcluding || this.debrief.isVisible()) {
       return;
     }
+    if (this.helpVisible) this.setHelpVisible(false);
 
     this.clearCelebrationState();
+    if (!this.onlineGameActive) this.tutorial.beginMatch();
     if (
       snapshot.roundNumber === 1
       && snapshot.score.team0 === 0
@@ -625,6 +667,7 @@ export class App {
   }
 
   private endOnlineGame(): void {
+    if (this.helpVisible) this.setHelpVisible(false);
     this.sound.stopCountdown();
     this.closeSessionMenu();
     this.clearCelebrationState();
@@ -652,9 +695,11 @@ export class App {
 
 
 
-  // ── Solo round lifecycle ────────────────────────────────────────────────────
+  // â”€â”€ Solo round lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private beginNewRound(): void {
+    if (this.helpVisible) this.setHelpVisible(false);
+    this.tutorial.beginRun();
     this.clearCelebrationState();
     this.hud.hideRoundEnd();
     this.projectiles.clear();
@@ -728,7 +773,10 @@ export class App {
     winningTeam: 0 | 1,
     finalScore: { team0: number; team1: number },
   ): void {
+    if (this.matchOver || this.appMode !== "solo") return;
+    if (this.helpVisible) this.setHelpVisible(false);
     this.matchOver = true;
+    this.tutorial.completeMatch();
     this.setCelebratingTeam(winningTeam);
     this.round.cancelPendingRestart();
     if (this.matchEndHandle) clearTimeout(this.matchEndHandle);
@@ -765,6 +813,11 @@ export class App {
   }
 
   private returnToMenuFromSolo(): void {
+    if (this.matchEndHandle) {
+      clearTimeout(this.matchEndHandle);
+      this.matchEndHandle = null;
+    }
+    this.round.cancelPendingRestart();
     this.sound.stopCountdown();
     this.closeSessionMenu();
     this.clearCelebrationState();
@@ -789,7 +842,8 @@ export class App {
   }
 
   private openSessionMenu(view: "settings" | "instructions" | "credits" = "settings"): void {
-    if (this.sessionMenu.isOpen() || this.debrief.isVisible() || this.onlineMatchConcluding) return;
+    if (this.sessionMenu.isOpen() || this.debrief.isVisible() || this.victoryPresentation) return;
+    if (this.helpVisible) this.setHelpVisible(false);
 
     const inMenu = this.appMode === "menu";
     const inLiveMatch = this.appMode === "solo" || this.onlineGameActive;
@@ -830,6 +884,24 @@ export class App {
       resumeLabel,
       mainMenuLabel,
     }, view);
+  }
+
+  private setHelpVisible(visible: boolean): void {
+    if (this.helpVisible === visible) return;
+    if (visible && !canOpenInstructions(
+      this.isGameplaySceneActive(),
+      this.sessionMenu.isOpen(),
+      this.matchOver || this.onlineMatchConcluding,
+    )) return;
+    this.helpVisible = visible;
+    this.input.setUiBlocked(visible);
+    if (visible) this.input.exitPointerLock();
+    this.hud.setHelpVisible(visible);
+    if (this.mobile) {
+      this.input.setMobileControlsActive(!visible);
+      if (visible) this.mobileControls?.hide();
+      else this.mobileControls?.show();
+    }
   }
 
   private closeSessionMenu(): void {
@@ -994,15 +1066,18 @@ export class App {
     };
   }
 
-  // ── Solo match start ────────────────────────────────────────────────────────
+  // â”€â”€ Solo match start â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private startTutorialMatch(selection: PlaySelection): void {
     this.tutorial.forceRestart();
-    this.startSoloMatch({ ...selection, teamSize: 1, noBots: true });
+    this.startSoloMatch({ ...selection, teamSize: 1, noBots: true }, true);
   }
 
-  private startSoloMatch(selection: PlaySelection): void {
+  private startSoloMatch(selection: PlaySelection, tutorial = false): void {
+    this.tutorial.beginMatch(tutorial);
     this.lastSoloSelection = selection;
+    // Defensive: solo entry can be invoked outside the menu fadeOut path (e.g. rematch / tests).
+    this.menu.hide();
     this.debrief.hide();
     this.clearCelebrationState();
     this.appMode = "solo";
@@ -1010,7 +1085,7 @@ export class App {
     this.cursor.hide();
     this.matchOver = false;
     this.onlineBreachReported = false;
-    this.helpVisible = false;
+    this.setHelpVisible(false);
     this.matchStats.reset();
     this.tutorial.beginRun();
     this.killFeed.setLocalPlayerName(selection.name);
@@ -1049,7 +1124,7 @@ export class App {
     this.beginNewRound();
   }
 
-  // ── Online lobby start ──────────────────────────────────────────────────────
+  // â”€â”€ Online lobby start â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private async startOnlineLobby(
     selection: PlaySelection,
@@ -1057,12 +1132,7 @@ export class App {
   ): Promise<void> {
     this.pendingOnlineRoomSelection = null;
     this.roomBrowser.hide();
-    const inviteRoomId = this.getInviteRoomId();
     const resolvedTarget = target ?? this.getInviteJoinTarget() ?? { kind: "quick" };
-    const shouldClearInviteParam =
-      resolvedTarget.kind === "roomId"
-      && inviteRoomId !== null
-      && resolvedTarget.roomId === inviteRoomId;
     this.appMode = "online";
     this.syncBackgroundInputPolicy();
     this.onlinePlayerName = selection.name;
@@ -1076,6 +1146,7 @@ export class App {
     if (this.matchEndHandle) { clearTimeout(this.matchEndHandle); this.matchEndHandle = null; }
     this.previousOnlinePhase = null;
     this.latestOnlineSnapshot = null;
+    this.resyncAfterReconnect = false;
     this.projectiles.clear();
     this.hud.setVisible(false);
     this.killFeed.setVisible(false);
@@ -1096,12 +1167,10 @@ export class App {
         name: selection.name,
         target: resolvedTarget,
       });
+      if (!snapshot) return; // NetClient owns the bounded reconnect/retry flow.
       if (myToken !== this.onlineSessionToken || this.isUserExitingOnline || this.appMode !== "online") {
         try { await this.net.disconnect(); } catch { /* ignore */ }
         return;
-      }
-      if (shouldClearInviteParam) {
-        this.clearInviteRoomIdFromUrl();
       }
       this.latestOnlineSnapshot = snapshot;
       this.previousOnlinePhase = snapshot.phase;
@@ -1115,15 +1184,18 @@ export class App {
       if (myToken !== this.onlineSessionToken || this.isUserExitingOnline || this.appMode !== "online") {
         return;
       }
-      const message = error instanceof Error && error.message.trim().length > 0
-        ? error.message
-        : "Could not reach the Colyseus server. Check that the server is running.";
-      this.multiplayer.setStatus(
-        message,
-        "error",
-      );
-      await this.requestLeaveOnline("join_failed");
+      await this.handleOnlineJoinError(error);
     }
+  }
+
+  private async handleOnlineJoinError(error: unknown): Promise<void> {
+    if (this.isUserExitingOnline || this.appMode !== "online") return;
+    const message = error instanceof Error && error.message.trim().length > 0
+      ? error.message
+      : "Could not join the multiplayer room.";
+    this.multiplayer.setStatus(message, "error");
+    await this.requestLeaveOnline("join_failed");
+    this.connectionNotice.showMessage(message);
   }
 
   private async returnToMenuFromOnline(): Promise<void> {
@@ -1142,8 +1214,9 @@ export class App {
     this.onlineMatchConcluding = false;
     this.pendingOnlineDebrief = null;
     this.latestOnlineSnapshot = null;
+    this.resyncAfterReconnect = false;
     this.previousOnlinePhase = null;
-    this.helpVisible = false;
+    this.setHelpVisible(false);
     if (this.matchEndHandle) { clearTimeout(this.matchEndHandle); this.matchEndHandle = null; }
     this.onlineMatch.dispose();
     this.multiplayer.hide();
@@ -1172,8 +1245,7 @@ export class App {
     const disconnectPromise = this.net.disconnect().catch((error) => {
       console.warn("Multiplayer disconnect raised an error.", error);
     });
-    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));
-    await Promise.race([disconnectPromise, timeout]);
+    await disconnectPromise;
   }
 
   private getInviteRoomId(): string | null {
@@ -1195,9 +1267,10 @@ export class App {
     window.history.replaceState({}, "", url);
   }
 
-  // ── Match debrief ───────────────────────────────────────────────────────────
+  // â”€â”€ Match debrief â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private showMatchDebrief(data: DebriefData): void {
+    if (this.helpVisible) this.setHelpVisible(false);
     if (this.matchEndHandle) {
       clearTimeout(this.matchEndHandle);
       this.matchEndHandle = null;
@@ -1214,7 +1287,7 @@ export class App {
     this.hud.hideRoundEnd();
     this.killFeed.setVisible(false);
     this.cursor.show();
-    this.debrief.show(data);
+    this.debrief.show(data, this.victoryPresentation !== null);
   }
 
   private buildOnlineDebrief(
@@ -1303,16 +1376,28 @@ export class App {
 
 
   private setCelebratingTeam(team: 0 | 1): void {
-    const playerWins = this.player.team === team && !this.player.damage.frozen;
-    this.player.setVictoryDanceActive(playerWins);
-    if (playerWins) {
-      this.thirdPerson = true;
-    }
-    this.match.setCelebratingTeam(team);
-    this.onlineMatch.setCelebratingTeam(team);
+    // Ensure main menu cannot sit on top of the victory celebration stage.
+    this.menu.hide();
+    this.victoryPresentation?.dispose();
+    this.victoryPresentation = new VictoryPresentation(team);
+    this.sound.stopCountdown();
+    this.projectiles.clear();
+    this.sessionMenu.close();
+    this.sessionMenu.setLauncherVisible(false);
+    this.restorePointerLockAfterScoreboard = false;
+    this.input.exitPointerLock();
+    this.input.setUiBlocked(true);
+    this.input.setMobileControlsActive(false);
+    this.mobileControls?.hide();
+    this.hud.setVisible(false);
+    this.hud.hideRoundEnd();
+    this.killFeed.setVisible(false);
+    this.cursor.show();
   }
 
   private clearCelebrationState(): void {
+    this.victoryPresentation?.dispose();
+    this.victoryPresentation = null;
     this.player.setVictoryDanceActive(false);
     this.thirdPerson = isThirdPersonCameraView(this.selectedCameraViewMode);
     this.victoryOrbitAngle = 0;
@@ -1343,7 +1428,7 @@ export class App {
 
 
 
-  // ── Shared helpers ──────────────────────────────────────────────────────────
+  // â”€â”€ Shared helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private updateGunVisibility(isSelfie: boolean): void {
     const phase = this.round.getPhase();
@@ -1392,11 +1477,8 @@ export class App {
   }
 
   private isGameplaySceneActive(): boolean {
-    return !this.debrief.isVisible()
-      && (
-        this.appMode === "solo"
-        || (this.appMode === "online" && this.onlineGameActive)
-      );
+    return shouldTickCombat(this.appMode, this.victoryPresentation !== null,
+      this.debrief.isVisible(), this.onlineGameActive);
   }
 
   private handleScoreboardTabHoldChange(held: boolean): void {
@@ -1405,7 +1487,7 @@ export class App {
       gameplayActive: this.isGameplaySceneActive(),
       pointerLocked: this.input.isLocked(),
       restorePointerLockAfterScoreboard: this.restorePointerLockAfterScoreboard,
-      sessionMenuOpen: this.sessionMenu.isOpen(),
+      sessionMenuOpen: this.sessionMenu.isOpen() || this.helpVisible,
     });
     this.restorePointerLockAfterScoreboard = transition.nextRestorePointerLockAfterScoreboard;
 
@@ -1445,7 +1527,7 @@ export class App {
     if (shouldShowDesktopOverlayCursor({
       gameplayActive,
       mobile: this.mobile,
-      sessionMenuOpen: this.sessionMenu.isOpen(),
+      sessionMenuOpen: this.sessionMenu.isOpen() || this.helpVisible,
       tabHeld: this.input.isTabHeld(),
     })) {
       this.cursor.show();

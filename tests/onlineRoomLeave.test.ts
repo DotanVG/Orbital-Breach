@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_PLAYER_NAME } from "../shared/callSigns";
-import { buildBotName } from "../shared/multiplayer";
-import { OrbitalLobbyRoom } from "../server/src/colyseus/OrbitalLobbyRoom";
+import { buildBotName, MULTIPLAYER_COUNTDOWN_SECONDS } from "../shared/multiplayer";
+import { RECONNECTION_GRACE_SECONDS, OrbitalLobbyRoom } from "../server/src/colyseus/OrbitalLobbyRoom";
 import { ActorState, LobbyMemberState, OrbitalLobbyState } from "../server/src/colyseus/state";
 
 function createRoom(): OrbitalLobbyRoom {
@@ -224,13 +224,86 @@ describe("OrbitalLobbyRoom fill_bots", () => {
     addMember(room, "bot-0", { name: buildBotName(0, 0), team: 0, isBot: true });
 
     const handleFillBotsMessage = (room as unknown as {
-      handleFillBotsMessage(message: { fill: boolean }): void;
+      handleFillBotsMessage(client: { sessionId: string }, message: { fill: boolean }): void;
     }).handleFillBotsMessage.bind(room);
 
-    handleFillBotsMessage({ fill: false });
-    handleFillBotsMessage({ fill: true });
+    handleFillBotsMessage({ sessionId: "human-1" }, { fill: false });
+    handleFillBotsMessage({ sessionId: "human-1" }, { fill: true });
 
     expect(Array.from(room.state.members.keys())).toEqual(["human-1", "human-2", "bot-0"]);
     expect(room.setMetadata).not.toHaveBeenCalled();
+  });
+});
+
+describe("DOT-137 reconnect reservation", () => {
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it.each(["LOBBY", "COUNTDOWN"])("requires the reserved ready player to reconnect before starting from %s", phase => {
+    vi.useFakeTimers();
+    const room = createRoom();
+    addMember(room, "pilot", { name: "Alpha", team: 0 });
+    addMember(room, "peer", { name: "Bravo", team: 1 });
+    vi.spyOn(room, "allowReconnection").mockReturnValue(undefined as never);
+    vi.spyOn(room, "lock").mockResolvedValue(undefined);
+    vi.spyOn(room, "unlock").mockResolvedValue(undefined);
+    try {
+      if (phase === "COUNTDOWN") {
+        room.onReconnect({ sessionId: "peer" } as never);
+        expect(room.state.phase).toBe("COUNTDOWN");
+        vi.advanceTimersByTime(1000);
+      }
+
+      room.onDrop({ sessionId: "pilot" } as never, 1006);
+      expect(room.state.phase).toBe("LOBBY");
+      expect(room.state.countdownRemaining).toBe(0);
+      expect(room.state.roundNumber).toBe(0);
+      expect(room.state.actors.size).toBe(0);
+      expect(room.state.members.get("pilot")).toMatchObject({ connected: false, ready: true, team: 0 });
+      expect(() => room.onJoin({ sessionId: "newcomer" } as never, { name: "Charlie" })).toThrow("full");
+
+      // Another lobby update must not restart the countdown using the reserved seat.
+      room.onReconnect({ sessionId: "peer" } as never);
+      vi.advanceTimersByTime(MULTIPLAYER_COUNTDOWN_SECONDS * 1000);
+      expect(room.state.phase).toBe("LOBBY");
+
+      room.onReconnect({ sessionId: "pilot" } as never);
+      expect(room.state.members.get("pilot")).toMatchObject({ connected: true, ready: true, team: 0 });
+      expect(room.state.phase).toBe("COUNTDOWN");
+      expect(room.state.countdownRemaining).toBe(MULTIPLAYER_COUNTDOWN_SECONDS);
+      vi.advanceTimersByTime(MULTIPLAYER_COUNTDOWN_SECONDS * 1000);
+      expect(room.state.phase).toBe("PLAYING");
+    } finally {
+      room.onDispose();
+    }
+  });
+
+  it("keeps the same member, team, actor and score through drop and reconnect", () => {
+    const room = createRoom();
+    room.state.phase = "PLAYING";
+    room.state.scoreTeam0 = 2;
+    addMember(room, "pilot", { name: "Alpha", team: 0 });
+    addMember(room, "peer", { name: "Bravo", team: 1 });
+    addActor(room, "pilot", { name: "Alpha", team: 0 });
+    const actor = room.state.actors.get("pilot")!;
+    actor.kills = 3;
+    actor.posX = 42;
+    const reserve = vi.spyOn(room, "allowReconnection").mockReturnValue(undefined as never);
+    room.onDrop({ sessionId: "pilot" } as never, 1006);
+    expect(reserve).toHaveBeenCalledWith({ sessionId: "pilot" }, RECONNECTION_GRACE_SECONDS);
+    expect(room.state.members.get("pilot")?.connected).toBe(false);
+    expect(room.state.actors.get("pilot")).toBe(actor);
+    expect(room.broadcast).not.toHaveBeenCalled();
+    room.onReconnect({ sessionId: "pilot" } as never);
+    expect(room.state.members.get("pilot")).toMatchObject({ connected: true, team: 0 });
+    expect(room.state.actors.get("pilot")).toMatchObject({ posX: 42, kills: 3 });
+    expect(room.state.scoreTeam0).toBe(2);
+  });
+
+  it.each([4000, 4002, 4003, 4403])("does not reserve a rejected or intentional departure (%s)", code => {
+    const room = createRoom();
+    addMember(room, "pilot", { name: "Alpha", team: 0 });
+    const reserve = vi.spyOn(room, "allowReconnection");
+    room.onDrop({ sessionId: "pilot" } as never, code);
+    expect(reserve).not.toHaveBeenCalled();
   });
 });

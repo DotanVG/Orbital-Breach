@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkinnedScene } from "three/addons/utils/SkeletonUtils.js";
-import { PLAYER_RADIUS } from "../../../shared/constants";
+import { ALIEN_SCALE, ALIEN_OFFSET_Y, ALIEN_OFFSET_Z, ALIEN_ROTATION_Y } from "./alienTransform";
 import { applyTeamAccent } from "./teamAccent";
 
 interface AlienRenderPrototype {
@@ -22,11 +22,6 @@ export interface AlienRenderClone {
   helmet: THREE.Group;
   helmetAnimations: THREE.AnimationClip[];
 }
-
-const ALIEN_SCALE = 0.2;
-const ALIEN_OFFSET_Y = -PLAYER_RADIUS * 0.8;
-const ALIEN_OFFSET_Z = 0.3;
-const ALIEN_ROTATION_Y = Math.PI;
 
 let prototypePromise: Promise<AlienRenderPrototype> | null = null;
 
