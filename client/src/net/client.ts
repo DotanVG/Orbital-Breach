@@ -11,6 +11,7 @@ import {
   isAbnormalClose,
   isFatalRoomError,
   isFinalReconnectRejection,
+  isReconnectRoomGone,
   isTransportError,
 } from "./reconnect";
 import { isMatchTeamSize, type MatchTeamSize } from "../../../shared/match";
@@ -71,6 +72,8 @@ export class NetClient {
   private status: ConnectionStatus = "disconnected";
   private reconnectionToken: string | null = null;
   private attemptTimeout: ReturnType<typeof setTimeout> | null = null;
+  private lastKnownPhase: MultiplayerRoomSnapshot["phase"] | null = null;
+  private freshLobbyJoinPending = false;
 
   public constructor(
     private readonly client: ColyseusClient | null = SERVER_URL ? new ColyseusClient(SERVER_URL) : null,
@@ -132,6 +135,8 @@ export class NetClient {
       this.attachRoom(room);
       this.options = { name: this.options.name, target: { kind: "roomId", roomId: room.roomId } };
       const snapshot = buildSnapshot(room, room.state as ColyseusRoomState);
+      this.lastKnownPhase = snapshot.phase;
+      this.freshLobbyJoinPending = false;
       if (this.attemptTimeout !== null) clearTimeout(this.attemptTimeout);
       this.attemptTimeout = null;
       this.attempts = 0;
@@ -139,9 +144,19 @@ export class NetClient {
       return snapshot;
     } catch (error) {
       if (generation !== this.generation) return null;
+      if (this.freshLobbyJoinPending) {
+        this.logRecoveryRejection(error);
+        this.freshLobbyJoinPending = false;
+        this.failReconnect();
+        return null;
+      }
       if (this.reconnectionToken !== null) {
         this.logRecoveryRejection(error);
         if (isFinalReconnectRejection(error)) {
+          if (this.shouldTryFreshLobbyJoin(error)) {
+            this.tryFreshLobbyJoin(generation);
+            return null;
+          }
           this.failReconnect();
           return null;
         }
@@ -163,6 +178,7 @@ export class NetClient {
     room.onStateChange((state) => {
       if (this.room !== room) return;
       const snapshot = buildSnapshot(room, state as ColyseusRoomState);
+      this.lastKnownPhase = snapshot.phase;
       this.onStateChange?.(snapshot);
     });
     room.onMessage("lobby_event", (event: LobbyEventMessage) => {
@@ -208,6 +224,8 @@ export class NetClient {
     this.options = null;
     this.attempts = 0;
     this.reconnectionToken = null;
+    this.lastKnownPhase = null;
+    this.freshLobbyJoinPending = false;
     const room = this.room;
     this.room = null;
     this.setStatus("disconnected");
@@ -235,6 +253,7 @@ export class NetClient {
 
   private failReconnect(): void {
     this.reconnectionToken = null;
+    this.freshLobbyJoinPending = false;
     if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     if (this.attemptTimeout !== null) clearTimeout(this.attemptTimeout);
@@ -285,6 +304,30 @@ export class NetClient {
       });
     }, delay);
     this.setStatus("reconnecting");
+  }
+
+  private shouldTryFreshLobbyJoin(error: unknown): boolean {
+    // Mid-match joins are rejected by onAuth; only a lobby 410 gets one fresh joinById.
+    return isReconnectRoomGone(error)
+      && this.lastKnownPhase === "LOBBY"
+      && this.options?.target?.kind === "roomId";
+  }
+
+  private tryFreshLobbyJoin(generation: number): void {
+    this.reconnectionToken = null;
+    this.freshLobbyJoinPending = true;
+    if (this.attemptTimeout !== null) clearTimeout(this.attemptTimeout);
+    this.attemptTimeout = null;
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.setStatus("reconnecting");
+    void this.attemptConnect(generation).then((snapshot) => {
+      if (snapshot && generation === this.generation) this.onStateChange?.(snapshot);
+    }).catch((error: unknown) => {
+      if (generation !== this.generation) return;
+      void this.disconnect();
+      this.onJoinError?.(error);
+    });
   }
 
   private logRecoveryRejection(error: unknown): void {
